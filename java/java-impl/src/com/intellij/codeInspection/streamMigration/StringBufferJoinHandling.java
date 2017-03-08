@@ -1,8 +1,6 @@
 package com.intellij.codeInspection.streamMigration;
 
 import com.intellij.psi.*;
-import com.intellij.psi.search.LocalSearchScope;
-import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import org.jetbrains.annotations.Nullable;
@@ -65,6 +63,7 @@ public class StringBufferJoinHandling {
 
   // Based on isAddAllCall() method
   private static boolean isAppendCall(StreamApiMigrationInspection.TerminalBlock tb, PsiMethodCallExpression call) {
+    if (call.getArgumentList().getExpressions().length != 1) return false;
     if (!ExpressionUtils.isReferenceTo(call.getArgumentList().getExpressions()[0], tb.getVariable())) return false;
     if (!"append".equals(call.getMethodExpression().getReferenceName())) return false;
     PsiExpression qualifierExpression = call.getMethodExpression().getQualifierExpression();
@@ -75,25 +74,51 @@ public class StringBufferJoinHandling {
     return !(qualifierExpression instanceof PsiMethodCallExpression);
   }
 
-  private static boolean isCallSubject(PsiVariable var, PsiMethodCallExpression call) {
+  public static PsiVariable extractStringBuilder(PsiMethodCallExpression call) {
+    // Resolve to object call is made on
     PsiExpression qualifierExpression = call.getMethodExpression().getQualifierExpression();
-    if (!(qualifierExpression instanceof PsiReferenceExpression)) return false;
+    if (!(qualifierExpression instanceof PsiReferenceExpression)) return null;
     PsiElement resolved = ((PsiReferenceExpression) qualifierExpression).resolve();
-    return resolved != null && resolved.equals(var);
+    // Check if variable is StringBuilder
+    if (!(resolved instanceof PsiVariable)) return null;
+    PsiVariable var = (PsiVariable) resolved;
+    if (!var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER)) return null;
+    return var;
+  }
+
+  public static PsiMethodCallExpression getToStringCall(StreamApiMigrationInspection.TerminalBlock tb, PsiVariable sb) {
+    if (tb.isEmpty()) return null;
+
+    //tb.getLastOperation();
+    return null;
+  }
+
+  public static PsiExpression getSingleExprParam(PsiMethodCallExpression call) {
+    PsiExpression[] args = call.getArgumentList().getExpressions();
+    if (args.length != 1 || !(args[0] instanceof PsiReferenceExpression)) return null;
+    return args[0];
+  }
+
+  public static PsiVariable getSingleVarParam(PsiMethodCallExpression call) {
+    PsiExpression expr = getSingleExprParam(call);
+    if (expr == null) return null;
+    PsiElement resolved = ((PsiReferenceExpression) expr).resolve();
+    if (!(resolved instanceof PsiVariable)) return null;
+    return (PsiVariable) resolved;
   }
 
   @Nullable
   public static PsiVariable getJoinedVariable(StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
     // We only concatenate strings
     PsiVariable itVar = tb.getVariable();
-    if (!itVar.getType().equalsToText("java.lang.String")) return null;
+    if (!itVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
 
     // TODO: Check if StringBuilder is created empty?
     switch (variables.size()) {
       case 1:
         // String concatenation if one variable is a StringBuffer
         PsiVariable var = variables.get(0);
-        if (!var.getType().equalsToText("java.lang.StringBuilder")) return null;
+        if (!var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER)) return null;
 
         // Check if the StringBuilder is used after creation
         if (tb.isReferencedInOperations(var)) return null;
@@ -102,7 +127,12 @@ public class StringBufferJoinHandling {
         PsiMethodCallExpression appendCall = tb.getSingleExpression(PsiMethodCallExpression.class);
         if (appendCall == null || !isAppendCall(tb, appendCall)) return null;
         // The append operation must be called on the StringBuilder
-        if (!isCallSubject(var, appendCall)) return null;
+        PsiVariable callObj = extractStringBuilder(appendCall);
+        if (!var.equals(callObj)) return null;
+
+        // The StringBuilder should be converted to a String after the loop
+        /*PsiMethodCallExpression toStringCall = getToStringCall(tb, var);
+        if (toStringCall == null) return null;*/
 
         return var;
       case 2:

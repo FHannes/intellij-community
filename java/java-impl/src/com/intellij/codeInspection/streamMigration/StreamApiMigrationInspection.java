@@ -622,7 +622,7 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
           registerProblem(statement, "sum", new ReplaceWithSumFix());
         }
         if(StringBufferJoinHandling.getJoinedVariable(tb, nonFinalVariables) != null) {
-          registerProblem(statement, "joining", new ReplaceWithJoiningFix());
+          registerProblem(statement, "joining", new ReplaceWithJoiningFix(nonFinalVariables.size() != 1));
         }
         if(!nonFinalVariables.isEmpty()) {
           return;
