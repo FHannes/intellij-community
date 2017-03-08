@@ -26,6 +26,7 @@ import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.controlFlow.*;
 import com.intellij.psi.impl.PsiDiamondTypeUtil;
+import com.intellij.psi.util.ConstantExpressionUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import one.util.streamex.StreamEx;
@@ -78,6 +79,26 @@ abstract class MigrateToStreamFix implements LocalQuickFix {
     if (status != InitializerUsageStatus.UNKNOWN) {
       PsiExpression initializer = var.getInitializer();
       if (ExpressionUtils.isZero(initializer)) {
+        PsiType type = var.getType();
+        String replacement = (type.equals(expressionType) ? "" : "(" + type.getCanonicalText() + ") ") + builder;
+        return replaceInitializer(loopStatement, var, initializer, replacement, status);
+      }
+    }
+    return loopStatement.replace(elementFactory.createStatementFromText(var.getName() + "+=" + builder + ";", loopStatement));
+  }
+
+  static PsiElement replaceWithStringConcatenation(@NotNull Project project,
+                                               PsiLoopStatement loopStatement,
+                                               PsiVariable var,
+                                               StringBuilder builder,
+                                               PsiType expressionType) {
+    PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
+    restoreComments(loopStatement, loopStatement.getBody());
+    InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
+    if (status != InitializerUsageStatus.UNKNOWN) {
+      PsiExpression initializer = var.getInitializer();
+      final Object value = ConstantExpressionUtil.computeCastTo(initializer, initializer.getType());
+      if (value instanceof String && value.equals("")) {
         PsiType type = var.getType();
         String replacement = (type.equals(expressionType) ? "" : "(" + type.getCanonicalText() + ") ") + builder;
         return replaceInitializer(loopStatement, var, initializer, replacement, status);
