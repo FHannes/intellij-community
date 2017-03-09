@@ -3,9 +3,11 @@ package com.intellij.codeInspection.streamMigration;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.siyeh.ig.psiutils.ExpressionUtils;
+import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * @author Frédéric Hannes
@@ -163,39 +165,55 @@ public class StringBufferJoinHandling {
 
   @Nullable
   public static PsiVariable getJoinedVariable(StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
+    // Only works for loops with (at least one and) at most two statements [if-statement with body counts as one]
+    if (tb.getStatements().length != 0 && tb.getStatements().length > 2) return null;
+
     // We only concatenate strings
     PsiVariable itVar = tb.getVariable();
     if (!itVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
 
-    // TODO: Check if StringBuilder is created empty?
-    switch (variables.size()) {
-      case 1:
-        // String concatenation if one variable is a StringBuffer
-        PsiVariable var = variables.get(0);
-        if (!var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER)) return null;
+    // String concatenation if one variable is a StringBuffer
+    Optional<PsiVariable> sbVar = StreamEx.of(variables.stream())
+      .findFirst(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER));
+    if (!sbVar.isPresent()) return null;
 
-        // The StringBuilder should be constructed with at most one argument
-        if (!checkInitMaxArguments(var, 1)) return null;
+    // String concatenation with delim needs one boolean switch var
+    Optional<PsiVariable> switchVar = StreamEx.of(variables.stream())
+      .findFirst(v -> v.getType().isAssignableFrom(PsiType.BOOLEAN));
 
-        // Check if the StringBuilder is used after creation
-        if (tb.isReferencedInOperations(var)) return null;
+    if (switchVar.isPresent()) {
+      boolean initVal = false;
 
-        // The terminalBlock must contain a single append operation
-        PsiMethodCallExpression appendCall = tb.getSingleExpression(PsiMethodCallExpression.class);
-        if (appendCall == null || !isAppendCall(tb, appendCall)) return null;
-        // The append operation must be called on the StringBuilder
-        PsiVariable callObj = extractStringBuilder(appendCall);
-        if (!var.equals(callObj)) return null;
+      // In case the boolean switch is initialized, get the init value
+      PsiExpression initializer = switchVar.get().getInitializer();
+      if (initializer instanceof PsiLiteralExpression) {
+        if (PsiType.BOOLEAN.equals(initializer.getType())) {
+          Boolean tVal = (Boolean)((PsiLiteralExpression)initializer).getValue();
+          if (tVal == null) return null; // Value can not be set to null
+          initVal = tVal;
+        }
+      }
 
-        // The StringBuilder should be converted to a String after the loop
-        /*PsiMethodCallExpression toStringCall = getToStringCall(tb, var);
-        if (toStringCall == null) return null;*/
-
-        return var;
-      case 2:
-      default:
-        return null;
+      // TODO: Check valid delim switching and extract delim to verify type
+    } else {
+      // If there's no switch boolean, the concat operation can't have a delimiter, so it must have a single statement in the loop
+      if (tb.getStatements().length != 1) return null;
     }
+
+    // The StringBuilder should be constructed with at most one argument
+    if (!checkInitMaxArguments(sbVar.get(), 1)) return null;
+
+    // Check if the StringBuilder is used after creation
+    if (tb.isReferencedInOperations(sbVar.get())) return null;
+
+    // The terminalBlock must contain a single append operation
+    PsiMethodCallExpression appendCall = tb.getSingleExpression(PsiMethodCallExpression.class);
+    if (appendCall == null || !isAppendCall(tb, appendCall)) return null;
+    // The append operation must be called on the StringBuilder
+    PsiVariable callObj = extractStringBuilder(appendCall);
+    if (!sbVar.equals(callObj)) return null;
+
+    return sbVar.get();
 
     /*PsiMethodCallExpression append = tb.getSingleExpression(PsiMethodCallExpression.class);
     if (append != null) {
