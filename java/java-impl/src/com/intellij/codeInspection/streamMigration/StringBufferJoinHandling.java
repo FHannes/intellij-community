@@ -107,6 +107,60 @@ public class StringBufferJoinHandling {
     return (PsiVariable) resolved;
   }
 
+  /**
+   * Checks whether a given (local) variable is initialized with a constructor containing a given maximum amount of elements.
+   *
+   * @param var
+   * @param max
+   * @return
+   */
+  private static boolean checkInitMaxArguments(PsiVariable var, int max) {
+    // Variable must be local
+    if (!(var instanceof PsiLocalVariable)) return false;
+
+    // Check if initial StringBuilder is empty
+    PsiExpression initializer = var.getInitializer();
+    if (!(initializer instanceof PsiNewExpression)) return false;
+
+    // Check for a valid class reference for the constructor
+    PsiNewExpression initNew = (PsiNewExpression) initializer;
+    if (initNew.getClassReference() == null) return false;
+    PsiElement constrClass = initNew.getClassReference().resolve();
+    if (!(constrClass instanceof PsiClass) ||
+        !var.getType().getCanonicalText().equals(((PsiClass) constrClass).getQualifiedName())) return false;
+
+    // Check the arguments for the constructor
+    return initNew.getArgumentList() != null && initNew.getArgumentList().getExpressions().length <= max;
+  }
+
+  /**
+   * Gets a specific argument from the constructor used to initialize a local variable.
+   *
+   * @param var
+   * @param arg
+   * @return
+   */
+  public static PsiExpression getInitArgument(PsiVariable var, int arg) {
+    // Variable must be local
+    if (!(var instanceof PsiLocalVariable)) return null;
+
+    // Check if initial StringBuilder is empty
+    PsiExpression initializer = var.getInitializer();
+    if (!(initializer instanceof PsiNewExpression)) return null;
+
+    // Check for a valid class reference for the constructor
+    PsiNewExpression initNew = (PsiNewExpression) initializer;
+    if (initNew.getClassReference() == null) return null;
+    PsiElement constrClass = initNew.getClassReference().resolve();
+    if (!(constrClass instanceof PsiClass) ||
+        !var.getType().getCanonicalText().equals(((PsiClass) constrClass).getQualifiedName())) return null;
+
+    if (initNew.getArgumentList() == null || initNew.getArgumentList().getExpressions().length <= arg) return null;
+
+    // Get the requested argument for the constructor
+    return initNew.getArgumentList().getExpressions()[arg];
+  }
+
   @Nullable
   public static PsiVariable getJoinedVariable(StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
     // We only concatenate strings
@@ -119,6 +173,9 @@ public class StringBufferJoinHandling {
         // String concatenation if one variable is a StringBuffer
         PsiVariable var = variables.get(0);
         if (!var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER)) return null;
+
+        // The StringBuilder should be constructed with at most one argument
+        if (!checkInitMaxArguments(var, 1)) return null;
 
         // Check if the StringBuilder is used after creation
         if (tb.isReferencedInOperations(var)) return null;

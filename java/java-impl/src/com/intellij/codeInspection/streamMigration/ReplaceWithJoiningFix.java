@@ -34,24 +34,18 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
     restoreComments(loopStatement, loopStatement.getBody());
     StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
     if (status != StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) {
-      PsiExpression initializer = var.getInitializer();
+      // Get initializer constructor argument if present
+      PsiExpression sbArg = StringBufferJoinHandling.getInitArgument(var, 0);
+      if (sbArg != null) {
+        builder.insert(0, " + ");
+        builder.insert(0, sbArg.getText());
+      }
 
-      // Check if initial StringBuilder is empty
-      if (initializer instanceof PsiNewExpression) {
-        PsiNewExpression initNew = (PsiNewExpression) initializer;
-        if (initNew.getClassReference() != null) {
-          PsiElement constrClass = initNew.getClassReference().resolve();
-          if (initNew.getArgumentList() != null &&
-              initNew.getArgumentList().getExpressions().length == 0 &&
-              constrClass instanceof PsiClass &&
-              CommonClassNames.JAVA_LANG_STRING_BUILDER.equals(((PsiClass) constrClass).getQualifiedName())) {
-            // Replace variable declaration type and initializer
-            if (var.getTypeElement() != null) {
-              var.getTypeElement().replace(elementFactory.createTypeElement(expressionType));
-              return replaceInitializer(loopStatement, var, initializer, builder.toString(), status);
-            }
-          }
-        }
+      // Replace variable declaration type and initializer
+      if (var.getTypeElement() != null) {
+        PsiExpression initializer = var.getInitializer();
+        var.getTypeElement().replace(elementFactory.createTypeElement(expressionType));
+        return replaceInitializer(loopStatement, var, initializer, builder.toString(), status);
       }
     }
     return loopStatement;
