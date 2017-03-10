@@ -3,9 +3,6 @@ package com.intellij.codeInspection.streamMigration;
 import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.MapOp;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
-import com.intellij.psi.util.ConstantExpressionUtil;
-import com.intellij.psi.util.TypeConversionUtil;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -56,25 +53,35 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
                      @NotNull PsiLoopStatement loopStatement,
                      @NotNull PsiStatement body,
                      @NotNull StreamApiMigrationInspection.TerminalBlock tb) {
-    if (!delimiter) {
-      PsiMethodCallExpression appendCall = tb.getSingleExpression(PsiMethodCallExpression.class);
+    PsiMethodCallExpression appendCall = StringBufferJoinHandling.getMethodCall(tb.getStatements()[tb.getStatements().length - 1]);
+    if (appendCall == null) return null;
+    PsiVariable var = StringBufferJoinHandling.getCallVariable(appendCall);
+    if (var == null || !var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER)) return null;
 
-      PsiVariable var = StringBufferJoinHandling.extractStringBuilder(appendCall);
-      if (var == null) return null;
+    PsiExpression appended = StringBufferJoinHandling.getAppendParam(var, tb.getStatements()[tb.getStatements().length - 1]);
+    if (appended == null) return null;
 
-      PsiExpression appended = StringBufferJoinHandling.getSingleExprParam(appendCall);
-      if (appended == null) return null;
+    PsiType type = tb.getVariable().getType();
 
-      PsiType type = tb.getVariable().getType();
+    StringBuilder builder = generateStream(new MapOp(tb.getLastOperation(), appended, tb.getVariable(), type));
+    builder.append(".collect(java.util.stream.Collectors.joining(");
+    if (delimiter) {
+      if (!(tb.getStatements()[0] instanceof PsiIfStatement)) return null;
 
-      StringBuilder builder = generateStream(new MapOp(tb.getLastOperation(), appended, tb.getVariable(), type));
-      builder.append(".collect(java.util.stream.Collectors.joining(");
-      builder.append("))");
+      PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
+      if (ifStmt.getElseBranch() == null) return null;
+      PsiCodeBlock elseBody = ((PsiBlockStatement) ifStmt.getElseBranch()).getCodeBlock();
+      if (elseBody.getStatements().length != 1) return null;
 
-      return replaceWithStringConcatenation(project, loopStatement, var, builder, type);
+      PsiExpression delim = StringBufferJoinHandling.getAppendParam(var, elseBody.getStatements()[0]);
+      if (delim == null || delim.getType() == null || !delim.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
+
+      builder.append(delim.getText());
+      // TODO: Remove switch boolean?
     }
+    builder.append("))");
 
-    return null;
+    return replaceWithStringConcatenation(project, loopStatement, var, builder, type);
   }
 
 }
