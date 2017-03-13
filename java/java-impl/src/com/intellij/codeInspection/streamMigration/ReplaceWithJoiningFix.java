@@ -79,14 +79,20 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
 
       PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
       switchVar = StringBufferJoinHandling.getSwitchVariable(ifStmt);
-      if (ifStmt.getElseBranch() == null) return null;
-      PsiCodeBlock elseBody = ((PsiBlockStatement) ifStmt.getElseBranch()).getCodeBlock();
-      if (elseBody.getStatements().length != 1) return null;
 
-      PsiExpression delim = StringBufferJoinHandling.getAppendParam(var, elseBody.getStatements()[0]);
-      if (delim == null || delim.getType() == null || !delim.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
+      boolean found = false;
+      for (PsiStatement branch : new PsiStatement[] { ifStmt.getThenBranch(), ifStmt.getElseBranch() }) {
+        if (branch == null) continue;
+        PsiCodeBlock branchBody = ((PsiBlockStatement) branch).getCodeBlock();
+        if (branchBody.getStatements().length != 1) return null;
 
-      builder.append(delim.getText());
+        PsiExpression delim = StringBufferJoinHandling.getAppendParam(var, branchBody.getStatements()[0]);
+        if (delim == null || delim.getType() == null || !delim.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) continue;
+
+        builder.append(delim.getText());
+        found = true;
+      }
+      if (!found) return null; // Failed to get the delimiter string
     }
     builder.append("))");
 

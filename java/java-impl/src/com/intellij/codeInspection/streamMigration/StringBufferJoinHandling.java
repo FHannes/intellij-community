@@ -197,20 +197,28 @@ public class StringBufferJoinHandling {
 
       PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
 
-      // Check if-condition
+      // Check if-condition ordering
+      boolean appendElse; // Append statement is in the else branch
       if (initVal) {
         // Check positive switch (check value is true)
-        if (!ExpressionUtils.isReferenceTo(ifStmt.getCondition(), switchVar.get())) return null;
+        appendElse = ExpressionUtils.isReferenceTo(ifStmt.getCondition(), switchVar.get());
       } else {
         // Check negative switch (check value is false)
-        if (!isNegatedReferenceTo(ifStmt.getCondition(), switchVar.get())) return null;
+        appendElse = isNegatedReferenceTo(ifStmt.getCondition(), switchVar.get());
       }
 
+      // Setup branches
+      if (ifStmt.getThenBranch() == null || ifStmt.getElseBranch() == null) return null;
+      PsiCodeBlock switchBranch = appendElse ?
+                                  ((PsiBlockStatement) ifStmt.getThenBranch()).getCodeBlock() :
+                                  ((PsiBlockStatement) ifStmt.getElseBranch()).getCodeBlock();
+      PsiCodeBlock appendBranch = appendElse ?
+                                  ((PsiBlockStatement) ifStmt.getElseBranch()).getCodeBlock() :
+                                  ((PsiBlockStatement) ifStmt.getThenBranch()).getCodeBlock();
+
       // Check correct switching on first iteration
-      if (ifStmt.getThenBranch() == null) return null;
-      PsiCodeBlock thenBody = ((PsiBlockStatement) ifStmt.getThenBranch()).getCodeBlock();
-      if (thenBody.getStatements().length != 1) return null;
-      PsiAssignmentExpression assignStmt = getAssignment(thenBody.getStatements()[0]);
+      if (switchBranch.getStatements().length != 1) return null;
+      PsiAssignmentExpression assignStmt = getAssignment(switchBranch.getStatements()[0]);
       if (assignStmt == null) return null;
       if (!JavaTokenType.EQ.equals(assignStmt.getOperationTokenType())) return null;
       if (!ExpressionUtils.isReferenceTo(assignStmt.getLExpression(), switchVar.get())) return null;
@@ -222,10 +230,8 @@ public class StringBufferJoinHandling {
       }
 
       // Check if delimiter is correct
-      if (ifStmt.getElseBranch() == null) return null;
-      PsiCodeBlock elseBody = ((PsiBlockStatement) ifStmt.getElseBranch()).getCodeBlock();
-      if (elseBody.getStatements().length != 1) return null;
-      PsiExpression delim = getAppendParam(sbVar.get(), elseBody.getStatements()[0]);
+      if (appendBranch.getStatements().length != 1) return null;
+      PsiExpression delim = getAppendParam(sbVar.get(), appendBranch.getStatements()[0]);
       if (delim == null || delim.getType() == null || !delim.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
     }
 
