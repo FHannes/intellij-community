@@ -42,10 +42,12 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
 
       // Replace variable declaration type and initializer
       if (var.getTypeElement() != null) {
-        PsiExpression initializer = var.getInitializer();
         if (switchVar != null) {
-          switchVar.getParent().delete();
+          switchVar.delete();
+          // Refresh status after removing switch variable
+          status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
         }
+        PsiExpression initializer = var.getInitializer();
         var.getTypeElement().replace(elementFactory.createTypeElement(expressionType));
         return replaceInitializer(loopStatement, var, initializer, builder.toString(), status);
       }
