@@ -3,6 +3,7 @@ package com.intellij.codeInspection.streamMigration;
 import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.MapOp;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
+import com.siyeh.ig.psiutils.TypeUtils;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -23,10 +24,11 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
   }
 
   private static PsiElement replaceWithStringConcatenation(@NotNull Project project,
-                                                   PsiLoopStatement loopStatement,
-                                                   PsiVariable var,
-                                                   StringBuilder builder,
-                                                   PsiType expressionType) {
+                                                           PsiLoopStatement loopStatement,
+                                                           PsiVariable var,
+                                                           PsiVariable switchVar,
+                                                           StringBuilder builder,
+                                                           PsiType expressionType) {
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     restoreComments(loopStatement, loopStatement.getBody());
     StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
@@ -41,6 +43,9 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
       // Replace variable declaration type and initializer
       if (var.getTypeElement() != null) {
         PsiExpression initializer = var.getInitializer();
+        if (switchVar != null) {
+          switchVar.getParent().delete();
+        }
         var.getTypeElement().replace(elementFactory.createTypeElement(expressionType));
         return replaceInitializer(loopStatement, var, initializer, builder.toString(), status);
       }
@@ -61,7 +66,9 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
     PsiExpression appended = StringBufferJoinHandling.getAppendParam(var, tb.getStatements()[tb.getStatements().length - 1]);
     if (appended == null) return null;
 
-    PsiType type = tb.getVariable().getType();
+    PsiType type = TypeUtils.getType(CommonClassNames.JAVA_LANG_STRING, body);
+
+    PsiVariable switchVar = null;
 
     StringBuilder builder = generateStream(new MapOp(tb.getLastOperation(), appended, tb.getVariable(), type));
     builder.append(".collect(java.util.stream.Collectors.joining(");
@@ -69,6 +76,7 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
       if (!(tb.getStatements()[0] instanceof PsiIfStatement)) return null;
 
       PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
+      switchVar = StringBufferJoinHandling.getSwitchVariable(ifStmt);
       if (ifStmt.getElseBranch() == null) return null;
       PsiCodeBlock elseBody = ((PsiBlockStatement) ifStmt.getElseBranch()).getCodeBlock();
       if (elseBody.getStatements().length != 1) return null;
@@ -77,11 +85,10 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
       if (delim == null || delim.getType() == null || !delim.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
 
       builder.append(delim.getText());
-      // TODO: Remove switch boolean?
     }
     builder.append("))");
 
-    return replaceWithStringConcatenation(project, loopStatement, var, builder, type);
+    return replaceWithStringConcatenation(project, loopStatement, var, switchVar, builder, type);
   }
 
 }

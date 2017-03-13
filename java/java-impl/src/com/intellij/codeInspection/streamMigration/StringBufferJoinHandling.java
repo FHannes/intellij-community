@@ -4,6 +4,7 @@ import com.intellij.psi.*;
 import com.intellij.util.ArrayUtil;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.ParenthesesUtils;
+import com.siyeh.ig.psiutils.VariableAccessUtils;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nullable;
 
@@ -148,14 +149,23 @@ public class StringBufferJoinHandling {
     return call.getArgumentList().getExpressions()[0];
   }
 
+
+  @Nullable
+  public static PsiVariable getSwitchVariable(PsiIfStatement ifStmt) {
+    PsiExpression ifCond = ParenthesesUtils.stripParentheses(ifStmt.getCondition());
+    if (ifCond instanceof PsiPrefixExpression) {
+      ifCond = ((PsiPrefixExpression)ifCond).getOperand();
+    }
+    if (!(ifCond instanceof PsiReferenceExpression)) return null;
+    PsiElement elem = ((PsiReferenceExpression)ifCond).resolve();
+    if (!(elem instanceof PsiVariable)) return null;
+    return (PsiVariable) elem;
+  }
+
   @Nullable
   public static PsiVariable getJoinedVariable(StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
     // Only works for loops with (at least one and) at most two statements [if-statement with body counts as one]
     if (tb.getStatements().length != 0 && tb.getStatements().length > 2) return null;
-
-    // We only concatenate strings
-    PsiVariable itVar = tb.getVariable();
-    if (!itVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
 
     // String concatenation if one variable is a StringBuffer
     Optional<PsiVariable> sbVar = StreamEx.of(variables.stream())
@@ -229,7 +239,12 @@ public class StringBufferJoinHandling {
 
     // The TerminalBlock must contain a single append operation
     PsiExpression appendParam = getAppendParam(sbVar.get(), tb.getStatements()[tb.getStatements().length - 1]);
-    if (!ExpressionUtils.isReferenceTo(appendParam, tb.getVariable())) return null;
+    if (appendParam == null || appendParam.getType() == null ||
+        !appendParam.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
+
+    // The StringBuilder can't be appended to itself and the loop variable must be used to create the appended data
+    if (!VariableAccessUtils.variableIsUsed(tb.getVariable(), appendParam)) return null;
+    if (VariableAccessUtils.variableIsUsed(sbVar.get(), appendParam)) return null;
 
     return sbVar.get();
   }
