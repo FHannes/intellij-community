@@ -4,6 +4,7 @@ import com.intellij.psi.*;
 import com.intellij.util.ArrayUtil;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.ParenthesesUtils;
+import com.siyeh.ig.psiutils.TypeUtils;
 import com.siyeh.ig.psiutils.VariableAccessUtils;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nullable;
@@ -149,9 +150,15 @@ public class StringBufferJoinHandling {
     return call.getArgumentList().getExpressions()[0];
   }
 
-
+  /**
+   * Returns the variable which is used to check for the first iteration (FI) of a for-loop, in the given if-condition which originates at
+   * the start of that for-loop.
+   *
+   * @param ifStmt
+   * @return
+   */
   @Nullable
-  public static PsiVariable getSwitchVariable(PsiIfStatement ifStmt) {
+  public static PsiVariable getFIVariable(PsiIfStatement ifStmt) {
     PsiExpression ifCond = ParenthesesUtils.stripParentheses(ifStmt.getCondition());
     if (ifCond instanceof PsiPrefixExpression) {
       ifCond = ((PsiPrefixExpression)ifCond).getOperand();
@@ -162,28 +169,62 @@ public class StringBufferJoinHandling {
     return (PsiVariable) elem;
   }
 
+  /**
+   * Checks if the altering of the value of a variable which is used to check for the first iteration (FI) of a for-loop, is performed
+   * correctly in a given statement.
+   *
+   * @param stmt
+   * @param checkVar
+   * @param initial
+   * @param allowToggle
+   * @return
+   */
+  public static boolean isValidFISetter(PsiStatement stmt, PsiVariable checkVar, boolean initial, boolean allowToggle) {
+    PsiAssignmentExpression assignStmt = getAssignment(stmt);
+    if (assignStmt == null) return false;
+    if (!JavaTokenType.EQ.equals(assignStmt.getOperationTokenType())) return false;
+    if (!ExpressionUtils.isReferenceTo(assignStmt.getLExpression(), checkVar)) return false;
+
+    // Is the boolean being toggled?
+    if (allowToggle && isNegatedReferenceTo(assignStmt.getRExpression(), checkVar)) return true;
+
+    // Check if the boolean is set to the inverted literal value
+    if (!(assignStmt.getRExpression() instanceof PsiLiteralExpression)) return false;
+    if (!PsiType.BOOLEAN.equals(assignStmt.getRExpression().getType())) return false;
+    Boolean tVal = (Boolean)((PsiLiteralExpression)assignStmt.getRExpression()).getValue();
+    if (tVal == null || tVal.equals(initial)) return false;
+
+    return true;
+  }
+
   @Nullable
   public static PsiVariable getJoinedVariable(StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
     // Only works for loops with (at least one and) at most two statements [if-statement with body counts as one]
-    if (tb.getStatements().length != 0 && tb.getStatements().length > 2) return null;
+    if (tb.getStatements().length != 0 && tb.getStatements().length > 3) return null;
 
     // String concatenation if one variable is a StringBuffer
     Optional<PsiVariable> sbVar = StreamEx.of(variables.stream())
       .findFirst(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER));
     if (!sbVar.isPresent()) return null;
 
-    // String concatenation with delim needs one boolean switch var
-    Optional<PsiVariable> switchVar = StreamEx.of(variables.stream())
+    // String concatenation with delim needs one boolean check var
+    Optional<PsiVariable> checkVar = StreamEx.of(variables.stream())
       .findFirst(v -> v.getType().isAssignableFrom(PsiType.BOOLEAN));
 
-    if (switchVar.isPresent() && tb.getStatements().length == 2) {
-      // Check if the switch is used after it's definition
-      if (tb.isReferencedInOperations(switchVar.get())) return null;
+    // If we have a boolean to check on, we must be using a delimiter
+    if (!checkVar.isPresent() && tb.getStatements().length != 1) return null;
 
-      boolean initVal = false;
+    // Initial value in case of checking on the first iteration
+    boolean initVal = false;
+    // Indicates if the check variable is set at the end of the loop instead of in the if statement
+    boolean trailingSwitch = false;
 
-      // In case the boolean switch is initialized, get the init value
-      PsiExpression initializer = switchVar.get().getInitializer();
+    if (checkVar.isPresent() && tb.getStatements().length != 1) {
+      // Check if the check is used after it's definition
+      if (tb.isReferencedInOperations(checkVar.get())) return null;
+
+      // In case the boolean check is initialized, get the init value
+      PsiExpression initializer = checkVar.get().getInitializer();
       if (initializer instanceof PsiLiteralExpression) {
         if (PsiType.BOOLEAN.equals(initializer.getType())) {
           Boolean tVal = (Boolean)((PsiLiteralExpression)initializer).getValue();
@@ -200,39 +241,38 @@ public class StringBufferJoinHandling {
       // Check if-condition ordering
       boolean appendElse; // Append statement is in the else branch
       if (initVal) {
-        // Check positive switch (check value is true)
-        appendElse = ExpressionUtils.isReferenceTo(ifStmt.getCondition(), switchVar.get());
+        // Check positive (check value is true)
+        appendElse = ExpressionUtils.isReferenceTo(ifStmt.getCondition(), checkVar.get());
       } else {
-        // Check negative switch (check value is false)
-        appendElse = isNegatedReferenceTo(ifStmt.getCondition(), switchVar.get());
+        // Check negative (check value is false)
+        appendElse = isNegatedReferenceTo(ifStmt.getCondition(), checkVar.get());
       }
 
       // Setup branches
-      if (ifStmt.getThenBranch() == null || ifStmt.getElseBranch() == null) return null;
-      PsiCodeBlock switchBranch = appendElse ?
-                                  ((PsiBlockStatement) ifStmt.getThenBranch()).getCodeBlock() :
-                                  ((PsiBlockStatement) ifStmt.getElseBranch()).getCodeBlock();
-      PsiCodeBlock appendBranch = appendElse ?
-                                  ((PsiBlockStatement) ifStmt.getElseBranch()).getCodeBlock() :
-                                  ((PsiBlockStatement) ifStmt.getThenBranch()).getCodeBlock();
+      Optional<PsiCodeBlock> checkBranch = Optional.ofNullable(
+        (PsiBlockStatement) (appendElse ? ifStmt.getThenBranch() : ifStmt.getElseBranch()))
+        .map(PsiBlockStatement::getCodeBlock);
+      Optional<PsiCodeBlock> appendBranch = Optional.ofNullable(
+        (PsiBlockStatement) (appendElse ? ifStmt.getElseBranch() : ifStmt.getThenBranch()))
+        .map(PsiBlockStatement::getCodeBlock);
 
-      // Check correct switching on first iteration
-      if (switchBranch.getStatements().length != 1) return null;
-      PsiAssignmentExpression assignStmt = getAssignment(switchBranch.getStatements()[0]);
-      if (assignStmt == null) return null;
-      if (!JavaTokenType.EQ.equals(assignStmt.getOperationTokenType())) return null;
-      if (!ExpressionUtils.isReferenceTo(assignStmt.getLExpression(), switchVar.get())) return null;
-      if (!isNegatedReferenceTo(assignStmt.getRExpression(), switchVar.get())) {
-        if (!(assignStmt.getRExpression() instanceof PsiLiteralExpression)) return null;
-        if (!PsiType.BOOLEAN.equals(assignStmt.getRExpression().getType())) return null;
-        Boolean tVal = (Boolean)((PsiLiteralExpression)assignStmt.getRExpression()).getValue();
-        if (tVal == null || tVal.equals(initVal)) return null;
-      }
+      if (!appendBranch.isPresent()) return null;
 
       // Check if delimiter is correct
-      if (appendBranch.getStatements().length != 1) return null;
-      PsiExpression delim = getAppendParam(sbVar.get(), appendBranch.getStatements()[0]);
-      if (delim == null || delim.getType() == null || !delim.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
+      if (appendBranch.get().getStatements().length != 1) return null;
+      PsiExpression delim = getAppendParam(sbVar.get(), appendBranch.get().getStatements()[0]);
+      if (!TypeUtils.expressionHasTypeOrSubtype(delim, CommonClassNames.JAVA_LANG_STRING)) return null;
+
+      if (tb.getStatements().length == 2) {
+        // Check correct checking on first iteration
+        if (checkBranch.get().getStatements().length != 1) return null;
+        if (!isValidFISetter(checkBranch.get().getStatements()[0], checkVar.get(), initVal, true)) return null;
+      } else { // 3 statements in terminal block
+        // If the for-loop contains 3 statements, the check variable is set at the end of the loop somewhere, not in the if-statement
+        if (checkBranch.isPresent()) return null;
+
+        trailingSwitch = true;
+      }
     }
 
     // The StringBuilder should be constructed with at most one argument
@@ -245,8 +285,19 @@ public class StringBufferJoinHandling {
 
     // The TerminalBlock must contain a single append operation
     PsiExpression appendParam = getAppendParam(sbVar.get(), tb.getStatements()[tb.getStatements().length - 1]);
-    if (appendParam == null || appendParam.getType() == null ||
-        !appendParam.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
+    if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, CommonClassNames.JAVA_LANG_STRING)) {
+      if (!trailingSwitch) return null;
+
+      // If the check variable is not set in the if-statement, the append statement could be the either the last or the one before that
+      appendParam = getAppendParam(sbVar.get(), tb.getStatements()[tb.getStatements().length - 2]);
+      if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, CommonClassNames.JAVA_LANG_STRING)) return null;
+
+      // The last statement must set the check boolean
+      if (!isValidFISetter(tb.getStatements()[tb.getStatements().length - 1], checkVar.get(), initVal, false)) return null;
+    } else if (trailingSwitch) {
+      // The second to last statement must set the check boolean
+      if (!isValidFISetter(tb.getStatements()[tb.getStatements().length - 2], checkVar.get(), initVal, false)) return null;
+    }
 
     // The StringBuilder can't be appended to itself and the loop variable must be used to create the appended data
     if (!VariableAccessUtils.variableIsUsed(tb.getVariable(), appendParam)) return null;
