@@ -15,7 +15,7 @@ import java.util.Optional;
 /**
  * @author Frédéric Hannes
  */
-public class StringBufferJoinHandling {
+public class StringConcatHandling {
 
   public static PsiVariable resolveVariable(PsiExpression expr) {
     if (!(expr instanceof PsiReferenceExpression)) return null;

@@ -38,7 +38,7 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
     StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
     if (status != StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) {
       // Get initializer constructor argument if present
-      String sbArg = Optional.ofNullable(stringConcat ? var.getInitializer() : StringBufferJoinHandling.getInitArgument(var, 0))
+      String sbArg = Optional.ofNullable(stringConcat ? var.getInitializer() : StringConcatHandling.getInitArgument(var, 0))
         .map(PsiElement::getText).orElse(null);
       if (sbArg != null && !"\"\"".equals(sbArg)) {
         builder.insert(0, " + ");
@@ -68,21 +68,21 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
     Optional<PsiVariable> var;
     if (stringConcat) {
       var = StreamEx.of(tb.getStatements())
-        .map(StringBufferJoinHandling::getAssignment)
+        .map(StringConcatHandling::getAssignment)
         .nonNull().map(StreamApiMigrationInspection::extractAccumulator)
         .nonNull().filter(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING))
         .findAny();
     } else {
       var = StreamEx.of(tb.getStatements())
-        .map(StringBufferJoinHandling::getMethodCall)
-        .nonNull().map(e -> StringBufferJoinHandling.resolveVariable(e.getMethodExpression().getQualifierExpression()))
+        .map(StringConcatHandling::getMethodCall)
+        .nonNull().map(e -> StringConcatHandling.resolveVariable(e.getMethodExpression().getQualifierExpression()))
         .nonNull().filter(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER))
         .findAny();
     }
     if (!var.isPresent()) return null;
 
     Optional<PsiExpression> appended = StreamEx.of(tb.getStatements())
-      .map(s -> StringBufferJoinHandling.getAppendParam(var.get(), s, stringConcat))
+      .map(s -> StringConcatHandling.getAppendParam(var.get(), s, stringConcat))
       .nonNull().findAny();
     if (!appended.isPresent()) return null;
 
@@ -94,12 +94,12 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
     builder.append(".collect(java.util.stream.Collectors.joining(");
     if (tb.getStatements()[0] instanceof PsiIfStatement) {
       PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
-      checkVar = StringBufferJoinHandling.getFIVariable(ifStmt);
+      checkVar = StringConcatHandling.getFIVariable(ifStmt);
 
       Optional<PsiExpression> delim = StreamEx.of(ifStmt.getThenBranch(), ifStmt.getElseBranch())
         .nonNull().map(b -> ((PsiBlockStatement) b).getCodeBlock())
         .filter(cb -> cb.getStatements().length == 1)
-        .map(cb -> StringBufferJoinHandling.getAppendParam(var.get(), cb.getStatements()[0], stringConcat))
+        .map(cb -> StringConcatHandling.getAppendParam(var.get(), cb.getStatements()[0], stringConcat))
         .nonNull().filter(e -> TypeUtils.expressionHasTypeOrSubtype(e, CommonClassNames.JAVA_LANG_STRING))
         .findAny();
       if (!delim.isPresent()) return null;
