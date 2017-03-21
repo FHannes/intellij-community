@@ -17,11 +17,9 @@ import java.util.Optional;
  */
 public class StringBufferJoinHandling {
 
-  public static PsiVariable getCallVariable(PsiMethodCallExpression call) {
-    // Resolve to object call is made on
-    PsiExpression qualifierExpression = call.getMethodExpression().getQualifierExpression();
-    if (!(qualifierExpression instanceof PsiReferenceExpression)) return null;
-    PsiElement resolved = ((PsiReferenceExpression) qualifierExpression).resolve();
+  public static PsiVariable resolveVariable(PsiExpression expr) {
+    if (!(expr instanceof PsiReferenceExpression)) return null;
+    PsiElement resolved = ((PsiReferenceExpression) expr).resolve();
     if (!(resolved instanceof PsiVariable)) return null;
     return (PsiVariable) resolved;
   }
@@ -56,11 +54,11 @@ public class StringBufferJoinHandling {
       if (initNew.getArgumentList().getExpressions().length != argList.length) continue;
       boolean success = true;
       for (int idx = 0; idx < argList.length; idx++) {
-        if (initNew.getArgumentList().getExpressions()[0].getType() == null) {
+        if (initNew.getArgumentList().getExpressions()[idx].getType() == null) {
           success = false;
           break;
         }
-        if (!initNew.getArgumentList().getExpressions()[0].getType().equalsToText(argList[0])) {
+        if (!initNew.getArgumentList().getExpressions()[idx].getType().equalsToText(argList[idx])) {
           success = false;
           break;
         }
@@ -118,7 +116,7 @@ public class StringBufferJoinHandling {
   }
 
   @Nullable
-  private static PsiAssignmentExpression getAssignment(PsiStatement stmt) {
+  public static PsiAssignmentExpression getAssignment(PsiStatement stmt) {
     if (!(stmt instanceof PsiExpressionStatement)) return null;
     PsiExpression expr = ((PsiExpressionStatement) stmt).getExpression();
     if (!(expr instanceof PsiAssignmentExpression)) return null;
@@ -134,20 +132,29 @@ public class StringBufferJoinHandling {
   }
 
   @Nullable
-  public static PsiExpression getAppendParam(PsiVariable sb, PsiStatement stmt) {
+  public static PsiExpression getAppendParam(PsiVariable concatVar, PsiStatement stmt, boolean stringConcat) {
     // Input must be valid
-    if (sb == null || stmt == null) return null;
-    // The input variable must be a StringBuilder
-    if (!sb.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER)) return null;
-    // The input statement must be a method call
-    PsiMethodCallExpression call = getMethodCall(stmt);
-    if (call == null) return null;
-    // The method call must be an append operation with a single argument
-    if (!"append".equals(call.getMethodExpression().getReferenceName())) return null;
-    if (call.getArgumentList().getExpressions().length != 1) return null;
-    // The variable the method call is performed on must be the given StringBuilder
-    if (!sb.equals(getCallVariable(call))) return null;
-    return call.getArgumentList().getExpressions()[0];
+    if (concatVar == null || stmt == null) return null;
+    if (stringConcat) {
+      // The input variable must be a String
+      if (!concatVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) return null;
+      // The input statement must be an assignment call
+      PsiAssignmentExpression assign = getAssignment(stmt);
+      if (assign == null) return null;
+      return StreamApiMigrationInspection.extractAddend(assign);
+    } else {
+      // The input variable must be a StringBuilder
+      if (!concatVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER)) return null;
+      // The input statement must be a method call
+      PsiMethodCallExpression call = getMethodCall(stmt);
+      if (call == null) return null;
+      // The method call must be an append operation with a single argument
+      if (!"append".equals(call.getMethodExpression().getReferenceName())) return null;
+      if (call.getArgumentList().getExpressions().length != 1) return null;
+      // The variable the method call is performed on must be the given StringBuilder
+      if (!concatVar.equals(resolveVariable(call.getMethodExpression().getQualifierExpression()))) return null;
+      return call.getArgumentList().getExpressions()[0];
+    }
   }
 
   /**
@@ -202,10 +209,16 @@ public class StringBufferJoinHandling {
     // Only works for loops with (at least one and) at most two statements [if-statement with body counts as one]
     if (tb.getStatements().length != 0 && tb.getStatements().length > 3) return null;
 
-    // String concatenation if one variable is a StringBuffer
+    // String concatenation if one variable is a StringBuffer or String
+    boolean stringConcat = false;
     Optional<PsiVariable> sbVar = StreamEx.of(variables.stream())
       .findFirst(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER));
-    if (!sbVar.isPresent()) return null;
+    if (!sbVar.isPresent()) {
+      sbVar = StreamEx.of(variables.stream())
+        .findFirst(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING));
+      if (!sbVar.isPresent()) return null;
+      stringConcat = true;
+    }
 
     // String concatenation with delim needs one boolean check var
     Optional<PsiVariable> checkVar = StreamEx.of(variables.stream())
@@ -260,7 +273,7 @@ public class StringBufferJoinHandling {
 
       // Check if delimiter is correct
       if (appendBranch.get().getStatements().length != 1) return null;
-      PsiExpression delim = getAppendParam(sbVar.get(), appendBranch.get().getStatements()[0]);
+      PsiExpression delim = getAppendParam(sbVar.get(), appendBranch.get().getStatements()[0], stringConcat);
       if (!TypeUtils.expressionHasTypeOrSubtype(delim, CommonClassNames.JAVA_LANG_STRING)) return null;
 
       if (tb.getStatements().length == 2) {
@@ -275,21 +288,24 @@ public class StringBufferJoinHandling {
       }
     }
 
-    // The StringBuilder should be constructed with at most one argument
-    if (!checkInitArguments(sbVar.get(), new String[][] {
-      ArrayUtil.EMPTY_STRING_ARRAY, new String[] { CommonClassNames.JAVA_LANG_STRING }
-    })) return null;
+    // String init argument must not be checked, as any valid init string can be appended to the resulting string
+    if (!stringConcat) {
+      // The StringBuilder should be constructed with at most one argument
+      if (!checkInitArguments(sbVar.get(), new String[][]{
+        ArrayUtil.EMPTY_STRING_ARRAY, new String[]{CommonClassNames.JAVA_LANG_STRING}
+      })) return null;
+    }
 
     // Check if the StringBuilder is used after creation
     if (tb.isReferencedInOperations(sbVar.get())) return null;
 
     // The TerminalBlock must contain a single append operation
-    PsiExpression appendParam = getAppendParam(sbVar.get(), tb.getStatements()[tb.getStatements().length - 1]);
+    PsiExpression appendParam = getAppendParam(sbVar.get(), tb.getStatements()[tb.getStatements().length - 1], stringConcat);
     if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, CommonClassNames.JAVA_LANG_STRING)) {
       if (!trailingSwitch) return null;
 
       // If the check variable is not set in the if-statement, the append statement could be the either the last or the one before that
-      appendParam = getAppendParam(sbVar.get(), tb.getStatements()[tb.getStatements().length - 2]);
+      appendParam = getAppendParam(sbVar.get(), tb.getStatements()[tb.getStatements().length - 2], stringConcat);
       if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, CommonClassNames.JAVA_LANG_STRING)) return null;
 
       // The last statement must set the check boolean

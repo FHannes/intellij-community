@@ -4,17 +4,20 @@ import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.siyeh.ig.psiutils.TypeUtils;
+import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.Optional;
 
 /**
  * @author Frédéric Hannes
  */
 class ReplaceWithJoiningFix extends MigrateToStreamFix {
 
-  private boolean delimiter;
+  private boolean stringConcat;
 
-  public ReplaceWithJoiningFix(boolean delimiter) {
-    this.delimiter = delimiter;
+  public ReplaceWithJoiningFix(boolean stringConcat) {
+    this.stringConcat = stringConcat;
   }
 
   @NotNull
@@ -28,16 +31,18 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
                                                            PsiVariable var,
                                                            PsiVariable checkVar,
                                                            StringBuilder builder,
-                                                           PsiType expressionType) {
+                                                           PsiType expressionType,
+                                                           boolean stringConcat) {
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     restoreComments(loopStatement, loopStatement.getBody());
     StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
     if (status != StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) {
       // Get initializer constructor argument if present
-      PsiExpression sbArg = StringBufferJoinHandling.getInitArgument(var, 0);
-      if (sbArg != null) {
+      String sbArg = Optional.ofNullable(stringConcat ? var.getInitializer() : StringBufferJoinHandling.getInitArgument(var, 0))
+        .map(PsiElement::getText).orElse(null);
+      if (sbArg != null && !"\"\"".equals(sbArg)) {
         builder.insert(0, " + ");
-        builder.insert(0, sbArg.getText());
+        builder.insert(0, sbArg);
       }
 
       // Replace variable declaration type and initializer
@@ -60,48 +65,50 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
                      @NotNull PsiLoopStatement loopStatement,
                      @NotNull PsiStatement body,
                      @NotNull StreamApiMigrationInspection.TerminalBlock tb) {
-    int appendOffset = 1;
-    PsiMethodCallExpression appendCall = StringBufferJoinHandling.getMethodCall(tb.getStatements()[tb.getStatements().length - appendOffset]);
-    if (appendCall == null) {
-      if (tb.getStatements().length != 3) return null;
-      appendCall = StringBufferJoinHandling.getMethodCall(tb.getStatements()[tb.getStatements().length - ++appendOffset]);
-      if (appendCall == null) return null;
+    Optional<PsiVariable> var;
+    if (stringConcat) {
+      var = StreamEx.of(tb.getStatements())
+        .map(StringBufferJoinHandling::getAssignment)
+        .nonNull().map(StreamApiMigrationInspection::extractAccumulator)
+        .nonNull().filter(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING))
+        .findAny();
+    } else {
+      var = StreamEx.of(tb.getStatements())
+        .map(StringBufferJoinHandling::getMethodCall)
+        .nonNull().map(e -> StringBufferJoinHandling.resolveVariable(e.getMethodExpression().getQualifierExpression()))
+        .nonNull().filter(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER))
+        .findAny();
     }
-    PsiVariable var = StringBufferJoinHandling.getCallVariable(appendCall);
-    if (var == null || !var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER)) return null;
+    if (!var.isPresent()) return null;
 
-    PsiExpression appended = StringBufferJoinHandling.getAppendParam(var, tb.getStatements()[tb.getStatements().length - appendOffset]);
-    if (appended == null) return null;
+    Optional<PsiExpression> appended = StreamEx.of(tb.getStatements())
+      .map(s -> StringBufferJoinHandling.getAppendParam(var.get(), s, stringConcat))
+      .nonNull().findAny();
+    if (!appended.isPresent()) return null;
 
     PsiType type = TypeUtils.getType(CommonClassNames.JAVA_LANG_STRING, body);
 
     PsiVariable checkVar = null;
 
-    StringBuilder builder = generateStream(new MapOp(tb.getLastOperation(), appended, tb.getVariable(), type));
+    StringBuilder builder = generateStream(new MapOp(tb.getLastOperation(), appended.get(), tb.getVariable(), type));
     builder.append(".collect(java.util.stream.Collectors.joining(");
-    if (delimiter) {
-      if (!(tb.getStatements()[0] instanceof PsiIfStatement)) return null;
-
+    if (tb.getStatements()[0] instanceof PsiIfStatement) {
       PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
       checkVar = StringBufferJoinHandling.getFIVariable(ifStmt);
 
-      boolean found = false;
-      for (PsiStatement branch : new PsiStatement[] { ifStmt.getThenBranch(), ifStmt.getElseBranch() }) {
-        if (branch == null) continue;
-        PsiCodeBlock branchBody = ((PsiBlockStatement) branch).getCodeBlock();
-        if (branchBody.getStatements().length != 1) return null;
+      Optional<PsiExpression> delim = StreamEx.of(ifStmt.getThenBranch(), ifStmt.getElseBranch())
+        .nonNull().map(b -> ((PsiBlockStatement) b).getCodeBlock())
+        .filter(cb -> cb.getStatements().length == 1)
+        .map(cb -> StringBufferJoinHandling.getAppendParam(var.get(), cb.getStatements()[0], stringConcat))
+        .nonNull().filter(e -> TypeUtils.expressionHasTypeOrSubtype(e, CommonClassNames.JAVA_LANG_STRING))
+        .findAny();
+      if (!delim.isPresent()) return null;
 
-        PsiExpression delim = StringBufferJoinHandling.getAppendParam(var, branchBody.getStatements()[0]);
-        if (delim == null || delim.getType() == null || !delim.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) continue;
-
-        builder.append(delim.getText());
-        found = true;
-      }
-      if (!found) return null; // Failed to get the delimiter string
+      builder.append(delim.get().getText());
     }
     builder.append("))");
 
-    return replaceWithStringConcatenation(project, loopStatement, var, checkVar, builder, type);
+    return replaceWithStringConcatenation(project, loopStatement, var.get(), checkVar, builder, type, stringConcat);
   }
 
 }

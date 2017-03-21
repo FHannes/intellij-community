@@ -143,7 +143,7 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
   }
 
   @Nullable
-  static PsiExpression extractAddend(PsiAssignmentExpression assignment) {
+  public static PsiExpression extractAddend(PsiAssignmentExpression assignment) {
       if(JavaTokenType.PLUSEQ.equals(assignment.getOperationTokenType())) {
         return assignment.getRExpression();
       } else if(JavaTokenType.EQ.equals(assignment.getOperationTokenType())) {
@@ -163,7 +163,7 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
   }
 
   @Nullable
-  static PsiVariable extractAccumulator(PsiAssignmentExpression assignment) {
+  public static PsiVariable extractAccumulator(PsiAssignmentExpression assignment) {
     if(!(assignment.getLExpression() instanceof PsiReferenceExpression)) return null;
     PsiReferenceExpression lExpr = (PsiReferenceExpression)assignment.getLExpression();
     PsiElement accumulator = lExpr.resolve();
@@ -621,8 +621,10 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
         if(getAccumulatedVariable(tb, nonFinalVariables) != null) {
           registerProblem(statement, "sum", new ReplaceWithSumFix());
         }
-        if(StringBufferJoinHandling.getJoinedVariable(tb, nonFinalVariables) != null) {
-          registerProblem(statement, "joining", new ReplaceWithJoiningFix(nonFinalVariables.size() != 1));
+        PsiVariable joinVar;
+        if((joinVar = StringBufferJoinHandling.getJoinedVariable(tb, nonFinalVariables)) != null) {
+          registerProblem(statement, "joining",
+                          new ReplaceWithJoiningFix(joinVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)));
         }
         if(!nonFinalVariables.isEmpty()) {
           return;
