@@ -31,30 +31,36 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
                                                            PsiVariable var,
                                                            PsiVariable checkVar,
                                                            StringBuilder builder,
-                                                           PsiType expressionType,
                                                            boolean stringConcat) {
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     restoreComments(loopStatement, loopStatement.getBody());
     StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
-    if (status != StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) {
+    if (stringConcat) {
+      // Unlike StringBuilder, String concats don't use in-place refactoring
+      if (status == StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) return null;
+
       // Get initializer constructor argument if present
-      String sbArg = Optional.ofNullable(stringConcat ? var.getInitializer() : StringConcatHandling.getInitArgument(var, 0))
-        .map(PsiElement::getText).orElse(null);
+      String sbArg = Optional.ofNullable(var.getInitializer()).map(PsiElement::getText).orElse(null);
       if (sbArg != null && !"\"\"".equals(sbArg)) {
         builder.insert(0, " + ");
         builder.insert(0, sbArg);
       }
+    }
 
-      // Replace variable declaration type and initializer
-      if (var.getTypeElement() != null) {
-        if (checkVar != null) {
-          checkVar.delete();
-          // Refresh status after removing switch variable
-          status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
-        }
+    // Replace variable declaration type and initializer
+    if (var.getTypeElement() != null) {
+      if (checkVar != null) {
+        // TODO: Check other usages!
+        checkVar.delete();
+        // Refresh status after removing switch variable
+        status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
+      }
+      if (stringConcat) {
         PsiExpression initializer = var.getInitializer();
-        var.getTypeElement().replace(elementFactory.createTypeElement(expressionType));
         return replaceInitializer(loopStatement, var, initializer, builder.toString(), status);
+      } else {
+        return loopStatement.replace(elementFactory.createStatementFromText(var.getName() + ".append(" + builder.toString() + ");",
+                                                                            loopStatement));
       }
     }
     return loopStatement;
@@ -108,7 +114,7 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
     }
     builder.append("))");
 
-    return replaceWithStringConcatenation(project, loopStatement, var.get(), checkVar, builder, type, stringConcat);
+    return replaceWithStringConcatenation(project, loopStatement, var.get(), checkVar, builder, stringConcat);
   }
 
 }

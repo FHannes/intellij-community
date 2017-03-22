@@ -11,7 +11,6 @@ import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -214,11 +213,11 @@ public class StringConcatHandling {
         .findFirst(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING));
       if (!targetVar.isPresent()) return null;
       stringConcat = true;
-    }
 
-    // The concatenation target variable should retain its initial value before reaching the loop
-    if (StreamApiMigrationInspection.getInitializerUsageStatus(targetVar.get(), loop) ==
-        StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) return null;
+      // The concatenation target variable should retain its initial value before reaching the loop
+      if (StreamApiMigrationInspection.getInitializerUsageStatus(targetVar.get(), loop) ==
+          StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) return null;
+    }
 
     // String concatenation with delim needs one boolean check var
     Optional<PsiVariable> checkVar = StreamEx.of(variables.stream())
