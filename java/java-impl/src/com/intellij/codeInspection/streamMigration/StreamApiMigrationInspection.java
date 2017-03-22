@@ -503,7 +503,7 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
     UNKNOWN
   }
 
-  static InitializerUsageStatus getInitializerUsageStatus(PsiVariable var, PsiLoopStatement nextStatement) {
+  public static InitializerUsageStatus getInitializerUsageStatus(PsiVariable var, PsiLoopStatement nextStatement) {
     if(!(var instanceof PsiLocalVariable) || var.getInitializer() == null) return UNKNOWN;
     if(isDeclarationJustBefore(var, nextStatement)) return DECLARED_JUST_BEFORE;
     // Check that variable is declared in the same method or the same lambda expression
@@ -622,7 +622,7 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
           registerProblem(statement, "sum", new ReplaceWithSumFix());
         }
         PsiVariable joinVar;
-        if((joinVar = StringConcatHandling.getJoinedVariable(tb, nonFinalVariables)) != null) {
+        if((joinVar = StringConcatHandling.getJoinedVariable(statement, tb, nonFinalVariables)) != null) {
           registerProblem(statement, "joining",
                           new ReplaceWithJoiningFix(joinVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)));
         }
