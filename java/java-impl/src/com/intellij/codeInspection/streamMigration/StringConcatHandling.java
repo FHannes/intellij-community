@@ -312,8 +312,9 @@ public class StringConcatHandling {
     }
 
     // The StringBuilder can't be appended to itself and the loop variable must be used to create the appended data
-    if (!VariableAccessUtils.variableIsUsed(tb.getVariable(), appendParam)) return null;
     if (VariableAccessUtils.variableIsUsed(sbVar.get(), appendParam)) return null;
+
+    // TODO: Check delim is constant
 
     return sbVar.get();
   }
