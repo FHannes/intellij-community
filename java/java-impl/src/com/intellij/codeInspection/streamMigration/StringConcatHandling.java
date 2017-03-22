@@ -6,10 +6,12 @@ import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.psiutils.TypeUtils;
 import com.siyeh.ig.psiutils.VariableAccessUtils;
+import one.util.streamex.IntStreamEx;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -50,20 +52,14 @@ public class StringConcatHandling {
     if (initNew.getArgumentList() == null) return false;
 
     for (String[] argList : args) {
-      if (argList == null) continue;
-      if (initNew.getArgumentList().getExpressions().length != argList.length) continue;
-      boolean success = true;
-      for (int idx = 0; idx < argList.length; idx++) {
-        if (initNew.getArgumentList().getExpressions()[idx].getType() == null) {
-          success = false;
-          break;
-        }
-        if (!initNew.getArgumentList().getExpressions()[idx].getType().equalsToText(argList[idx])) {
-          success = false;
-          break;
-        }
-      }
-      if (success) {
+      if (argList == null || initNew.getArgumentList().getExpressions().length != argList.length) continue;
+
+      // All argument types must match
+      if (IntStreamEx.range(0, argList.length)
+        .mapToEntry(i -> initNew.getArgumentList().getExpressions()[i], i -> argList[i])
+        .mapKeys(PsiExpression::getType)
+        .nonNullKeys()
+        .allMatch(e -> e.getKey().equalsToText(e.getValue()))) {
         return true;
       }
     }
