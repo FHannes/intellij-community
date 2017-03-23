@@ -143,7 +143,7 @@ public class StringConcatHandling {
       PsiVariable var = resolveVariable(expr);
       if (var == null) return false;
 
-      if (isFinal(var)) return false;
+      if (isFinal(var)) return true;
 
       if (CollectionUtils.isEmptyArray(var)) return true;
 
