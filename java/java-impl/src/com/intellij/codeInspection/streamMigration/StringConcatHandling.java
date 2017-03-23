@@ -19,6 +19,8 @@ import static com.intellij.codeInspection.streamMigration.StreamApiMigrationInsp
  */
 public class StringConcatHandling {
 
+  private static final String JAVA_LANG_CHARSEQUENCE = "java.lang.CharSequence";
+
   public static PsiVariable resolveVariable(PsiExpression expr) {
     if (!(expr instanceof PsiReferenceExpression)) return null;
     PsiElement resolved = ((PsiReferenceExpression) expr).resolve();
@@ -341,7 +343,7 @@ public class StringConcatHandling {
       // Check if delimiter is correct
       if (appendBranch.get().getStatements().length != 1) return null;
       PsiExpression delim = getAppendParam(targetVar.get(), appendBranch.get().getStatements()[0], stringConcat);
-      if (!TypeUtils.expressionHasTypeOrSubtype(delim, CommonClassNames.JAVA_LANG_STRING)) return null;
+      if (!TypeUtils.expressionHasTypeOrSubtype(delim, JAVA_LANG_CHARSEQUENCE)) return null;
       if (!isConstantValue(delim)) return null;
 
       if (tb.getStatements().length == 2) {
@@ -369,12 +371,12 @@ public class StringConcatHandling {
 
     // The TerminalBlock must contain a single append operation
     PsiExpression appendParam = getAppendParam(targetVar.get(), tb.getStatements()[tb.getStatements().length - 1], stringConcat);
-    if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, CommonClassNames.JAVA_LANG_STRING)) {
+    if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, JAVA_LANG_CHARSEQUENCE)) {
       if (!trailingSwitch) return null;
 
       // If the check variable is not set in the if-statement, the append statement could be the either the last or the one before that
       appendParam = getAppendParam(targetVar.get(), tb.getStatements()[tb.getStatements().length - 2], stringConcat);
-      if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, CommonClassNames.JAVA_LANG_STRING)) return null;
+      if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, JAVA_LANG_CHARSEQUENCE)) return null;
 
       // The last statement must set the check boolean
       if (!isValidFISetter(tb.getStatements()[tb.getStatements().length - 1], checkVar, initVal, false)) return null;
