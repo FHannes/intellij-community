@@ -263,7 +263,7 @@ public class StringConcatHandling {
 
       // The check variable must be used in the if-statement and be a valid non-final stream variable
       checkVar = getFIVariable(ifStmt);
-      if (checkVar == null || !variables.contains(checkVar) || isFinal(checkVar)) return null;
+      if (checkVar == null || isFinal(checkVar)) return null;
 
       // The check variable should retain its initial value before reaching the loop
       if (StreamApiMigrationInspection.getInitializerUsageStatus(checkVar, loop) == UNKNOWN) return null;
