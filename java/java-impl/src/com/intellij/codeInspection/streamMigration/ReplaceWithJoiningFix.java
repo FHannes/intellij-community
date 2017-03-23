@@ -106,7 +106,7 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
     builder.append(".collect(java.util.stream.Collectors.joining(");
     if (tb.getStatements()[0] instanceof PsiIfStatement) {
       PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
-      checkVar = StringConcatHandling.getFIVariable(ifStmt);
+      checkVar = StringConcatHandling.getCheckVariable(ifStmt);
 
       Optional<PsiExpression> delim = StreamEx.of(ifStmt.getThenBranch(), ifStmt.getElseBranch())
         .nonNull().map(b -> ((PsiBlockStatement) b).getCodeBlock())

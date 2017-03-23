@@ -86,14 +86,14 @@ public class StringConcatHandling {
   }
 
   /**
-   * Returns the variable which is used to check for the first iteration (FI) of a for-loop, in the given if-condition which originates at
-   * the start of that for-loop.
+   * Returns the variable which is used to check for the first execution of an iterated code block, in the given if-condition which
+   * originates at the start of that code block.
    *
    * @param ifStmt
    * @return
    */
   @Nullable
-  public static PsiVariable getFIVariable(PsiIfStatement ifStmt) {
+  public static PsiVariable getCheckVariable(PsiIfStatement ifStmt) {
     PsiExpression ifCond = ParenthesesUtils.stripParentheses(ifStmt.getCondition());
     if (ifCond instanceof PsiPrefixExpression) {
       ifCond = ((PsiPrefixExpression)ifCond).getOperand();
@@ -115,7 +115,7 @@ public class StringConcatHandling {
    * @param allowToggle
    * @return
    */
-  public static boolean isValidFISetter(PsiStatement stmt, PsiVariable checkVar, boolean initial, boolean allowToggle) {
+  public static boolean isValidCheckSetter(PsiStatement stmt, PsiVariable checkVar, boolean initial, boolean allowToggle) {
     PsiAssignmentExpression assignStmt = getAssignment(stmt);
     if (assignStmt == null) return false;
     if (!JavaTokenType.EQ.equals(assignStmt.getOperationTokenType())) return false;
@@ -262,7 +262,7 @@ public class StringConcatHandling {
       PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
 
       // The check variable must be used in the if-statement and be a valid non-final stream variable
-      checkVar = getFIVariable(ifStmt);
+      checkVar = getCheckVariable(ifStmt);
       if (checkVar == null || isFinal(checkVar)) return null;
 
       // The check variable should retain its initial value before reaching the loop
@@ -312,7 +312,7 @@ public class StringConcatHandling {
       if (tb.getStatements().length == 2) {
         // Check correct checking on first iteration
         if (checkBranch.get().getStatements().length != 1) return null;
-        if (!isValidFISetter(checkBranch.get().getStatements()[0], checkVar, initVal, true)) return null;
+        if (!isValidCheckSetter(checkBranch.get().getStatements()[0], checkVar, initVal, true)) return null;
       } else { // 3 statements in terminal block
         // If the for-loop contains 3 statements, the check variable is set at the end of the loop somewhere, not in the if-statement
         if (checkBranch.isPresent()) return null;
@@ -334,10 +334,10 @@ public class StringConcatHandling {
       if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, JAVA_LANG_CHARSEQUENCE)) return null;
 
       // The last statement must set the check boolean
-      if (!isValidFISetter(tb.getStatements()[tb.getStatements().length - 1], checkVar, initVal, false)) return null;
+      if (!isValidCheckSetter(tb.getStatements()[tb.getStatements().length - 1], checkVar, initVal, false)) return null;
     } else if (trailingSwitch) {
       // The second to last statement must set the check boolean
-      if (!isValidFISetter(tb.getStatements()[tb.getStatements().length - 2], checkVar, initVal, false)) return null;
+      if (!isValidCheckSetter(tb.getStatements()[tb.getStatements().length - 2], checkVar, initVal, false)) return null;
     }
 
     // The StringBuilder can't be appended to itself and the loop variable must be used to create the appended data
