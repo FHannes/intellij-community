@@ -145,12 +145,6 @@ public class StringConcatHandling {
     return (PsiVariable) elem;
   }
 
-  public static PsiDeclarationStatement getLocalDeclaration(PsiVariable var) {
-    if (!(var instanceof PsiLocalVariable)) return null;
-    if (!(var.getParent() instanceof PsiDeclarationStatement)) return null;
-    return (PsiDeclarationStatement) var.getParent();
-  }
-
   /**
    * Checks if the altering of the value of a variable which is used to check for the first iteration (FI) of a for-loop, is performed
    * correctly in a given statement.
