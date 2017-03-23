@@ -19,6 +19,7 @@ public class StringConcatHandling {
 
   public static final String JAVA_LANG_CHARSEQUENCE = "java.lang.CharSequence";
 
+  @Nullable
   public static PsiVariable resolveVariable(PsiExpression expr) {
     if (!(expr instanceof PsiReferenceExpression)) return null;
     PsiElement resolved = ((PsiReferenceExpression) expr).resolve();
@@ -132,11 +133,17 @@ public class StringConcatHandling {
     return true;
   }
 
+  public static boolean isFinal(PsiModifierListOwner element) {
+    return element.getModifierList() != null && element.getModifierList().hasModifierProperty(PsiModifier.FINAL);
+  }
+
   public static boolean isConstantValue(PsiExpression expr) {
     if (expr instanceof PsiLiteralExpression) return true;
     if (expr instanceof PsiReferenceExpression) {
       PsiVariable var = resolveVariable(expr);
-      if (var.getModifierList() == null || !var.getModifierList().hasModifierProperty(PsiModifier.FINAL)) return false;
+      if (var == null) return false;
+
+      if (isFinal(var)) return false;
 
       if (CollectionUtils.isEmptyArray(var)) return true;
 
@@ -254,9 +261,9 @@ public class StringConcatHandling {
       if (!(tb.getStatements()[0] instanceof PsiIfStatement)) return null;
       PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
 
-      // The check variable must be used in the if-statement and be a valid stream variable
+      // The check variable must be used in the if-statement and be a valid non-final stream variable
       checkVar = getFIVariable(ifStmt);
-      if (checkVar == null || !variables.contains(checkVar)) return null;
+      if (checkVar == null || !variables.contains(checkVar) || isFinal(checkVar)) return null;
 
       // The check variable should retain its initial value before reaching the loop
       if (StreamApiMigrationInspection.getInitializerUsageStatus(checkVar, loop) == UNKNOWN) return null;
