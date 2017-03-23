@@ -1,6 +1,9 @@
 package com.intellij.codeInspection.streamMigration;
 
 import com.intellij.psi.*;
+import com.intellij.psi.controlFlow.*;
+import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ArrayUtil;
 import com.siyeh.ig.psiutils.*;
 import one.util.streamex.IntStreamEx;
@@ -9,6 +12,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.IntStream;
+
+import static com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN;
 
 /**
  * @author Frédéric Hannes
@@ -136,8 +142,15 @@ public class StringConcatHandling {
     }
     if (!(ifCond instanceof PsiReferenceExpression)) return null;
     PsiElement elem = ((PsiReferenceExpression)ifCond).resolve();
-    if (!(elem instanceof PsiVariable)) return null;
+    // The variable must be local!
+    if (!(elem instanceof PsiLocalVariable)) return null;
     return (PsiVariable) elem;
+  }
+
+  public static PsiDeclarationStatement getLocalDeclaration(PsiVariable var) {
+    if (!(var instanceof PsiLocalVariable)) return null;
+    if (!(var.getParent() instanceof PsiDeclarationStatement)) return null;
+    return (PsiDeclarationStatement) var.getParent();
   }
 
   /**
@@ -182,6 +195,31 @@ public class StringConcatHandling {
     return false;
   }
 
+  public static boolean isVariableReferencedAfter(PsiVariable var, PsiStatement statement) {
+    if (!(var instanceof PsiLocalVariable)) return false;
+
+    // The variable must be declared inside of the same method as the statement
+    if (PsiTreeUtil.getParentOfType(var, PsiLambdaExpression.class, PsiMethod.class) !=
+        PsiTreeUtil.getParentOfType(statement, PsiLambdaExpression.class, PsiMethod.class)) return false;
+
+    PsiElement block = PsiUtil.getVariableCodeBlock(var, null);
+    if (block == null) return false;
+
+    ControlFlow controlFlow;
+    try {
+      controlFlow = ControlFlowFactory.getInstance(statement.getProject())
+        .getControlFlow(block, LocalsOrMyInstanceFieldsControlFlowPolicy.getInstance());
+    } catch (AnalysisCanceledException ignored) {
+      return false;
+    }
+
+    // Is the variable used between the end of the loop and the end of its scope?
+    final int loopEnd = controlFlow.getEndOffset(statement);
+    final int blockEnd = controlFlow.getEndOffset(block) - 1;
+
+    return IntStream.rangeClosed(loopEnd, blockEnd).anyMatch(offset -> ControlFlowUtil.isVariableAccess(controlFlow, offset, var));
+  }
+
   @Nullable
   public static PsiVariable getJoinedVariable(PsiLoopStatement loop, StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
     // Only works for loops with (at least one and) at most two statements [if-statement with body counts as one]
@@ -198,8 +236,7 @@ public class StringConcatHandling {
       stringConcat = true;
 
       // The concatenation target variable should retain its initial value before reaching the loop
-      if (StreamApiMigrationInspection.getInitializerUsageStatus(targetVar.get(), loop) ==
-          StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) return null;
+      if (StreamApiMigrationInspection.getInitializerUsageStatus(targetVar.get(), loop) == UNKNOWN) return null;
     }
 
     // String concatenation with delim needs one boolean check var
@@ -209,16 +246,18 @@ public class StringConcatHandling {
     // If we have a boolean to check on, we must be using a delimiter
     if (!checkVar.isPresent() && tb.getStatements().length != 1) return null;
 
-    // The check variable should retain its initial value before reaching the loop
-    if (checkVar.isPresent() && StreamApiMigrationInspection.getInitializerUsageStatus(checkVar.get(), loop) ==
-        StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) return null;
-
     // Initial value in case of checking on the first iteration
     boolean initVal = false;
     // Indicates if the check variable is set at the end of the loop instead of in the if statement
     boolean trailingSwitch = false;
 
     if (checkVar.isPresent() && tb.getStatements().length != 1) {
+      // The check variable should retain its initial value before reaching the loop
+      if (StreamApiMigrationInspection.getInitializerUsageStatus(checkVar.get(), loop) == UNKNOWN) return null;
+
+      // The check variable may not be used after the loop
+      if (isVariableReferencedAfter(checkVar.get(), loop)) return null;
+
       // Check if the check is used after it's definition
       if (tb.isReferencedInOperations(checkVar.get())) return null;
 
