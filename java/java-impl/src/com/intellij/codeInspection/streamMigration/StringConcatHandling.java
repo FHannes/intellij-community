@@ -283,30 +283,33 @@ public class StringConcatHandling {
       if (StreamApiMigrationInspection.getInitializerUsageStatus(targetVar.get(), loop) == UNKNOWN) return null;
     }
 
-    // String concatenation with delim needs one boolean check var
-    Optional<PsiVariable> checkVar = StreamEx.of(variables.stream())
-      .findFirst(v -> v.getType().isAssignableFrom(PsiType.BOOLEAN));
-
-    // If we have a boolean to check on, we must be using a delimiter
-    if (!checkVar.isPresent() && tb.getStatements().length != 1) return null;
-
+    // Check variable used to check if the concatenation is in its first operation
+    PsiVariable checkVar = null;
     // Initial value in case of checking on the first iteration
     boolean initVal = false;
     // Indicates if the check variable is set at the end of the loop instead of in the if statement
     boolean trailingSwitch = false;
 
-    if (checkVar.isPresent() && tb.getStatements().length != 1) {
+    if (tb.getStatements().length != 1) {
+      // The first statement in the loop must be an if-statement
+      if (!(tb.getStatements()[0] instanceof PsiIfStatement)) return null;
+      PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
+
+      // The check variable must be used in the if-statement and be a valid stream variable
+      checkVar = getFIVariable(ifStmt);
+      if (checkVar == null || !variables.contains(checkVar)) return null;
+
       // The check variable should retain its initial value before reaching the loop
-      if (StreamApiMigrationInspection.getInitializerUsageStatus(checkVar.get(), loop) == UNKNOWN) return null;
+      if (StreamApiMigrationInspection.getInitializerUsageStatus(checkVar, loop) == UNKNOWN) return null;
 
       // The check variable's value may not be used after the loop
-      if (isValueReferencedAfter(checkVar.get(), loop)) return null;
+      if (isValueReferencedAfter(checkVar, loop)) return null;
 
       // Check if the check is used after it's definition
-      if (tb.isReferencedInOperations(checkVar.get())) return null;
+      if (tb.isReferencedInOperations(checkVar)) return null;
 
       // In case the boolean check is initialized, get the init value
-      PsiExpression initializer = checkVar.get().getInitializer();
+      PsiExpression initializer = checkVar.getInitializer();
       if (initializer instanceof PsiLiteralExpression) {
         if (PsiType.BOOLEAN.equals(initializer.getType())) {
           Boolean tVal = (Boolean)((PsiLiteralExpression)initializer).getValue();
@@ -315,19 +318,14 @@ public class StringConcatHandling {
         }
       }
 
-      // The second statement in the loop must be an if-statement
-      if (!(tb.getStatements()[0] instanceof PsiIfStatement)) return null;
-
-      PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
-
       // Check if-condition ordering
       boolean appendElse; // Append statement is in the else branch
       if (initVal) {
         // Check positive (check value is true)
-        appendElse = ExpressionUtils.isReferenceTo(ifStmt.getCondition(), checkVar.get());
+        appendElse = ExpressionUtils.isReferenceTo(ifStmt.getCondition(), checkVar);
       } else {
         // Check negative (check value is false)
-        appendElse = isNegatedReferenceTo(ifStmt.getCondition(), checkVar.get());
+        appendElse = isNegatedReferenceTo(ifStmt.getCondition(), checkVar);
       }
 
       // Setup branches
@@ -349,7 +347,7 @@ public class StringConcatHandling {
       if (tb.getStatements().length == 2) {
         // Check correct checking on first iteration
         if (checkBranch.get().getStatements().length != 1) return null;
-        if (!isValidFISetter(checkBranch.get().getStatements()[0], checkVar.get(), initVal, true)) return null;
+        if (!isValidFISetter(checkBranch.get().getStatements()[0], checkVar, initVal, true)) return null;
       } else { // 3 statements in terminal block
         // If the for-loop contains 3 statements, the check variable is set at the end of the loop somewhere, not in the if-statement
         if (checkBranch.isPresent()) return null;
@@ -379,10 +377,10 @@ public class StringConcatHandling {
       if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, CommonClassNames.JAVA_LANG_STRING)) return null;
 
       // The last statement must set the check boolean
-      if (!isValidFISetter(tb.getStatements()[tb.getStatements().length - 1], checkVar.get(), initVal, false)) return null;
+      if (!isValidFISetter(tb.getStatements()[tb.getStatements().length - 1], checkVar, initVal, false)) return null;
     } else if (trailingSwitch) {
       // The second to last statement must set the check boolean
-      if (!isValidFISetter(tb.getStatements()[tb.getStatements().length - 2], checkVar.get(), initVal, false)) return null;
+      if (!isValidFISetter(tb.getStatements()[tb.getStatements().length - 2], checkVar, initVal, false)) return null;
     }
 
     // The StringBuilder can't be appended to itself and the loop variable must be used to create the appended data
