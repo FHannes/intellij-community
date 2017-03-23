@@ -2,10 +2,7 @@ package com.intellij.codeInspection.streamMigration;
 
 import com.intellij.psi.*;
 import com.intellij.util.ArrayUtil;
-import com.siyeh.ig.psiutils.ExpressionUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
-import com.siyeh.ig.psiutils.TypeUtils;
-import com.siyeh.ig.psiutils.VariableAccessUtils;
+import com.siyeh.ig.psiutils.*;
 import one.util.streamex.IntStreamEx;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nullable;
@@ -64,34 +61,6 @@ public class StringConcatHandling {
     }
 
     return false;
-  }
-
-  /**
-   * Gets a specific argument from the constructor used to initialize a local variable.
-   *
-   * @param var
-   * @param arg
-   * @return
-   */
-  public static PsiExpression getInitArgument(PsiVariable var, int arg) {
-    // Variable must be local
-    if (!(var instanceof PsiLocalVariable)) return null;
-
-    // Check if initial StringBuilder is empty
-    PsiExpression initializer = var.getInitializer();
-    if (!(initializer instanceof PsiNewExpression)) return null;
-
-    // Check for a valid class reference for the constructor
-    PsiNewExpression initNew = (PsiNewExpression) initializer;
-    if (initNew.getClassReference() == null) return null;
-    PsiElement constrClass = initNew.getClassReference().resolve();
-    if (!(constrClass instanceof PsiClass) ||
-        !var.getType().getCanonicalText().equals(((PsiClass) constrClass).getQualifiedName())) return null;
-
-    if (initNew.getArgumentList() == null || initNew.getArgumentList().getExpressions().length <= arg) return null;
-
-    // Get the requested argument for the constructor
-    return initNew.getArgumentList().getExpressions()[arg];
   }
 
   /**
@@ -199,6 +168,20 @@ public class StringConcatHandling {
     return true;
   }
 
+  public static boolean isConstantValue(PsiExpression expr) {
+    if (expr instanceof PsiLiteralExpression) return true;
+    if (expr instanceof PsiReferenceExpression) {
+      PsiVariable var = resolveVariable(expr);
+      if (var.getModifierList() == null || !var.getModifierList().hasModifierProperty(PsiModifier.FINAL)) return false;
+
+      if (CollectionUtils.isEmptyArray(var)) return true;
+
+      // The type of the variable must be an immutable class, or its contents could also change at runtime
+      return ClassUtils.isImmutable(var.getType());
+    }
+    return false;
+  }
+
   @Nullable
   public static PsiVariable getJoinedVariable(PsiLoopStatement loop, StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
     // Only works for loops with (at least one and) at most two statements [if-statement with body counts as one]
@@ -278,6 +261,7 @@ public class StringConcatHandling {
       if (appendBranch.get().getStatements().length != 1) return null;
       PsiExpression delim = getAppendParam(targetVar.get(), appendBranch.get().getStatements()[0], stringConcat);
       if (!TypeUtils.expressionHasTypeOrSubtype(delim, CommonClassNames.JAVA_LANG_STRING)) return null;
+      if (!isConstantValue(delim)) return null;
 
       if (tb.getStatements().length == 2) {
         // Check correct checking on first iteration
@@ -320,8 +304,6 @@ public class StringConcatHandling {
 
     // The StringBuilder can't be appended to itself and the loop variable must be used to create the appended data
     if (VariableAccessUtils.variableIsUsed(targetVar.get(), appendParam)) return null;
-
-    // TODO: Check delim is constant
 
     return targetVar.get();
   }
