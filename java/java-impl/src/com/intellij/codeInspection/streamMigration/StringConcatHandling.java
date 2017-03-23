@@ -215,9 +215,9 @@ public class StringConcatHandling {
 
     // Is the variable used between the end of the loop and the end of its scope?
     final int loopEnd = controlFlow.getEndOffset(statement);
-    final int blockEnd = controlFlow.getEndOffset(block) - 1;
+    final int blockEnd = controlFlow.getEndOffset(block);
 
-    return IntStream.rangeClosed(loopEnd, blockEnd).anyMatch(offset -> ControlFlowUtil.isVariableAccess(controlFlow, offset, var));
+    return ControlFlowUtil.isVariableUsed(controlFlow, loopEnd, blockEnd, var);
   }
 
   @Nullable
