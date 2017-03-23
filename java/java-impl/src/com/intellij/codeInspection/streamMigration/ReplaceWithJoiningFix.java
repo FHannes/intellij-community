@@ -98,11 +98,21 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
       .nonNull().findAny();
     if (!appended.isPresent()) return null;
 
-    PsiType type = TypeUtils.getType(CommonClassNames.JAVA_LANG_STRING, body);
-
     PsiVariable checkVar = null;
 
-    StringBuilder builder = generateStream(new MapOp(tb.getLastOperation(), appended.get(), tb.getVariable(), type));
+    PsiType type = TypeUtils.getType(CommonClassNames.JAVA_LANG_STRING, body);
+    StreamApiMigrationInspection.Operation op = tb.getLastOperation();
+    if (!TypeUtils.expressionHasTypeOrSubtype(appended.get(), StringConcatHandling.JAVA_LANG_CHARSEQUENCE)) {
+      PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
+      PsiExpression newAppended = elementFactory.createExpressionFromText(CommonClassNames.JAVA_LANG_STRING + ".valueOf(" +
+                                                                       appended.get().getText() + ")", loopStatement);
+
+      op = new MapOp(op, newAppended, tb.getVariable(), type);
+    } else {
+      op = new MapOp(op, appended.get(), tb.getVariable(), type);
+    }
+
+    StringBuilder builder = generateStream(op);
     builder.append(".collect(java.util.stream.Collectors.joining(");
     if (tb.getStatements()[0] instanceof PsiIfStatement) {
       PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];

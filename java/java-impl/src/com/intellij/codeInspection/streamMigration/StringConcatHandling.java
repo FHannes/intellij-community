@@ -96,10 +96,10 @@ public class StringConcatHandling {
   public static PsiVariable getCheckVariable(PsiIfStatement ifStmt) {
     PsiExpression ifCond = ParenthesesUtils.stripParentheses(ifStmt.getCondition());
     if (ifCond instanceof PsiPrefixExpression) {
-      ifCond = ((PsiPrefixExpression)ifCond).getOperand();
+      ifCond = ((PsiPrefixExpression) ifCond).getOperand();
     }
     if (!(ifCond instanceof PsiReferenceExpression)) return null;
-    PsiElement elem = ((PsiReferenceExpression)ifCond).resolve();
+    PsiElement elem = ((PsiReferenceExpression) ifCond).resolve();
     // The variable must be local!
     if (!(elem instanceof PsiLocalVariable)) return null;
     return (PsiVariable) elem;
@@ -326,12 +326,12 @@ public class StringConcatHandling {
 
     // The TerminalBlock must contain a single append operation
     PsiExpression appendParam = getAppendParam(targetVar.get(), tb.getStatements()[tb.getStatements().length - 1], stringConcat);
-    if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, JAVA_LANG_CHARSEQUENCE)) {
+    if (appendParam == null) {
       if (!trailingSwitch) return null;
 
       // If the check variable is not set in the if-statement, the append statement could be the either the last or the one before that
       appendParam = getAppendParam(targetVar.get(), tb.getStatements()[tb.getStatements().length - 2], stringConcat);
-      if (!TypeUtils.expressionHasTypeOrSubtype(appendParam, JAVA_LANG_CHARSEQUENCE)) return null;
+      if (appendParam == null) return null;
 
       // The last statement must set the check boolean
       if (!isValidCheckSetter(tb.getStatements()[tb.getStatements().length - 1], checkVar, initVal, false)) return null;
