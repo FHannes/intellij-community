@@ -112,11 +112,18 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
         .nonNull().map(b -> ((PsiBlockStatement) b).getCodeBlock())
         .filter(cb -> cb.getStatements().length == 1)
         .map(cb -> StringConcatHandling.getAppendParam(var.get(), cb.getStatements()[0], stringConcat))
-        .nonNull().filter(e -> TypeUtils.expressionHasTypeOrSubtype(e, CommonClassNames.JAVA_LANG_STRING))
-        .findAny();
+        .nonNull().findAny();
       if (!delim.isPresent()) return null;
 
+      boolean getValue = !TypeUtils.expressionHasTypeOrSubtype(delim.get(), StringConcatHandling.JAVA_LANG_CHARSEQUENCE);
+      if (getValue) {
+        builder.append(CommonClassNames.JAVA_LANG_STRING);
+        builder.append(".valueOf(");
+      }
       builder.append(delim.get().getText());
+      if (getValue) {
+        builder.append(")");
+      }
     }
     builder.append("))");
 

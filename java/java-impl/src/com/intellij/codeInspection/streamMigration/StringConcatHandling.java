@@ -19,7 +19,7 @@ import static com.intellij.codeInspection.streamMigration.StreamApiMigrationInsp
  */
 public class StringConcatHandling {
 
-  private static final String JAVA_LANG_CHARSEQUENCE = "java.lang.CharSequence";
+  public static final String JAVA_LANG_CHARSEQUENCE = "java.lang.CharSequence";
 
   public static PsiVariable resolveVariable(PsiExpression expr) {
     if (!(expr instanceof PsiReferenceExpression)) return null;
@@ -343,7 +343,6 @@ public class StringConcatHandling {
       // Check if delimiter is correct
       if (appendBranch.get().getStatements().length != 1) return null;
       PsiExpression delim = getAppendParam(targetVar.get(), appendBranch.get().getStatements()[0], stringConcat);
-      if (!TypeUtils.expressionHasTypeOrSubtype(delim, JAVA_LANG_CHARSEQUENCE)) return null;
       if (!isConstantValue(delim)) return null;
 
       if (tb.getStatements().length == 2) {
