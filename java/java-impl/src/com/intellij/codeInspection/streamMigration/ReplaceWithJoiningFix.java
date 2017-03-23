@@ -50,8 +50,9 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
     // Replace variable declaration type and initializer
     if (var.getTypeElement() != null) {
       if (checkVar != null) {
-        // TODO: Check other usages!
-        checkVar.delete();
+        if (!StringConcatHandling.isVariableReferencedAfter(checkVar, loopStatement)) {
+          checkVar.delete();
+        }
         // Refresh status after removing switch variable
         status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
       }

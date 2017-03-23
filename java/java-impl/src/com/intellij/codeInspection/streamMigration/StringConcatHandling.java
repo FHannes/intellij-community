@@ -10,9 +10,7 @@ import one.util.streamex.IntStreamEx;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.stream.IntStream;
+import java.util.*;
 
 import static com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN;
 
@@ -220,6 +218,58 @@ public class StringConcatHandling {
     return ControlFlowUtil.isVariableUsed(controlFlow, loopEnd, blockEnd, var);
   }
 
+  public static boolean isValueReferencedAfter(PsiVariable var, PsiStatement statement) {
+    if (!(var instanceof PsiLocalVariable)) return false;
+
+    // The variable must be declared inside of the same method as the statement
+    if (PsiTreeUtil.getParentOfType(var, PsiLambdaExpression.class, PsiMethod.class) !=
+        PsiTreeUtil.getParentOfType(statement, PsiLambdaExpression.class, PsiMethod.class)) return false;
+
+    PsiElement block = PsiUtil.getVariableCodeBlock(var, null);
+    if (block == null) return false;
+
+    ControlFlow controlFlow;
+    try {
+      controlFlow = ControlFlowFactory.getInstance(statement.getProject())
+        .getControlFlow(block, LocalsOrMyInstanceFieldsControlFlowPolicy.getInstance());
+    } catch (AnalysisCanceledException ignored) {
+      return false;
+    }
+
+    // Is the variable used between the end of the loop and the end of its scope?
+    final int loopEnd = controlFlow.getEndOffset(statement);
+
+    Map<Integer, List<ControlFlowUtil.ControlFlowEdge>> edges =
+      StreamEx.of(ControlFlowUtil.getEdges(controlFlow, loopEnd)).groupingBy(e -> e.myFrom);
+
+    Queue<Integer> branches = new LinkedList<>();
+    branches.add(loopEnd);
+    while (!branches.isEmpty()) {
+      int branch = branches.poll();
+
+      if (branch < controlFlow.getSize()) {
+        if (isVariableRead(controlFlow, branch, var)) return true;
+
+        // Branch stays alive as long as the value isn't overwritten
+        if (!isVariableWritten(controlFlow, branch, var) && edges.containsKey(branch)) {
+          branches.addAll(StreamEx.of(edges.get(branch)).map(edge -> edge.myTo).toList());
+        }
+      }
+    }
+
+    return false;
+  }
+
+  public static boolean isVariableRead(ControlFlow flow, int offset, PsiVariable variable) {
+    Instruction instruction = flow.getInstructions().get(offset);
+    return instruction instanceof ReadVariableInstruction && ((ReadVariableInstruction)instruction).variable == variable;
+  }
+
+  public static boolean isVariableWritten(ControlFlow flow, int offset, PsiVariable variable) {
+    Instruction instruction = flow.getInstructions().get(offset);
+    return instruction instanceof WriteVariableInstruction && ((WriteVariableInstruction)instruction).variable == variable;
+  }
+
   @Nullable
   public static PsiVariable getJoinedVariable(PsiLoopStatement loop, StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
     // Only works for loops with (at least one and) at most two statements [if-statement with body counts as one]
@@ -255,8 +305,8 @@ public class StringConcatHandling {
       // The check variable should retain its initial value before reaching the loop
       if (StreamApiMigrationInspection.getInitializerUsageStatus(checkVar.get(), loop) == UNKNOWN) return null;
 
-      // The check variable may not be used after the loop
-      if (isVariableReferencedAfter(checkVar.get(), loop)) return null;
+      // The check variable's value may not be used after the loop
+      if (isValueReferencedAfter(checkVar.get(), loop)) return null;
 
       // Check if the check is used after it's definition
       if (tb.isReferencedInOperations(checkVar.get())) return null;
