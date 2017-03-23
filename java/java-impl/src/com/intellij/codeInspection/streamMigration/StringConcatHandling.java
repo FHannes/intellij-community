@@ -4,9 +4,7 @@ import com.intellij.psi.*;
 import com.intellij.psi.controlFlow.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
-import com.intellij.util.ArrayUtil;
 import com.siyeh.ig.psiutils.*;
-import one.util.streamex.IntStreamEx;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nullable;
 
@@ -26,47 +24,6 @@ public class StringConcatHandling {
     PsiElement resolved = ((PsiReferenceExpression) expr).resolve();
     if (!(resolved instanceof PsiVariable)) return null;
     return (PsiVariable) resolved;
-  }
-
-  /**
-   * Checks whether a given (local) variable is initialized with a constructor containing a given maximum amount of elements.
-   *
-   * @param var
-   * @param max
-   * @return
-   */
-  private static boolean checkInitArguments(PsiVariable var, String[][] args) {
-    // Variable must be local
-    if (!(var instanceof PsiLocalVariable)) return false;
-
-    // Check if initial StringBuilder is empty
-    PsiExpression initializer = var.getInitializer();
-    if (!(initializer instanceof PsiNewExpression)) return false;
-
-    // Check for a valid class reference for the constructor
-    PsiNewExpression initNew = (PsiNewExpression) initializer;
-    if (initNew.getClassReference() == null) return false;
-    PsiElement constrClass = initNew.getClassReference().resolve();
-    if (!(constrClass instanceof PsiClass) ||
-        !var.getType().getCanonicalText().equals(((PsiClass) constrClass).getQualifiedName())) return false;
-
-    // Check the arguments for the constructor
-    if (initNew.getArgumentList() == null) return false;
-
-    for (String[] argList : args) {
-      if (argList == null || initNew.getArgumentList().getExpressions().length != argList.length) continue;
-
-      // All argument types must match
-      if (IntStreamEx.range(0, argList.length)
-        .mapToEntry(i -> initNew.getArgumentList().getExpressions()[i], i -> argList[i])
-        .mapKeys(PsiExpression::getType)
-        .nonNullKeys()
-        .allMatch(e -> e.getKey().equalsToText(e.getValue()))) {
-        return true;
-      }
-    }
-
-    return false;
   }
 
   /**
@@ -355,14 +312,6 @@ public class StringConcatHandling {
 
         trailingSwitch = true;
       }
-    }
-
-    // String init argument must not be checked, as any valid init string can be appended to the resulting string
-    if (!stringConcat) {
-      // The StringBuilder should be constructed with at most one argument
-      if (!checkInitArguments(targetVar.get(), new String[][]{
-        ArrayUtil.EMPTY_STRING_ARRAY, new String[]{CommonClassNames.JAVA_LANG_STRING}
-      })) return null;
     }
 
     // Check if the StringBuilder is used after creation
