@@ -139,13 +139,16 @@ public class StringConcatHandling {
 
   public static boolean isConstantValue(PsiExpression expr) {
     if (expr instanceof PsiLiteralExpression) return true;
+
+    if (ExpressionUtils.isZeroLengthArrayConstruction(expr)) return true;
+
     if (expr instanceof PsiReferenceExpression) {
       PsiVariable var = resolveVariable(expr);
       if (var == null) return false;
 
-      if (CollectionUtils.isEmptyArray(var)) return true;
-
       if (isFinal(var)) return true;
+
+      if (CollectionUtils.isEmptyArray(var)) return true;
 
       // The type of the variable must be an immutable class, or its contents could also change at runtime
       return ClassUtils.isImmutable(var.getType());
