@@ -343,6 +343,11 @@ public class StringConcatHandling {
       if (concatVar == null) return null;
     }
 
+    // With plain string concatenation, the variable can't be used before the terminal block
+    if (concatVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)) {
+      if (StreamApiMigrationInspection.getInitializerUsageStatus(concatVar, loop) == UNKNOWN) return null;
+    }
+
     // Check if the concat accumulator is used after creation
     if (tb.isReferencedInOperations(concatVar)) return null;
 
