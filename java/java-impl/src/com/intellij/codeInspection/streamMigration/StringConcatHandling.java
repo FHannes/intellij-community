@@ -27,6 +27,22 @@ public class StringConcatHandling {
     return (PsiVariable) resolved;
   }
 
+  public static PsiVariable getConcatVariable(PsiStatement stmt) {
+    PsiMethodCallExpression mce = getMethodCall(stmt);
+    if (mce != null) {
+      PsiVariable var = resolveVariable(mce.getMethodExpression().getQualifierExpression());
+      return var != null && var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER) ? var : null;
+    }
+
+    PsiAssignmentExpression ae = getAssignment(stmt);
+    if (ae != null) {
+      PsiVariable var = StreamApiMigrationInspection.extractAccumulator(ae);
+      return var != null && var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING) ? var : null;
+    }
+
+    return null;
+  }
+
   /**
    * Checks if a given expression is a negated reference to a given variable.
    *
@@ -238,20 +254,8 @@ public class StringConcatHandling {
     // Only works for loops with (at least one and) at most two statements [if-statement with body counts as one]
     if (tb.getStatements().length != 0 && tb.getStatements().length > 3) return null;
 
-    // String concatenation if one variable is a StringBuffer or String
-    boolean stringConcat = false;
-    Optional<PsiVariable> targetVar = StreamEx.of(variables.stream())
-      .findFirst(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER));
-    if (!targetVar.isPresent()) {
-      targetVar = StreamEx.of(variables.stream())
-        .findFirst(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING));
-      if (!targetVar.isPresent()) return null;
-      stringConcat = true;
-
-      // The concatenation target variable should retain its initial value before reaching the loop
-      if (StreamApiMigrationInspection.getInitializerUsageStatus(targetVar.get(), loop) == UNKNOWN) return null;
-    }
-
+    // Accumulator variable used to concat the delimiter
+    PsiVariable delimVar = null;
     // Check variable used to check if the concatenation is in its first operation
     PsiVariable checkVar = null;
     // Initial value in case of checking on the first iteration
@@ -309,7 +313,10 @@ public class StringConcatHandling {
 
       // Check if delimiter is correct
       if (appendBranch.get().getStatements().length != 1) return null;
-      PsiExpression delim = getAppendParam(targetVar.get(), appendBranch.get().getStatements()[0], stringConcat);
+      delimVar = getConcatVariable(appendBranch.get().getStatements()[0]);
+      if (delimVar == null) return null;
+      PsiExpression delim = getAppendParam(delimVar, appendBranch.get().getStatements()[0],
+                                           delimVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING));
       if (!isConstantValue(delim)) return null;
 
       if (tb.getStatements().length == 2) {
@@ -324,29 +331,38 @@ public class StringConcatHandling {
       }
     }
 
-    // Check if the StringBuilder is used after creation
-    if (tb.isReferencedInOperations(targetVar.get())) return null;
+    // Statement index where the append occurs
+    int appendIndex = 1;
 
-    // The TerminalBlock must contain a single append operation
-    PsiExpression appendParam = getAppendParam(targetVar.get(), tb.getStatements()[tb.getStatements().length - 1], stringConcat);
-    if (appendParam == null) {
+    // Determine concat variable
+    PsiVariable concatVar = getConcatVariable(tb.getStatements()[tb.getStatements().length - appendIndex]);
+    if (concatVar == null) {
       if (!trailingSwitch) return null;
 
-      // If the check variable is not set in the if-statement, the append statement could be the either the last or the one before that
-      appendParam = getAppendParam(targetVar.get(), tb.getStatements()[tb.getStatements().length - 2], stringConcat);
-      if (appendParam == null) return null;
-
-      // The last statement must set the check boolean
-      if (!isValidCheckSetter(tb.getStatements()[tb.getStatements().length - 1], checkVar, initVal, false)) return null;
-    } else if (trailingSwitch) {
-      // The second to last statement must set the check boolean
-      if (!isValidCheckSetter(tb.getStatements()[tb.getStatements().length - 2], checkVar, initVal, false)) return null;
+      concatVar = getConcatVariable(tb.getStatements()[tb.getStatements().length - ++appendIndex]);
+      if (concatVar == null) return null;
     }
 
-    // The StringBuilder can't be appended to itself and the loop variable must be used to create the appended data
-    if (VariableAccessUtils.variableIsUsed(targetVar.get(), appendParam)) return null;
+    // Check if the concat accumulator is used after creation
+    if (tb.isReferencedInOperations(concatVar)) return null;
 
-    return targetVar.get();
+    // Check if concat accumulator is the same one used for the delimiter
+    if (delimVar != null && !delimVar.equals(concatVar)) return null;
+
+    // The concat accumulator must be a valid stream variable
+    if (!variables.contains(concatVar)) return null;
+
+    // The TerminalBlock must contain a single append operation
+    PsiExpression appendParam = getAppendParam(concatVar, tb.getStatements()[tb.getStatements().length - appendIndex],
+                                               concatVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING));
+
+    // Verify that the check variable is assigned at the end of the loop if required
+    if (trailingSwitch && !isValidCheckSetter(tb.getStatements()[appendIndex], checkVar, initVal, false)) return null;
+
+    // The StringBuilder can't be appended to itself and the loop variable must be used to create the appended data
+    if (VariableAccessUtils.variableIsUsed(concatVar, appendParam)) return null;
+
+    return concatVar;
   }
 
 }
