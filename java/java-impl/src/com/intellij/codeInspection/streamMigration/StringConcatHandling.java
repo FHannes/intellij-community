@@ -320,6 +320,7 @@ public class StringConcatHandling {
       if (!isConstantValue(delim)) return null;
 
       if (tb.getStatements().length == 2) {
+        if (!checkBranch.isPresent()) return null;
         // Check correct checking on first iteration
         if (checkBranch.get().getStatements().length != 1) return null;
         if (!isValidCheckSetter(checkBranch.get().getStatements()[0], checkVar, initVal, true)) return null;
