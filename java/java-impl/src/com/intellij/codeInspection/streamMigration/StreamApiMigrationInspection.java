@@ -626,6 +626,9 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
           registerProblem(statement, "joining",
                           new ReplaceWithJoiningFix(joinVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)));
         }
+        if (ReduceHandling.getReduceVar(tb, nonFinalVariables) != null) {
+          registerProblem(statement, "reduce", new ReplaceWithReduceFix());
+        }
         if(!nonFinalVariables.isEmpty()) {
           return;
         }
