@@ -1,18 +1,62 @@
 package com.intellij.codeInspection.streamMigration;
 
+import com.intellij.codeInsight.AnnotationUtil;
 import com.intellij.psi.*;
-import com.intellij.psi.controlFlow.*;
-import com.siyeh.ig.psiutils.*;
+import com.intellij.psi.util.InheritanceUtil;
+import com.siyeh.ig.psiutils.ExpressionUtils;
+import com.siyeh.ig.psiutils.ParenthesesUtils;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+
+import static com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN;
 
 /**
  * @author Frédéric Hannes
  */
 public class ReduceHandling {
 
-  public static final String BE_KULEUVEN_CW_DTAI_ASSOCIATIVE = "be.kuleuven.cw.dtai.Associative";
+  @NonNls public static final String BE_KULEUVEN_CS_DTAI_ASSOCIATIVE = "be.kuleuven.cs.dtai.Associative";
+
+  @NonNls private static final Map<String, Set<String>> associativeOperations = new HashMap<>();
+
+  private static void addAssociative(String clazz, String method) {
+    Set<String> operations;
+    if (associativeOperations.containsKey(clazz)) {
+      operations = associativeOperations.get(clazz);
+    } else {
+      operations = new HashSet<>();
+      associativeOperations.put(clazz, operations);
+    }
+    operations.add(method);
+  }
+
+  static {
+    addAssociative(CommonClassNames.JAVA_LANG_STRING, "concat");
+  }
+
+  private static boolean isAssociativeOperation(PsiMethod method) {
+    // Associative operations executed on an object only!
+    PsiElement parent = method.getParent();
+    if (!(parent instanceof PsiClass)) return false;
+
+    // Check that the method just has a single parameter of the type of its parent class
+    PsiClass clazz = (PsiClass) parent;
+    if (clazz.getQualifiedName() == null) return false;
+    if (method.getParameterList().getParametersCount() != 1) return false;
+    PsiTypeElement paramType = method.getParameterList().getParameters()[0].getTypeElement();
+    if (paramType == null || !paramType.getType().equalsToText(clazz.getQualifiedName())) return false;
+
+    // Is known associative?
+    Set<String> methods = associativeOperations.get(clazz.getQualifiedName());
+    if (methods != null && methods.contains(method.getName())) return true;
+
+    // Check for presence of Associative annotation
+    if (AnnotationUtil.isAnnotated(method, Collections.singletonList(BE_KULEUVEN_CS_DTAI_ASSOCIATIVE), false, true)) return true;
+
+    return false;
+  }
 
   @Nullable
   public static PsiVariable resolveVariable(PsiExpression expr) {
@@ -42,8 +86,19 @@ public class ReduceHandling {
           }
         }
       } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
-        // TODO: Check if call is made on accumulator variable
-        // TODO: Check method call for associative operation (verify annotation)
+        // Check that accumulator is valid as a method call on the accumulator variable
+        PsiMethodCallExpression mce = (PsiMethodCallExpression) assignment.getRExpression();
+        if (mce == null || !ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator)) return null;
+
+        // Resolve to the method declaration to verify the annotation for associativity
+        PsiElement element = mce.getMethodExpression().resolve();
+        if (element == null || !(element instanceof PsiMethod)) return null;
+        PsiMethod operation = (PsiMethod) element;
+
+        // Check for presence of Associative annotation
+        if (!isAssociativeOperation(operation)) return null;
+
+        return accumulator;
       }
     }
     return null;
@@ -85,21 +140,19 @@ public class ReduceHandling {
     return element.getModifierList() != null && element.getModifierList().hasModifierProperty(PsiModifier.FINAL);
   }
 
-  public static boolean isVariableRead(ControlFlow flow, int offset, PsiVariable variable) {
-    Instruction instruction = flow.getInstructions().get(offset);
-    return instruction instanceof ReadVariableInstruction && ((ReadVariableInstruction)instruction).variable == variable;
-  }
-
-  public static boolean isVariableWritten(ControlFlow flow, int offset, PsiVariable variable) {
-    Instruction instruction = flow.getInstructions().get(offset);
-    return instruction instanceof WriteVariableInstruction && ((WriteVariableInstruction)instruction).variable == variable;
-  }
-
   @Nullable
-  public static PsiVariable getReduceVar(StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
+  public static PsiVariable getReduceVar(PsiLoopStatement loop, StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
     PsiAssignmentExpression stmt = getAssignment(tb.getSingleStatement());
     if (stmt == null) return null;
-    return getReductionAccumulator(stmt);
+
+    PsiVariable accumulator = getReductionAccumulator(stmt);
+    if (!variables.contains(accumulator)) return null;
+
+    // Variable can't be used after declaration
+    // TODO: allow variable to be used after declaration, by using current value as init
+    if (StreamApiMigrationInspection.getInitializerUsageStatus(accumulator, loop) == UNKNOWN) return null;
+
+    return accumulator;
   }
 
 }

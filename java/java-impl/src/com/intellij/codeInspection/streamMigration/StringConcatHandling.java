@@ -6,6 +6,7 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.siyeh.ig.psiutils.*;
 import one.util.streamex.StreamEx;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -17,7 +18,7 @@ import static com.intellij.codeInspection.streamMigration.StreamApiMigrationInsp
  */
 public class StringConcatHandling {
 
-  public static final String JAVA_LANG_CHARSEQUENCE = "java.lang.CharSequence";
+  @NonNls public static final String JAVA_LANG_CHARSEQUENCE = "java.lang.CharSequence";
 
   @Nullable
   public static PsiVariable resolveVariable(PsiExpression expr) {
