@@ -2,15 +2,11 @@ package com.intellij.codeInspection.streamMigration;
 
 import com.intellij.codeInsight.AnnotationUtil;
 import com.intellij.psi.*;
-import com.intellij.psi.util.InheritanceUtil;
 import com.siyeh.ig.psiutils.ExpressionUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-
-import static com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN;
 
 /**
  * @author Frédéric Hannes
@@ -125,49 +121,7 @@ public class ReduceHandling {
     PsiVariable accumulator = getReductionAccumulator(stmt);
     if (!variables.contains(accumulator)) return null;
 
-    // Variable can't be used after declaration
-    // TODO: allow variable to be used after declaration, by using current value as init
-    if (StreamApiMigrationInspection.getInitializerUsageStatus(accumulator, loop) == UNKNOWN) return null;
-
     return accumulator;
-  }
-
-  @Nullable
-  public static String createReductionReplacement(PsiAssignmentExpression assignment) {
-    if (!(assignment.getLExpression() instanceof PsiReferenceExpression)) return null;
-    PsiVariable accumulator = resolveVariable(assignment.getLExpression());
-    if (accumulator == null) return null;
-
-    StringBuilder result = new StringBuilder(".reduce(");
-    result.append(accumulator.getName()).append(", (a, b) -> ");
-
-    if (JavaTokenType.PLUSEQ.equals(assignment.getOperationTokenType())) {
-      result.append("a + b");
-    } else if (JavaTokenType.ASTERISKEQ.equals(assignment.getOperationTokenType())) {
-      result.append("a * b");
-    } else if (JavaTokenType.EQ.equals(assignment.getOperationTokenType())) {
-      if (assignment.getRExpression() instanceof PsiBinaryExpression) {
-        PsiBinaryExpression binOp = (PsiBinaryExpression)assignment.getRExpression();
-        if (JavaTokenType.PLUS.equals(binOp.getOperationTokenType())) {
-          result.append("a + b");
-        } else if (JavaTokenType.ASTERISK.equals(binOp.getOperationTokenType())) {
-          result.append("a * b");
-        }
-      } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
-        // Check that accumulator is valid as a method call on the accumulator variable
-        PsiMethodCallExpression mce = (PsiMethodCallExpression) assignment.getRExpression();
-        if (mce == null || !ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator)) return null;
-
-        // Resolve to the method declaration to verify the annotation for associativity
-        PsiElement element = mce.getMethodExpression().resolve();
-        if (element == null || !(element instanceof PsiMethod)) return null;
-        PsiMethod operation = (PsiMethod) element;
-
-        result.append("a.").append(operation.getName()).append("(b)");
-      }
-    }
-    result.append(");");
-    return result.toString();
   }
 
 }

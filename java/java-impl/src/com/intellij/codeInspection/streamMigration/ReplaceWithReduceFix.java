@@ -1,11 +1,10 @@
 package com.intellij.codeInspection.streamMigration;
 
-import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.MapOp;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
-import com.siyeh.ig.psiutils.TypeUtils;
-import one.util.streamex.StreamEx;
+import com.siyeh.ig.psiutils.ExpressionUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Optional;
 
@@ -20,50 +19,53 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
     return "Replace with reduce()";
   }
 
-  private static PsiElement replaceWithStringConcatenation(@NotNull Project project,
-                                                           PsiLoopStatement loopStatement,
-                                                           PsiVariable var,
-                                                           PsiVariable checkVar,
-                                                           StringBuilder builder,
-                                                           boolean stringConcat) {
-    PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
-    restoreComments(loopStatement, loopStatement.getBody());
+  @Nullable
+  public static String replaceWithReduction(PsiLoopStatement loopStatement,
+                                            PsiVariable var,
+                                            PsiAssignmentExpression assignment) {
+    if (!(assignment.getLExpression() instanceof PsiReferenceExpression)) return null;
+    PsiVariable accumulator = ReduceHandling.resolveVariable(assignment.getLExpression());
+    if (accumulator == null) return null;
+
+    StringBuilder result = new StringBuilder(".reduce(");
+
+    PsiExpression init = var.getInitializer();
     StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
-    if (stringConcat) {
-      // Unlike StringBuilder, String concats don't use in-place refactoring
-      if (status == StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) return null;
-
-      // Get initializer constructor argument if present
-      String sbArg = Optional.ofNullable(var.getInitializer()).map(PsiElement::getText).orElse(null);
-      if (sbArg != null && !"\"\"".equals(sbArg)) {
-        builder.insert(0, " + ");
-        builder.insert(0, sbArg);
-      }
+    if (status == StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN || init == null) {
+      result.append(accumulator.getName());
+    } else {
+      result.append(init.getText());
     }
 
-    // Replace variable declaration type and initializer
-    if (var.getTypeElement() != null) {
-      if (checkVar != null) {
-        if (StringConcatHandling.isVariableReferencedAfter(checkVar, loopStatement)) {
-          PsiExpression initializer = checkVar.getInitializer();
-          if (initializer != null) {
-            initializer.delete();
-          }
-        } else {
-          checkVar.delete();
+    result.append(", (a, b) -> ");
+
+    if (JavaTokenType.PLUSEQ.equals(assignment.getOperationTokenType())) {
+      result.append("a + b");
+    } else if (JavaTokenType.ASTERISKEQ.equals(assignment.getOperationTokenType())) {
+      result.append("a * b");
+    } else if (JavaTokenType.EQ.equals(assignment.getOperationTokenType())) {
+      if (assignment.getRExpression() instanceof PsiBinaryExpression) {
+        PsiBinaryExpression binOp = (PsiBinaryExpression)assignment.getRExpression();
+        if (JavaTokenType.PLUS.equals(binOp.getOperationTokenType())) {
+          result.append("a + b");
+        } else if (JavaTokenType.ASTERISK.equals(binOp.getOperationTokenType())) {
+          result.append("a * b");
         }
-        // Refresh status after removing switch variable
-        status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
-      }
-      if (stringConcat) {
-        PsiExpression initializer = var.getInitializer();
-        return replaceInitializer(loopStatement, var, initializer, builder.toString(), status);
-      } else {
-        return loopStatement.replace(elementFactory.createStatementFromText(var.getName() + ".append(" + builder.toString() + ");",
-                                                                            loopStatement));
+      } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
+        // Check that accumulator is valid as a method call on the accumulator variable
+        PsiMethodCallExpression mce = (PsiMethodCallExpression) assignment.getRExpression();
+        if (mce == null || !ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator)) return null;
+
+        // Resolve to the method declaration to verify the annotation for associativity
+        PsiElement element = mce.getMethodExpression().resolve();
+        if (element == null || !(element instanceof PsiMethod)) return null;
+        PsiMethod operation = (PsiMethod) element;
+
+        result.append("a.").append(operation.getName()).append("(b)");
       }
     }
-    return loopStatement;
+    result.append(")");
+    return result.toString();
   }
 
   @Override
@@ -82,11 +84,18 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     StreamApiMigrationInspection.Operation op = tb.getLastOperation();
     StringBuilder builder = generateStream(op);
-    builder.insert(0, " = ");
-    builder.insert(0, accumulator.getName());
-    builder.append(ReduceHandling.createReductionReplacement(stmt));
 
-    return loopStatement.replace(elementFactory.createStatementFromText(builder.toString(), loopStatement));
+    PsiExpression init = accumulator.getInitializer();
+    StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(accumulator, loopStatement);
+    builder.append(replaceWithReduction(loopStatement, accumulator, stmt));
+    if (status == StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN || init == null) {
+      builder.insert(0, " = ");
+      builder.insert(0, accumulator.getName());
+      builder.append(";");
+      return loopStatement.replace(elementFactory.createStatementFromText(builder.toString(), loopStatement));
+    } else {
+      return replaceInitializer(loopStatement, accumulator, init, builder.toString(), status);
+    }
   }
 
 }
