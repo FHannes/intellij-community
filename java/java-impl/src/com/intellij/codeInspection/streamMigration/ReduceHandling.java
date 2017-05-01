@@ -34,6 +34,7 @@ public class ReduceHandling {
 
   static {
     addAssociative(CommonClassNames.JAVA_LANG_STRING, "concat");
+    addAssociative(CommonClassNames.JAVA_LANG_STRING_BUFFER, "append");
   }
 
   private static boolean isAssociativeOperation(PsiMethod method) {
@@ -104,30 +105,6 @@ public class ReduceHandling {
     return null;
   }
 
-  /**
-   * Checks if a given expression is a negated reference to a given variable.
-   *
-   * @param expr
-   * @param var
-   * @return
-   */
-  private static boolean isNegatedReferenceTo(PsiExpression expr, PsiVariable var) {
-    expr = ParenthesesUtils.stripParentheses(expr);
-    if (!(expr instanceof PsiPrefixExpression)) return false;
-    PsiPrefixExpression prefix = (PsiPrefixExpression) expr;
-    if (!JavaTokenType.EXCL.equals(prefix.getOperationTokenType())) return false;
-    if (!(prefix.getOperand() instanceof PsiReferenceExpression)) return false;
-    return ExpressionUtils.isReferenceTo(prefix.getOperand(), var);
-  }
-
-  @Nullable
-  public static PsiAssignmentExpression getAssignment(PsiStatement stmt) {
-    if (!(stmt instanceof PsiExpressionStatement)) return null;
-    PsiExpression expr = ((PsiExpressionStatement) stmt).getExpression();
-    if (!(expr instanceof PsiAssignmentExpression)) return null;
-    return (PsiAssignmentExpression) expr;
-  }
-
   @Nullable
   public static PsiMethodCallExpression getMethodCall(PsiStatement stmt) {
     if (!(stmt instanceof PsiExpressionStatement)) return null;
@@ -142,7 +119,7 @@ public class ReduceHandling {
 
   @Nullable
   public static PsiVariable getReduceVar(PsiLoopStatement loop, StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
-    PsiAssignmentExpression stmt = getAssignment(tb.getSingleStatement());
+    PsiAssignmentExpression stmt = tb.getSingleExpression(PsiAssignmentExpression.class);
     if (stmt == null) return null;
 
     PsiVariable accumulator = getReductionAccumulator(stmt);
@@ -153,6 +130,44 @@ public class ReduceHandling {
     if (StreamApiMigrationInspection.getInitializerUsageStatus(accumulator, loop) == UNKNOWN) return null;
 
     return accumulator;
+  }
+
+  @Nullable
+  public static String createReductionReplacement(PsiAssignmentExpression assignment) {
+    if (!(assignment.getLExpression() instanceof PsiReferenceExpression)) return null;
+    PsiVariable accumulator = resolveVariable(assignment.getLExpression());
+    if (accumulator == null) return null;
+
+    StringBuilder result = new StringBuilder(".reduce(");
+    result.append(accumulator.getName()).append(", (a, b) -> ");
+
+    if (JavaTokenType.PLUSEQ.equals(assignment.getOperationTokenType())) {
+      result.append("a + b");
+    } else if (JavaTokenType.ASTERISKEQ.equals(assignment.getOperationTokenType())) {
+      result.append("a * b");
+    } else if (JavaTokenType.EQ.equals(assignment.getOperationTokenType())) {
+      if (assignment.getRExpression() instanceof PsiBinaryExpression) {
+        PsiBinaryExpression binOp = (PsiBinaryExpression)assignment.getRExpression();
+        if (JavaTokenType.PLUS.equals(binOp.getOperationTokenType())) {
+          result.append("a + b");
+        } else if (JavaTokenType.ASTERISK.equals(binOp.getOperationTokenType())) {
+          result.append("a * b");
+        }
+      } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
+        // Check that accumulator is valid as a method call on the accumulator variable
+        PsiMethodCallExpression mce = (PsiMethodCallExpression) assignment.getRExpression();
+        if (mce == null || !ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator)) return null;
+
+        // Resolve to the method declaration to verify the annotation for associativity
+        PsiElement element = mce.getMethodExpression().resolve();
+        if (element == null || !(element instanceof PsiMethod)) return null;
+        PsiMethod operation = (PsiMethod) element;
+
+        result.append("a.").append(operation.getName()).append("(b)");
+      }
+    }
+    result.append(");");
+    return result.toString();
   }
 
 }

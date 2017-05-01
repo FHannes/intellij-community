@@ -71,58 +71,22 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
                      @NotNull PsiLoopStatement loopStatement,
                      @NotNull PsiStatement body,
                      @NotNull StreamApiMigrationInspection.TerminalBlock tb) {
-    Optional<PsiVariable> var = StreamEx.of(tb.getStatements())
-      .map(StringConcatHandling::getMethodCall)
-      .nonNull().map(e -> StringConcatHandling.resolveVariable(e.getMethodExpression().getQualifierExpression()))
-      .nonNull().filter(v -> v.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER))
-      .findAny();
-    if (!var.isPresent()) return null;
+    PsiAssignmentExpression stmt = tb.getSingleExpression(PsiAssignmentExpression.class);
+    if (stmt == null) return null;
 
-    Optional<PsiExpression> appended = StreamEx.of(tb.getStatements())
-      .map(s -> StringConcatHandling.getAppendParam(var.get(), s, false))
-      .nonNull().findAny();
-    if (!appended.isPresent()) return null;
+    PsiVariable accumulator = ReduceHandling.getReductionAccumulator(stmt);
+    if (accumulator == null) return null;
 
-    PsiVariable checkVar = null;
+    restoreComments(loopStatement, loopStatement.getBody());
 
-    PsiType type = TypeUtils.getType(CommonClassNames.JAVA_LANG_STRING, body);
+    PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     StreamApiMigrationInspection.Operation op = tb.getLastOperation();
-    if (!TypeUtils.expressionHasTypeOrSubtype(appended.get(), StringConcatHandling.JAVA_LANG_CHARSEQUENCE)) {
-      PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
-      PsiExpression newAppended = elementFactory.createExpressionFromText(CommonClassNames.JAVA_LANG_STRING + ".valueOf(" +
-                                                                       appended.get().getText() + ")", loopStatement);
-
-      op = new MapOp(op, newAppended, tb.getVariable(), type);
-    } else {
-      op = new MapOp(op, appended.get(), tb.getVariable(), type);
-    }
-
     StringBuilder builder = generateStream(op);
-    builder.append(".collect(java.util.stream.Collectors.joining(");
-    if (tb.getStatements()[0] instanceof PsiIfStatement) {
-      PsiIfStatement ifStmt = (PsiIfStatement) tb.getStatements()[0];
-      checkVar = StringConcatHandling.getCheckVariable(ifStmt);
+    builder.insert(0, " = ");
+    builder.insert(0, accumulator.getName());
+    builder.append(ReduceHandling.createReductionReplacement(stmt));
 
-      Optional<PsiExpression> delim = StreamEx.of(ifStmt.getThenBranch(), ifStmt.getElseBranch())
-        .nonNull().map(b -> ((PsiBlockStatement) b).getCodeBlock())
-        .filter(cb -> cb.getStatements().length == 1)
-        .map(cb -> StringConcatHandling.getAppendParam(var.get(), cb.getStatements()[0], false))
-        .nonNull().findAny();
-      if (!delim.isPresent()) return null;
-
-      boolean getValue = !TypeUtils.expressionHasTypeOrSubtype(delim.get(), StringConcatHandling.JAVA_LANG_CHARSEQUENCE);
-      if (getValue) {
-        builder.append(CommonClassNames.JAVA_LANG_STRING);
-        builder.append(".valueOf(");
-      }
-      builder.append(delim.get().getText());
-      if (getValue) {
-        builder.append(")");
-      }
-    }
-    builder.append("))");
-
-    return replaceWithStringConcatenation(project, loopStatement, var.get(), checkVar, builder, false);
+    return loopStatement.replace(elementFactory.createStatementFromText(builder.toString(), loopStatement));
   }
 
 }
