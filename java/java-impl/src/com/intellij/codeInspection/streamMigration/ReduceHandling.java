@@ -3,6 +3,7 @@ package com.intellij.codeInspection.streamMigration;
 import com.intellij.codeInsight.AnnotationUtil;
 import com.intellij.psi.*;
 import com.siyeh.ig.psiutils.ExpressionUtils;
+import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
@@ -85,7 +86,7 @@ public class ReduceHandling {
       } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
         // Check that accumulator is valid as a method call on the accumulator variable
         PsiMethodCallExpression mce = (PsiMethodCallExpression) assignment.getRExpression();
-        if (mce == null || !ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator)) return null;
+        if (mce == null) return null;
 
         // Resolve to the method declaration to verify the annotation for associativity
         PsiElement element = mce.getMethodExpression().resolve();
@@ -94,6 +95,10 @@ public class ReduceHandling {
 
         // Check for presence of Associative annotation
         if (!isAssociativeOperation(operation)) return null;
+
+        // Either the call subject or the parameter of the call should be the accumulator
+        if (!ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator) &&
+            !ExpressionUtils.isReferenceTo(mce.getArgumentList().getExpressions()[0], accumulator)) return null;
 
         return accumulator;
       }

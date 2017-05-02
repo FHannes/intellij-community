@@ -18,9 +18,10 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
   }
 
   @Nullable
-  public static String replaceWithReduction(PsiLoopStatement loopStatement,
-                                            PsiVariable var,
-                                            PsiAssignmentExpression assignment) {
+  public static String replaceWithReduction(@NotNull PsiLoopStatement loopStatement,
+                                            @NotNull PsiVariable var,
+                                            @NotNull PsiAssignmentExpression assignment,
+                                            @NotNull StreamApiMigrationInspection.TerminalBlock tb) {
     if (!(assignment.getLExpression() instanceof PsiReferenceExpression)) return null;
     PsiVariable accumulator = ReduceHandling.resolveVariable(assignment.getLExpression());
     if (accumulator == null) return null;
@@ -38,38 +39,51 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
     result.append(", (a, b) -> ");
 
     if (JavaTokenType.PLUSEQ.equals(assignment.getOperationTokenType())) {
-      result.append("a + b");
+      result.append("a + ");
+      if (ExpressionUtils.isReferenceTo(assignment.getRExpression(), tb.getVariable())) {
+        result.append('b');
+      } else {
+        result.append(assignment.getRExpression().getText());
+      }
     } else if (JavaTokenType.ASTERISKEQ.equals(assignment.getOperationTokenType())) {
-      result.append("a * b");
+      result.append("a * ");
+      if (ExpressionUtils.isReferenceTo(assignment.getRExpression(), tb.getVariable())) {
+        result.append('b');
+      } else {
+        result.append(assignment.getRExpression().getText());
+      }
     } else if (JavaTokenType.EQ.equals(assignment.getOperationTokenType())) {
       if (assignment.getRExpression() instanceof PsiBinaryExpression) {
         PsiBinaryExpression binOp = (PsiBinaryExpression)assignment.getRExpression();
-        if (ExpressionUtils.isReferenceTo(binOp.getLOperand(), accumulator)) {
-          if (JavaTokenType.PLUS.equals(binOp.getOperationTokenType())) {
-            result.append("a + b");
-          }
-          else if (JavaTokenType.ASTERISK.equals(binOp.getOperationTokenType())) {
-            result.append("a * b");
-          }
-        } else if (ExpressionUtils.isReferenceTo(binOp.getROperand(), accumulator)) {
-          if (JavaTokenType.PLUS.equals(binOp.getOperationTokenType())) {
-            result.append("b + a");
-          }
-          else if (JavaTokenType.ASTERISK.equals(binOp.getOperationTokenType())) {
-            result.append("b * a");
-          }
+        String operator = JavaTokenType.PLUS.equals(binOp.getOperationTokenType()) ? "+" : "*";
+        boolean plainOp = ExpressionUtils.isReferenceTo(binOp.getLOperand(), accumulator);
+        String leftOp = plainOp ? "a" : "b", rightOp = plainOp ? "b" : "a";
+        if (ExpressionUtils.isReferenceTo(binOp.getLOperand(), accumulator) &&
+            !ExpressionUtils.isReferenceTo(binOp.getROperand(), tb.getVariable())) {
+          rightOp = binOp.getROperand().getText();
+        } else if (ExpressionUtils.isReferenceTo(binOp.getROperand(), accumulator) &&
+                   !ExpressionUtils.isReferenceTo(binOp.getLOperand(), tb.getVariable())) {
+          leftOp = binOp.getLOperand().getText();
         }
+        result.append(leftOp).append(' ').append(operator).append(' ').append(rightOp);
       } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
         // Check that accumulator is valid as a method call on the accumulator variable
         PsiMethodCallExpression mce = (PsiMethodCallExpression) assignment.getRExpression();
-        if (mce == null || !ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator)) return null;
+        if (mce == null) return null;
 
         // Resolve to the method declaration to verify the annotation for associativity
         PsiElement element = mce.getMethodExpression().resolve();
         if (element == null || !(element instanceof PsiMethod)) return null;
         PsiMethod operation = (PsiMethod) element;
 
-        result.append("a.").append(operation.getName()).append("(b)");
+        boolean plainOp = ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator);
+        String leftOp = plainOp ? "a" : "b", rightOp = plainOp ? "b" : "a";
+
+        if (!ExpressionUtils.isReferenceTo(mce.getArgumentList().getExpressions()[0], tb.getVariable())) {
+          rightOp = mce.getArgumentList().getExpressions()[0].getText();
+        }
+
+        result.append(leftOp).append('.').append(operation.getName()).append('(').append(rightOp).append(')');
       }
     }
     result.append(")");
@@ -95,7 +109,7 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
 
     PsiExpression init = accumulator.getInitializer();
     StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(accumulator, loopStatement);
-    builder.append(replaceWithReduction(loopStatement, accumulator, stmt));
+    builder.append(replaceWithReduction(loopStatement, accumulator, stmt, tb));
     if (status == StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN || init == null) {
       builder.insert(0, " = ");
       builder.insert(0, accumulator.getName());
