@@ -6,8 +6,6 @@ import com.siyeh.ig.psiutils.ExpressionUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Optional;
-
 /**
  * @author Frédéric Hannes
  */
@@ -46,10 +44,20 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
     } else if (JavaTokenType.EQ.equals(assignment.getOperationTokenType())) {
       if (assignment.getRExpression() instanceof PsiBinaryExpression) {
         PsiBinaryExpression binOp = (PsiBinaryExpression)assignment.getRExpression();
-        if (JavaTokenType.PLUS.equals(binOp.getOperationTokenType())) {
-          result.append("a + b");
-        } else if (JavaTokenType.ASTERISK.equals(binOp.getOperationTokenType())) {
-          result.append("a * b");
+        if (ExpressionUtils.isReferenceTo(binOp.getLOperand(), accumulator)) {
+          if (JavaTokenType.PLUS.equals(binOp.getOperationTokenType())) {
+            result.append("a + b");
+          }
+          else if (JavaTokenType.ASTERISK.equals(binOp.getOperationTokenType())) {
+            result.append("a * b");
+          }
+        } else if (ExpressionUtils.isReferenceTo(binOp.getROperand(), accumulator)) {
+          if (JavaTokenType.PLUS.equals(binOp.getOperationTokenType())) {
+            result.append("b + a");
+          }
+          else if (JavaTokenType.ASTERISK.equals(binOp.getOperationTokenType())) {
+            result.append("b * a");
+          }
         }
       } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
         // Check that accumulator is valid as a method call on the accumulator variable
