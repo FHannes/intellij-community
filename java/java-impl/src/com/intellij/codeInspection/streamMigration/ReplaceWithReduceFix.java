@@ -79,7 +79,7 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
         boolean plainOp = ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator);
         String leftOp = plainOp ? "a" : "b", rightOp = plainOp ? "b" : "a";
 
-        if (!ExpressionUtils.isReferenceTo(mce.getArgumentList().getExpressions()[0], tb.getVariable())) {
+        if (plainOp && !ExpressionUtils.isReferenceTo(mce.getArgumentList().getExpressions()[0], tb.getVariable())) {
           rightOp = mce.getArgumentList().getExpressions()[0].getText();
         }
 
