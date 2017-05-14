@@ -154,7 +154,7 @@ public class StringConcatHandling {
     return element.getModifierList() != null && element.getModifierList().hasModifierProperty(PsiModifier.FINAL);
   }
 
-  public static boolean isConstantValue(PsiExpression expr) {
+  public static boolean isConstantValue(PsiExpression expr, PsiLoopStatement loop) {
     if (expr instanceof PsiLiteralExpression) return true;
 
     if (ExpressionUtils.isZeroLengthArrayConstruction(expr)) return true;
@@ -163,9 +163,11 @@ public class StringConcatHandling {
       PsiVariable var = resolveVariable(expr);
       if (var == null) return false;
 
-      if (isFinal(var)) return true;
+      boolean fnl = isFinal(var);
 
-      if (CollectionUtils.isEmptyArray(var)) return true;
+      if (fnl && CollectionUtils.isEmptyArray(var)) return true;
+
+      if (!fnl && isValueChangedBefore(var, loop)) return false;
 
       // The type of the variable must be an immutable class, or its contents could also change at runtime
       return ClassUtils.isImmutable(var.getType());
@@ -196,6 +198,45 @@ public class StringConcatHandling {
     final int blockEnd = controlFlow.getEndOffset(block);
 
     return ControlFlowUtil.isVariableUsed(controlFlow, loopEnd, blockEnd, var);
+  }
+
+  public static boolean isValueChangedBefore(PsiVariable var, PsiStatement statement) {
+    if (!(var instanceof PsiLocalVariable)) return false;
+
+    // The variable must be declared inside of the same method as the statement
+    if (PsiTreeUtil.getParentOfType(var, PsiLambdaExpression.class, PsiMethod.class) !=
+        PsiTreeUtil.getParentOfType(statement, PsiLambdaExpression.class, PsiMethod.class)) return false;
+
+    PsiElement block = PsiUtil.getVariableCodeBlock(var, null);
+    if (block == null) return false;
+
+    ControlFlow controlFlow;
+    try {
+      controlFlow = ControlFlowFactory.getInstance(statement.getProject())
+        .getControlFlow(block, LocalsOrMyInstanceFieldsControlFlowPolicy.getInstance());
+    } catch (AnalysisCanceledException ignored) {
+      return false;
+    }
+
+    final int blockStart = controlFlow.getStartOffset(block);
+    final int loopStart = controlFlow.getStartOffset(statement);
+
+    Map<Integer, List<ControlFlowUtil.ControlFlowEdge>> edges =
+      StreamEx.of(ControlFlowUtil.getEdges(controlFlow, blockStart)).groupingBy(e -> e.myFrom);
+
+    Queue<Integer> branches = new LinkedList<>();
+    branches.add(blockStart);
+    while (!branches.isEmpty()) {
+      int branch = branches.poll();
+
+      if (branch < controlFlow.getSize() && branch < loopStart) {
+        if (isVariableWritten(controlFlow, branch, var)) return true;
+
+        branches.addAll(StreamEx.of(edges.get(branch)).map(edge -> edge.myTo).toList());
+      }
+    }
+
+    return false;
   }
 
   public static boolean isValueReferencedAfter(PsiVariable var, PsiStatement statement) {
@@ -318,7 +359,7 @@ public class StringConcatHandling {
       if (delimVar == null) return null;
       PsiExpression delim = getAppendParam(delimVar, appendBranch.get().getStatements()[0],
                                            delimVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING));
-      if (!isConstantValue(delim)) return null;
+      if (!isConstantValue(delim, loop)) return null;
 
       if (tb.getStatements().length == 2) {
         if (!checkBranch.isPresent()) return null;
