@@ -167,7 +167,7 @@ public class StringConcatHandling {
 
       if (fnl && CollectionUtils.isEmptyArray(var)) return true;
 
-      if (!fnl && isValueChangedBeforeEndOf(var, loop)) return false;
+      if (!fnl && isValueChangedBetween(var, loop)) return false;
 
       // The type of the variable must be an immutable class, or its contents could also change at runtime
       return ClassUtils.isImmutable(var.getType());
@@ -200,7 +200,7 @@ public class StringConcatHandling {
     return ControlFlowUtil.isVariableUsed(controlFlow, loopEnd, blockEnd, var);
   }
 
-  public static boolean isValueChangedBeforeEndOf(PsiVariable var, PsiStatement statement) {
+  public static boolean isValueChangedBetween(PsiVariable var, PsiStatement statement) {
     if (!(var instanceof PsiLocalVariable)) return false;
 
     // The variable must be declared inside of the same method as the statement
@@ -218,14 +218,14 @@ public class StringConcatHandling {
       return false;
     }
 
-    final int blockStart = controlFlow.getStartOffset(block);
+    final int loopStart = controlFlow.getStartOffset(statement);
     final int loopEnd = controlFlow.getEndOffset(statement);
 
     Map<Integer, List<ControlFlowUtil.ControlFlowEdge>> edges =
-      StreamEx.of(ControlFlowUtil.getEdges(controlFlow, blockStart)).groupingBy(e -> e.myFrom);
+      StreamEx.of(ControlFlowUtil.getEdges(controlFlow, loopStart)).groupingBy(e -> e.myFrom);
 
     Queue<Integer> branches = new LinkedList<>();
-    branches.add(blockStart);
+    branches.add(loopStart);
     while (!branches.isEmpty()) {
       int branch = branches.poll();
 
