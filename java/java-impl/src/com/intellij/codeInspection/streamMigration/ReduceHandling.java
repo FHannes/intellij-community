@@ -7,6 +7,7 @@ import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
+import java.math.BigInteger;
 import java.util.*;
 
 /**
@@ -30,8 +31,25 @@ public class ReduceHandling {
   }
 
   static {
+    // Search API for regex: "public (?:final ?|abstract ?)?([A-Z]\w*) \w+ ?\( ?(?:final ?)?\1 \w+ ?\)"
+    addAssociative("java.awt.Rectangle", "intersection"); // Identity is R2??
+    addAssociative("java.awt.Rectangle", "union"); // Identity is empty rectangle
     addAssociative(CommonClassNames.JAVA_LANG_STRING, "concat");
     addAssociative(CommonClassNames.JAVA_LANG_STRING_BUFFER, "append");
+    addAssociative("java.math.BigDecimal", "add");
+    addAssociative("java.math.BigDecimal", "min"); // Identity is max value?
+    addAssociative("java.math.BigDecimal", "max"); // Identity is min value?
+    addAssociative("java.math.BigDecimal", "multiply");
+    addAssociative("java.math.BigInteger", "add");
+    addAssociative("java.math.BigInteger", "and"); // Identity is ???
+    addAssociative("java.math.BigInteger", "min"); // Identity is max value?
+    addAssociative("java.math.BigInteger", "max"); // Identity is min value?
+    addAssociative("java.math.BigInteger", "multiply");
+    addAssociative("java.math.BigInteger", "or"); // Identity is ???
+    addAssociative("java.math.BigInteger", "xor"); // Identity is ???
+    addAssociative("java.time.Duration", "plus");
+    addAssociative("java.util.StringJoiner", "merge");
+    addAssociative("javax.xml.datatype.Duration", "add");
   }
 
   private static boolean isAssociativeOperation(PsiMethod method) {
