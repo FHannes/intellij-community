@@ -51,11 +51,11 @@ public class ReduceHandling {
 
   private static void addAssociativeStatic(String type, String clazz, String method, String identity, boolean idempotent) {
     Map<String, Pair<String, Boolean>> operations;
-    if (associativeMemberOperations.containsKey(type)) {
-      operations = associativeMemberOperations.get(type);
+    if (associativeStaticOperations.containsKey(type)) {
+      operations = associativeStaticOperations.get(type);
     } else {
       operations = new HashMap<>();
-      associativeMemberOperations.put(type, operations);
+      associativeStaticOperations.put(type, operations);
     }
     operations.put(clazz + '.' + method, new Pair<>(identity, idempotent));
   }
