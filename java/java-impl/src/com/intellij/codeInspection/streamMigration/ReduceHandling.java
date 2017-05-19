@@ -1,13 +1,14 @@
 package com.intellij.codeInspection.streamMigration;
 
 import com.intellij.codeInsight.AnnotationUtil;
+import com.intellij.openapi.util.Pair;
 import com.intellij.psi.*;
+import com.intellij.psi.tree.IElementType;
 import com.siyeh.ig.psiutils.ExpressionUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
+import com.siyeh.ig.psiutils.TypeUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
-import java.math.BigInteger;
 import java.util.*;
 
 /**
@@ -17,39 +18,146 @@ public class ReduceHandling {
 
   @NonNls public static final String BE_KULEUVEN_CS_DTAI_ASSOCIATIVE = "be.kuleuven.cs.dtai.Associative";
 
-  @NonNls private static final Map<String, Set<String>> associativeOperations = new HashMap<>();
+  @NonNls public static final Map<String, Map<IElementType, Pair<String, Boolean>>> associativeOperators = new HashMap<>();
+  @NonNls private static final Map<String, Map<String, Pair<String, Boolean>>> associativeMemberOperations = new HashMap<>();
+  @NonNls private static final Map<String, Map<String, Pair<String, Boolean>>> associativeStaticOperations = new HashMap<>();
 
-  private static void addAssociative(String clazz, String method) {
-    Set<String> operations;
-    if (associativeOperations.containsKey(clazz)) {
-      operations = associativeOperations.get(clazz);
-    } else {
-      operations = new HashSet<>();
-      associativeOperations.put(clazz, operations);
-    }
-    operations.add(method);
+  private static void addAssociativeOperator(PsiPrimitiveType clazz, IElementType tokenType, String identity, boolean idempotent) {
+    addAssociativeOperator(clazz.getBoxedTypeName(), tokenType, identity, idempotent);
+    addAssociativeOperator(clazz.getCanonicalText(false), tokenType, identity, idempotent);
   }
 
+  private static void addAssociativeOperator(String clazz, IElementType tokenType, String identity, boolean idempotent) {
+    Map<IElementType, Pair<String, Boolean>> operations;
+    if (associativeOperators.containsKey(clazz)) {
+      operations = associativeOperators.get(clazz);
+    } else {
+      operations = new HashMap<>();
+      associativeOperators.put(clazz, operations);
+    }
+    operations.put(tokenType, new Pair<>(identity, idempotent));
+  }
+
+  private static void addAssociativeMember(String clazz, String method, String identity, boolean idempotent) {
+    Map<String, Pair<String, Boolean>> operations;
+    if (associativeMemberOperations.containsKey(clazz)) {
+      operations = associativeMemberOperations.get(clazz);
+    } else {
+      operations = new HashMap<>();
+      associativeMemberOperations.put(clazz, operations);
+    }
+    operations.put(method, new Pair<>(identity, idempotent));
+  }
+
+  private static void addAssociativeStatic(String type, String clazz, String method, String identity, boolean idempotent) {
+    Map<String, Pair<String, Boolean>> operations;
+    if (associativeMemberOperations.containsKey(type)) {
+      operations = associativeMemberOperations.get(type);
+    } else {
+      operations = new HashMap<>();
+      associativeMemberOperations.put(type, operations);
+    }
+    operations.put(clazz + '.' + method, new Pair<>(identity, idempotent));
+  }
+
+  // TODO: Support unary and binary
+  // TODO: Identify idempotent operations for patternµ
+  // TODO: Ensure types match for operators (primitive != classtype)
+
   static {
-    // Search API for regex: "public (?:final ?|abstract ?)?([A-Z]\w*) \w+ ?\( ?(?:final ?)?\1 \w+ ?\)"
-    addAssociative("java.awt.Rectangle", "intersection"); // Identity is R2??
-    addAssociative("java.awt.Rectangle", "union"); // Identity is empty rectangle
-    addAssociative(CommonClassNames.JAVA_LANG_STRING, "concat");
-    addAssociative(CommonClassNames.JAVA_LANG_STRING_BUFFER, "append");
-    addAssociative("java.math.BigDecimal", "add");
-    addAssociative("java.math.BigDecimal", "min"); // Identity is max value?
-    addAssociative("java.math.BigDecimal", "max"); // Identity is min value?
-    addAssociative("java.math.BigDecimal", "multiply");
-    addAssociative("java.math.BigInteger", "add");
-    addAssociative("java.math.BigInteger", "and"); // Identity is ???
-    addAssociative("java.math.BigInteger", "min"); // Identity is max value?
-    addAssociative("java.math.BigInteger", "max"); // Identity is min value?
-    addAssociative("java.math.BigInteger", "multiply");
-    addAssociative("java.math.BigInteger", "or"); // Identity is ???
-    addAssociative("java.math.BigInteger", "xor"); // Identity is ???
-    addAssociative("java.time.Duration", "plus");
-    addAssociative("java.util.StringJoiner", "merge");
-    addAssociative("javax.xml.datatype.Duration", "add");
+    // boolean
+    addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.AND, "true", true);
+    addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.OR, "false", true);
+    addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.ANDAND, "true", false);
+    addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.OROR, "false", true);
+
+    // char
+    addAssociativeOperator(PsiType.CHAR, JavaTokenType.PLUS, "0", false);
+    addAssociativeOperator(PsiType.CHAR, JavaTokenType.ASTERISK, "1", false);
+    addAssociativeOperator(PsiType.CHAR, JavaTokenType.AND, "1", true);
+    addAssociativeOperator(PsiType.CHAR, JavaTokenType.OR, "0", true);
+    addAssociativeOperator(PsiType.CHAR, JavaTokenType.XOR, "", false);
+
+    // byte
+    addAssociativeOperator(PsiType.BYTE, JavaTokenType.PLUS, "0", false);
+    addAssociativeOperator(PsiType.BYTE, JavaTokenType.ASTERISK, "1", false);
+    addAssociativeOperator(PsiType.BYTE, JavaTokenType.AND, "$FF", true);
+    addAssociativeOperator(PsiType.BYTE, JavaTokenType.OR, "0", true);
+    addAssociativeOperator(PsiType.BYTE, JavaTokenType.XOR, "", false);
+
+    // short
+    addAssociativeOperator(PsiType.SHORT, JavaTokenType.PLUS, "0", false);
+    addAssociativeOperator(PsiType.SHORT, JavaTokenType.ASTERISK, "1", false);
+    addAssociativeOperator(PsiType.SHORT, JavaTokenType.AND, "", true);
+    addAssociativeOperator(PsiType.SHORT, JavaTokenType.OR, "0", true);
+    addAssociativeOperator(PsiType.SHORT, JavaTokenType.XOR, "", false);
+
+    // int
+    addAssociativeOperator(PsiType.INT, JavaTokenType.PLUS, "0", false);
+    addAssociativeOperator(PsiType.INT, JavaTokenType.ASTERISK, "1", false);
+    addAssociativeOperator(PsiType.INT, JavaTokenType.AND, "", true);
+    addAssociativeOperator(PsiType.INT, JavaTokenType.OR, "0", true);
+    addAssociativeOperator(PsiType.INT, JavaTokenType.XOR, "", false);
+
+    // long
+    addAssociativeOperator(PsiType.LONG, JavaTokenType.PLUS, "0", false);
+    addAssociativeOperator(PsiType.LONG, JavaTokenType.ASTERISK, "1", false);
+    addAssociativeOperator(PsiType.LONG, JavaTokenType.AND, "", true);
+    addAssociativeOperator(PsiType.LONG, JavaTokenType.OR, "0L", true);
+    addAssociativeOperator(PsiType.LONG, JavaTokenType.XOR, "", false);
+
+    // float
+    addAssociativeOperator(PsiType.FLOAT, JavaTokenType.PLUS, "0F", false);
+    addAssociativeOperator(PsiType.FLOAT, JavaTokenType.ASTERISK, "1F", false);
+
+    // double
+    addAssociativeOperator(PsiType.FLOAT, JavaTokenType.PLUS, "0D", false);
+    addAssociativeOperator(PsiType.FLOAT, JavaTokenType.ASTERISK, "1D", false);
+
+    // String
+    addAssociativeOperator(CommonClassNames.JAVA_LANG_STRING, JavaTokenType.PLUS, "\"\"", false);
+
+    // Member method operations
+    addAssociativeMember(CommonClassNames.JAVA_LANG_STRING, "concat", "\"\"", false);
+    addAssociativeMember("java.math.BigDecimal", "add", "java.math.BigDecimal.ZERO", false);
+    addAssociativeMember("java.math.BigDecimal", "min", "", true);
+    addAssociativeMember("java.math.BigDecimal", "max", "", true);
+    addAssociativeMember("java.math.BigDecimal", "multiply", "java.math.BigDecimal.ONE", false);
+    addAssociativeMember("java.math.BigInteger", "add", "java.math.BigInteger.ZERO", false);
+    addAssociativeMember("java.math.BigInteger", "and", "", true);
+    addAssociativeMember("java.math.BigInteger", "min", "", true);
+    addAssociativeMember("java.math.BigInteger", "max", "", true);
+    addAssociativeMember("java.math.BigInteger", "multiply", "java.math.BigInteger.ONE", false);
+    addAssociativeMember("java.math.BigInteger", "or", "java.math.BigInteger.ZERO", true);
+    addAssociativeMember("java.math.BigInteger", "xor", "", false);
+    addAssociativeMember("java.time.Duration", "plus", "java.time.Duration.ZERO", false);
+    addAssociativeMember("javax.xml.datatype.Duration", "add", "", false);
+
+    // public static (?:final )?(\w\w*) \w+ ?\( ?(?:final )?\1 \w+ ?, ?(?:final )?\1 \w+ ?\)
+    // Static method operations
+    addAssociativeStatic(PsiKeyword.BOOLEAN, CommonClassNames.JAVA_LANG_BOOLEAN, "logicalAnd", "true", true);
+    addAssociativeStatic(PsiKeyword.BOOLEAN, CommonClassNames.JAVA_LANG_BOOLEAN, "logicalOr", "false", true);
+    addAssociativeStatic(PsiKeyword.BOOLEAN, CommonClassNames.JAVA_LANG_BOOLEAN, "logicalXor", "", false);
+    addAssociativeStatic(PsiKeyword.DOUBLE, CommonClassNames.JAVA_LANG_DOUBLE, "max", "", true);
+    addAssociativeStatic(PsiKeyword.DOUBLE, CommonClassNames.JAVA_LANG_DOUBLE, "min", "", true);
+    addAssociativeStatic(PsiKeyword.DOUBLE, CommonClassNames.JAVA_LANG_DOUBLE, "sum", "0D", false);
+    addAssociativeStatic(PsiKeyword.FLOAT, CommonClassNames.JAVA_LANG_FLOAT, "max", "", true);
+    addAssociativeStatic(PsiKeyword.FLOAT, CommonClassNames.JAVA_LANG_FLOAT, "min", "", true);
+    addAssociativeStatic(PsiKeyword.FLOAT, CommonClassNames.JAVA_LANG_FLOAT, "sum", "0F", false);
+    addAssociativeStatic(PsiKeyword.INT, CommonClassNames.JAVA_LANG_INTEGER, "max", "", true);
+    addAssociativeStatic(PsiKeyword.INT, CommonClassNames.JAVA_LANG_INTEGER, "min", "", true);
+    addAssociativeStatic(PsiKeyword.INT, CommonClassNames.JAVA_LANG_INTEGER, "sum", "0", false);
+    addAssociativeStatic(PsiKeyword.LONG, CommonClassNames.JAVA_LANG_LONG, "max", "", true);
+    addAssociativeStatic(PsiKeyword.LONG, CommonClassNames.JAVA_LANG_LONG, "min", "", true);
+    addAssociativeStatic(PsiKeyword.LONG, CommonClassNames.JAVA_LANG_LONG, "sum", "0L", false);
+    addAssociativeStatic(PsiKeyword.DOUBLE, CommonClassNames.JAVA_LANG_MATH, "max", "", true);
+    addAssociativeStatic(PsiKeyword.FLOAT, CommonClassNames.JAVA_LANG_MATH, "max", "", true);
+    addAssociativeStatic(PsiKeyword.INT, CommonClassNames.JAVA_LANG_MATH, "max", "", true);
+    addAssociativeStatic(PsiKeyword.LONG, CommonClassNames.JAVA_LANG_MATH, "max", "", true);
+    addAssociativeStatic(PsiKeyword.DOUBLE, CommonClassNames.JAVA_LANG_MATH, "min", "", true);
+    addAssociativeStatic(PsiKeyword.FLOAT, CommonClassNames.JAVA_LANG_MATH, "min", "", true);
+    addAssociativeStatic(PsiKeyword.LONG, CommonClassNames.JAVA_LANG_MATH, "min", "", true);
+    addAssociativeStatic(PsiKeyword.LONG, CommonClassNames.JAVA_LANG_MATH, "min", "", true);
   }
 
   private static boolean isAssociativeOperation(PsiMethod method) {
@@ -65,7 +173,7 @@ public class ReduceHandling {
     if (paramType == null || !paramType.getType().equalsToText(clazz.getQualifiedName())) return false;
 
     // Is known associative?
-    Set<String> methods = associativeOperations.get(clazz.getQualifiedName());
+    Set<String> methods = associativeMemberOperations.get(clazz.getQualifiedName());
     if (methods != null && methods.contains(method.getName())) return true;
 
     // Check for presence of Associative annotation
