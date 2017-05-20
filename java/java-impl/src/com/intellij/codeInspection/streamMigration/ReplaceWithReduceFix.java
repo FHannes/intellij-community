@@ -98,7 +98,9 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
     PsiAssignmentExpression stmt = tb.getSingleExpression(PsiAssignmentExpression.class);
     if (stmt == null) return null;
 
-    PsiVariable accumulator = ReduceHandling.getReductionAccumulator(stmt);
+    ReduceHandling.ReductionData data = ReduceHandling.getReductionAccumulator(stmt);
+    if (data == null) return null;
+    PsiVariable accumulator = data.getAccumulator();
     if (accumulator == null) return null;
 
     restoreComments(loopStatement, loopStatement.getBody());

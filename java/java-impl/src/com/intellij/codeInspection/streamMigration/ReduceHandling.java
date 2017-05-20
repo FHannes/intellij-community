@@ -4,8 +4,9 @@ import com.intellij.codeInsight.AnnotationUtil;
 import com.intellij.openapi.util.Pair;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
+import com.siyeh.ig.psiutils.ClassUtils;
 import com.siyeh.ig.psiutils.ExpressionUtils;
-import com.siyeh.ig.psiutils.TypeUtils;
+import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
@@ -17,6 +18,7 @@ import java.util.*;
 public class ReduceHandling {
 
   @NonNls public static final String BE_KULEUVEN_CS_DTAI_ASSOCIATIVE = "be.kuleuven.cs.dtai.Associative";
+  @NonNls public static final String BE_KULEUVEN_CS_DTAI_IMMUTABLE = "be.kuleuven.cs.dtai.Immutable";
 
   @NonNls public static final Map<String, Map<IElementType, Pair<String, Boolean>>> associativeOperators = new HashMap<>();
   @NonNls private static final Map<String, Map<String, Pair<String, Boolean>>> associativeMemberOperations = new HashMap<>();
@@ -160,26 +162,65 @@ public class ReduceHandling {
     addAssociativeStatic(PsiKeyword.LONG, CommonClassNames.JAVA_LANG_MATH, "min", "", true);
   }
 
-  private static boolean isAssociativeOperation(PsiMethod method) {
-    // Associative operations executed on an object only!
+  @Nullable
+  public static IElementType mapAssignOperator(IElementType elementType) {
+    if (JavaTokenType.ANDEQ.equals(elementType)) {
+      return JavaTokenType.AND;
+    } else if (JavaTokenType.ASTERISKEQ.equals(elementType)) {
+      return JavaTokenType.ASTERISK;
+    } else if (JavaTokenType.OREQ.equals(elementType)) {
+      return JavaTokenType.OR;
+    } else if (JavaTokenType.PLUSEQ.equals(elementType)) {
+      return JavaTokenType.PLUS;
+    } else if (JavaTokenType.XOREQ.equals(elementType)) {
+      return JavaTokenType.XOR;
+    } else {
+      return null;
+    }
+  }
+
+  private static Pair<String, Boolean> getAssociativeOperation(PsiMethod method) {
     PsiElement parent = method.getParent();
-    if (!(parent instanceof PsiClass)) return false;
-
-    // Check that the method just has a single parameter of the type of its parent class
+    if (!(parent instanceof PsiClass)) return null;
     PsiClass clazz = (PsiClass) parent;
-    if (clazz.getQualifiedName() == null) return false;
-    if (method.getParameterList().getParametersCount() != 1) return false;
-    PsiTypeElement paramType = method.getParameterList().getParameters()[0].getTypeElement();
-    if (paramType == null || !paramType.getType().equalsToText(clazz.getQualifiedName())) return false;
+    if (clazz.getQualifiedName() == null) return null;
 
-    // Is known associative?
-    Set<String> methods = associativeMemberOperations.get(clazz.getQualifiedName());
-    if (methods != null && methods.contains(method.getName())) return true;
+    Map<String, Pair<String, Boolean>> methodData;
+    if (isStatic(method)) {
+      if (method.getParameterList().getParametersCount() != 2) return null;
+
+      methodData = associativeStaticOperations.get(clazz.getQualifiedName());
+
+      if (methodData.containsKey(method.getName())) return methodData.get(method.getName());
+    } else {
+      if (method.getParameterList().getParametersCount() != 1) return null;
+
+      // Method parameter & result type should be the same type as the method class
+      PsiTypeElement paramType = method.getParameterList().getParameters()[0].getTypeElement();
+      if (paramType == null || !paramType.getType().equalsToText(clazz.getQualifiedName())) return null;
+      if (method.getReturnType() == null || method.getReturnType().equalsToText(clazz.getQualifiedName())) return null;
+
+      methodData = associativeMemberOperations.get(clazz.getQualifiedName());
+
+      if (methodData.containsKey(method.getName())) return methodData.get(method.getName());
+
+
+    }
+
+    if (!ClassUtils.isImmutable(method.getReturnType())) {
+      if (!(method.getReturnType() instanceof PsiClassType)) return null;
+
+      PsiClass returnClass = ((PsiClassType) method.getReturnType()).resolve();
+      if (returnClass == null || AnnotationUtil.isAnnotated(returnClass, Collections.singletonList(BE_KULEUVEN_CS_DTAI_IMMUTABLE),
+                                                            false, true)) return null;
+    }
 
     // Check for presence of Associative annotation
-    if (AnnotationUtil.isAnnotated(method, Collections.singletonList(BE_KULEUVEN_CS_DTAI_ASSOCIATIVE), false, true)) return true;
+    PsiAnnotation annotation = AnnotationUtil.findAnnotation(method, true, BE_KULEUVEN_CS_DTAI_ASSOCIATIVE);
+    if (annotation == null) return null;
 
-    return false;
+    return Pair.create(AnnotationUtil.getStringAttributeValue(annotation, "identity"),
+                       AnnotationUtil.getBooleanAttributeValue(annotation, "idempotent"));
   }
 
   @Nullable
@@ -190,46 +231,156 @@ public class ReduceHandling {
     return (PsiVariable) resolved;
   }
 
-  @Nullable
-  public static PsiVariable getReductionAccumulator(PsiAssignmentExpression assignment) {
-    if (!(assignment.getLExpression() instanceof PsiReferenceExpression)) return null;
-    PsiVariable accumulator = resolveVariable(assignment.getLExpression());
-    if (accumulator == null) return null;
+  public static boolean isStatic(PsiModifierListOwner element) {
+    return element.getModifierList() != null && element.getModifierList().hasModifierProperty(PsiModifier.STATIC);
+  }
 
-    if (JavaTokenType.PLUSEQ.equals(assignment.getOperationTokenType()) ||
-        JavaTokenType.ASTERISKEQ.equals(assignment.getOperationTokenType())) {
-      return accumulator; // Addition and multiplication are associative
+  public static class ReductionData {
+    private PsiVariable accumulator;
+    private PsiExpression expression;
+    private Pair<String, Boolean> operatorData;
+    private String format;
+    private boolean reversed;
+
+    public ReductionData(PsiVariable accumulator,
+                         PsiExpression expression,
+                         Pair<String, Boolean> operatorData, String format, boolean reversed) {
+      this.accumulator = accumulator;
+      this.expression = expression;
+      this.operatorData = operatorData;
+      this.format = format;
+      this.reversed = reversed;
+    }
+
+    public PsiVariable getAccumulator() {
+      return accumulator;
+    }
+
+    public PsiExpression getExpression() {
+      return expression;
+    }
+
+    public Pair<String, Boolean> getOperatorData() {
+      return operatorData;
+    }
+
+    public String getFormat() {
+      return format;
+    }
+
+    public boolean isReversed() {
+      return reversed;
+    }
+  }
+
+  @Nullable
+  public static ReductionData getReductionAccumulator(PsiAssignmentExpression assignment) {
+    if (!(assignment.getLExpression() instanceof PsiReferenceExpression)) return null;
+    final PsiVariable accumulator = resolveVariable(assignment.getLExpression());
+    if (accumulator == null) return null;
+    final PsiType type = accumulator.getType();
+
+    PsiExpression expr1 = null, expr2 = null;
+    Pair<String, Boolean> opData = null;
+    PsiExpression returnExpr = null;
+    String format = "";
+    boolean reversed = false;
+
+    IElementType op = mapAssignOperator(assignment.getOperationTokenType());
+
+    if (op != null) {
+      if (!associativeOperators.containsKey(type.getCanonicalText())) return null;
+      opData = associativeOperators.get(type.getCanonicalText()).get(op);
+      if (opData == null) return null;
+
+      expr1 = assignment.getLExpression();
+      expr2 = assignment.getRExpression();
+
+      if (!type.equals(expr1.getType())) return null;
+      if (expr2 == null || !type.equals(expr2.getType())) return null;
+
+      format = "%s " + op.toString() + " %s";
     } else if (JavaTokenType.EQ.equals(assignment.getOperationTokenType())) {
       if (assignment.getRExpression() instanceof PsiBinaryExpression) {
         PsiBinaryExpression binOp = (PsiBinaryExpression)assignment.getRExpression();
-        if (JavaTokenType.PLUS.equals(binOp.getOperationTokenType()) || JavaTokenType.ASTERISK.equals(binOp.getOperationTokenType())) {
-          PsiExpression left = binOp.getLOperand();
-          PsiExpression right = binOp.getROperand();
-          if (ExpressionUtils.isReferenceTo(left, accumulator) || ExpressionUtils.isReferenceTo(right, accumulator)) {
-            return accumulator; // Addition and multiplication are associative
-          }
-        }
+        op = binOp.getOperationTokenType();
+
+        if (!associativeOperators.containsKey(type.getCanonicalText())) return null;
+        opData = associativeOperators.get(type.getCanonicalText()).get(op);
+        if (opData == null) return null;
+
+        expr1 = binOp.getLOperand();
+        expr2 = binOp.getROperand();
+
+        if (!type.equals(expr1.getType())) return null;
+        if (expr2 == null || !type.equals(expr2.getType())) return null;
+
+        format = "%s " + op.toString() + " %s";
       } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
-        // Check that accumulator is valid as a method call on the accumulator variable
+        // Check that accumulator is valid as a method call
         PsiMethodCallExpression mce = (PsiMethodCallExpression) assignment.getRExpression();
         if (mce == null) return null;
 
         // Resolve to the method declaration to verify the annotation for associativity
         PsiElement element = mce.getMethodExpression().resolve();
         if (element == null || !(element instanceof PsiMethod)) return null;
-        PsiMethod operation = (PsiMethod) element;
+        PsiMethod method = (PsiMethod) element;
 
-        // Check for presence of Associative annotation
-        if (!isAssociativeOperation(operation)) return null;
+        // Operation must be method defined in a class
+        PsiElement parent = method.getParent();
+        if (!(parent instanceof PsiClass)) return null;
 
-        // Either the call subject or the parameter of the call should be the accumulator
-        if (!ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator) &&
-            !ExpressionUtils.isReferenceTo(mce.getArgumentList().getExpressions()[0], accumulator)) return null;
+        // Method must have a return value with type same as accumulator
+        if (method.getReturnType() == null || !method.getReturnType().equals(type)) return null;
 
-        return accumulator;
+        // Method must have more than 1 parameter
+        if (method.getParameterList().getParametersCount() == 0) return null;
+
+        // First method parameter must be same type as accumulator
+        if (!method.getParameterList().getParameters()[0].getType().equals(type)) return null;
+
+        if (isStatic(method)) {
+          // Static methods have 2 params
+          if (method.getParameterList().getParametersCount() != 2) return null;
+
+          // Second method parameter must be same type as accumulator
+          if (!method.getParameterList().getParameters()[1].getType().equals(type)) return null;
+
+          expr1 = ParenthesesUtils.stripParentheses(mce.getArgumentList().getExpressions()[0]);
+          expr2 = ParenthesesUtils.stripParentheses(mce.getArgumentList().getExpressions()[1]);
+        } else {
+          // Non-static methods have 1 param
+          if (method.getParameterList().getParametersCount() != 1) return null;
+
+          expr1 = ParenthesesUtils.stripParentheses(mce.getMethodExpression().getQualifierExpression());
+          expr2 = ParenthesesUtils.stripParentheses(mce.getArgumentList().getExpressions()[0]);
+        }
+
+        if (expr1 == null || !type.equals(expr1.getType())) return null;
+        if (expr2 == null || !type.equals(expr2.getType())) return null;
+
+        opData = getAssociativeOperation(method);
+        if (opData == null) return null;
+
+        if (isStatic(method)) {
+          format = ((PsiClass)parent).getQualifiedName() + '.' + method.getName() + "(%s, %s)";
+        } else {
+          format = "%s" + method.getName() + "(%s)";
+        }
       }
     }
-    return null;
+
+    boolean ref1 = ExpressionUtils.isReferenceTo(expr1, accumulator);
+    boolean ref2 = ExpressionUtils.isReferenceTo(expr2, accumulator);
+    if (ref1 & !ref2) {
+      reversed = false;
+      returnExpr = expr2;
+    } else if (ref2 & !ref1) {
+      reversed = true;
+      returnExpr = expr1;
+    } else return null;
+
+    return new ReductionData(accumulator, returnExpr, opData, format, reversed);
   }
 
   @Nullable
@@ -245,14 +396,14 @@ public class ReduceHandling {
   }
 
   @Nullable
-  public static PsiVariable getReduceVar(PsiLoopStatement loop, StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
+  public static ReduceHandling.ReductionData getReduceVar(PsiLoopStatement loop, StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
     PsiAssignmentExpression stmt = tb.getSingleExpression(PsiAssignmentExpression.class);
     if (stmt == null) return null;
 
-    PsiVariable accumulator = getReductionAccumulator(stmt);
-    if (!variables.contains(accumulator)) return null;
+    ReduceHandling.ReductionData data = getReductionAccumulator(stmt);
+    if (!variables.contains(data.getAccumulator())) return null;
 
-    return accumulator;
+    return data;
   }
 
 }
