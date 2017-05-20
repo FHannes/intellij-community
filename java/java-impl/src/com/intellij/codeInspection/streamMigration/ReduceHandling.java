@@ -393,8 +393,11 @@ public class ReduceHandling {
         } else {
           format = "%s." + method.getName() + "(%s)";
         }
-      }
-    }
+      } else return null;
+    } else return null;
+
+    // If there's no identity for the reduce, the function MUST be idempotent
+    if (opData.getFirst().isEmpty() && !opData.getSecond()) return null;
 
     boolean reversed;
     PsiExpression returnExpr;

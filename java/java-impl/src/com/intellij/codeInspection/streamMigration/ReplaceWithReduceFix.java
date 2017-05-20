@@ -17,24 +17,6 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
     return "Replace with reduce()";
   }
 
-  @Nullable
-  public static String replaceWithReduction(@NotNull PsiLoopStatement loopStatement,
-                                            @NotNull PsiVariable var,
-                                            @NotNull PsiAssignmentExpression assignment,
-                                            @NotNull StreamApiMigrationInspection.TerminalBlock tb,
-                                            @NotNull ReduceHandling.ReductionData data) {
-    StringBuilder result = new StringBuilder(".reduce(");
-
-    // Get identity value
-    result.append(data.getOperatorData().getFirst());
-
-    result.append(", (a, b) -> ");
-    result.append(String.format(data.getFormat(), data.isReversed() ? "b" : "a", data.isReversed() ? "a" : "b"));
-    result.append(")");
-
-    return result.toString();
-  }
-
   @Override
   PsiElement migrate(@NotNull Project project,
                      @NotNull PsiLoopStatement loopStatement,
@@ -59,18 +41,42 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
 
     PsiExpression init = accumulator.getInitializer();
     StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(accumulator, loopStatement);
-    builder.append(replaceWithReduction(loopStatement, accumulator, stmt, tb, data));
+
+    builder.append(".reduce(");
+    if (!data.getOperatorData().getFirst().isEmpty()) {
+      builder.append(data.getOperatorData().getFirst());
+      builder.append(", ");
+    }
+    builder.append("(a, b) -> ");
+    builder.append(String.format(data.getFormat(), data.isReversed() ? "b" : "a", data.isReversed() ? "a" : "b"));
+    builder.append(")");
+
     if (status == StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN || init == null) {
-      String newExpression = accumulator.getName() + " = " + String.format(data.getFormat(), accumulator.getName(), builder.toString()) + ";";
+      String newExpression = accumulator.getName() + " = ";
+      String streamExpr = builder.toString();
+      if (data.getOperatorData().getFirst().isEmpty()) {
+        streamExpr += ".orElse(" + accumulator.getName() + ");";
+      }
+      newExpression += String.format(data.getFormat(), accumulator.getName(), streamExpr) + ";";
       return loopStatement.replace(elementFactory.createStatementFromText(newExpression, loopStatement));
     } else {
-      String newExpression = builder.toString();
-      if (!init.getText().equals(data.getOperatorData().getFirst())) {
-        String initText = init.getText();
-        if (init instanceof PsiBinaryExpression) {
-          initText = '(' + initText + ')';
+      String newExpression = "";
+      if (data.getOperatorData().getFirst().isEmpty()) {
+        String streamExpr = builder.toString();
+        if (data.getOperatorData().getFirst().isEmpty()) {
+          streamExpr += ".orElse(" + init.getText() + ")";
         }
-        newExpression = String.format(data.getFormat(), initText, newExpression);
+        newExpression += String.format(data.getFormat(), init.getText(), streamExpr);
+      } else {
+        if (!init.getText().equals(data.getOperatorData().getFirst())) {
+          String initText = init.getText();
+          if (init instanceof PsiBinaryExpression &&
+              // Check for static method call, no need for braces if method param
+              !data.getOperatorData().getFirst().contains(",")) {
+            initText = '(' + initText + ')';
+          }
+          newExpression = String.format(data.getFormat(), initText, builder.toString());
+        }
       }
       return replaceInitializer(loopStatement, accumulator, init, newExpression, status);
     }
