@@ -119,9 +119,9 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
       checkVar = StringConcatHandling.getCheckVariable(ifStmt);
 
       Optional<PsiExpression> delim = StreamEx.of(ifStmt.getThenBranch(), ifStmt.getElseBranch())
-        .nonNull().map(b -> ((PsiBlockStatement) b).getCodeBlock())
-        .filter(cb -> cb.getStatements().length == 1)
-        .map(cb -> StringConcatHandling.getAppendParam(var.get(), cb.getStatements()[0], stringConcat))
+        .nonNull().map(b -> b instanceof PsiBlockStatement ? ((PsiBlockStatement) b).getCodeBlock().getStatements() : new PsiStatement[] { b })
+        .filter(cb -> cb.length == 1)
+        .map(cb -> StringConcatHandling.getAppendParam(var.get(), cb[0], stringConcat))
         .nonNull().findAny();
       if (!delim.isPresent()) return null;
 
