@@ -76,7 +76,7 @@ public class ReduceHandling {
     addAssociativeOperator(PsiType.CHAR, JavaTokenType.OR, "0", true);
     addAssociativeOperator(PsiType.CHAR, JavaTokenType.XOR, "", false);
 
-    // byte
+    /*// byte
     addAssociativeOperator(PsiType.BYTE, JavaTokenType.PLUS, "0", false);
     addAssociativeOperator(PsiType.BYTE, JavaTokenType.ASTERISK, "1", false);
     addAssociativeOperator(PsiType.BYTE, JavaTokenType.AND, "$FF", true);
@@ -88,7 +88,7 @@ public class ReduceHandling {
     addAssociativeOperator(PsiType.SHORT, JavaTokenType.ASTERISK, "1", false);
     addAssociativeOperator(PsiType.SHORT, JavaTokenType.AND, "", true);
     addAssociativeOperator(PsiType.SHORT, JavaTokenType.OR, "0", true);
-    addAssociativeOperator(PsiType.SHORT, JavaTokenType.XOR, "", false);
+    addAssociativeOperator(PsiType.SHORT, JavaTokenType.XOR, "", false);*/
 
     // int
     addAssociativeOperator(PsiType.INT, JavaTokenType.PLUS, "0", false);
@@ -205,31 +205,32 @@ public class ReduceHandling {
     Map<String, Pair<String, Boolean>> methodData;
     if (isStatic(method)) {
       if (method.getParameterList().getParametersCount() != 2) return null;
+      if (method.getReturnType() == null) return null;
 
-      methodData = associativeStaticOperations.get(clazz.getQualifiedName());
+      methodData = associativeStaticOperations.get(method.getReturnType().getCanonicalText());
 
-      if (methodData.containsKey(method.getName())) return methodData.get(method.getName());
+      String methodRef = clazz.getQualifiedName() + '.' + method.getName();
+
+      if (methodData != null && methodData.containsKey(methodRef)) return methodData.get(methodRef);
     } else {
       if (method.getParameterList().getParametersCount() != 1) return null;
 
       // Method parameter & result type should be the same type as the method class
       PsiTypeElement paramType = method.getParameterList().getParameters()[0].getTypeElement();
       if (paramType == null || !paramType.getType().equalsToText(clazz.getQualifiedName())) return null;
-      if (method.getReturnType() == null || method.getReturnType().equalsToText(clazz.getQualifiedName())) return null;
+      if (method.getReturnType() == null || !method.getReturnType().equalsToText(clazz.getQualifiedName())) return null;
 
       methodData = associativeMemberOperations.get(clazz.getQualifiedName());
 
-      if (methodData.containsKey(method.getName())) return methodData.get(method.getName());
-
-
+      if (methodData != null && methodData.containsKey(method.getName())) return methodData.get(method.getName());
     }
 
     if (!ClassUtils.isImmutable(method.getReturnType())) {
       if (!(method.getReturnType() instanceof PsiClassType)) return null;
 
       PsiClass returnClass = ((PsiClassType) method.getReturnType()).resolve();
-      if (returnClass == null || AnnotationUtil.isAnnotated(returnClass, Collections.singletonList(BE_KULEUVEN_CS_DTAI_IMMUTABLE),
-                                                            false, true)) return null;
+      if (returnClass == null || !AnnotationUtil.isAnnotated(returnClass, Collections.singletonList(BE_KULEUVEN_CS_DTAI_IMMUTABLE),
+                                                             false, true)) return null;
     }
 
     // Check for presence of Associative annotation
@@ -290,6 +291,17 @@ public class ReduceHandling {
     }
   }
 
+  public static boolean isTypeAllowedForReduce(PsiVariable accumulator, PsiType type) {
+    PsiType accType = accumulator.getType();
+    if (type instanceof PsiPrimitiveType) {
+      PsiPrimitiveType ppt = PsiPrimitiveType.getUnboxedType(accType);
+      if (ppt != null && ppt.equals(type)) {
+        return true;
+      }
+    }
+    return accType.equals(type);
+  }
+
   @Nullable
   public static ReductionData getReductionAccumulator(PsiAssignmentExpression assignment) {
     if (!(assignment.getLExpression() instanceof PsiReferenceExpression)) return null;
@@ -311,8 +323,7 @@ public class ReduceHandling {
       expr1 = assignment.getLExpression();
       expr2 = assignment.getRExpression();
 
-      if (!type.equals(expr1.getType())) return null;
-      if (expr2 == null || !type.equals(expr2.getType())) return null;
+      if (expr2 == null || !isTypeAllowedForReduce(accumulator, expr2.getType())) return null;
 
       format = "%s " + operatorToString(op) + " %s";
     } else if (JavaTokenType.EQ.equals(assignment.getOperationTokenType())) {
@@ -327,8 +338,8 @@ public class ReduceHandling {
         expr1 = binOp.getLOperand();
         expr2 = binOp.getROperand();
 
-        if (!type.equals(expr1.getType())) return null;
-        if (expr2 == null || !type.equals(expr2.getType())) return null;
+        if (!isTypeAllowedForReduce(accumulator, expr1.getType())) return null;
+        if (expr2 == null || !isTypeAllowedForReduce(accumulator, expr2.getType())) return null;
 
         format = "%s " + operatorToString(op) + " %s";
       } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
@@ -346,20 +357,20 @@ public class ReduceHandling {
         if (!(parent instanceof PsiClass)) return null;
 
         // Method must have a return value with type same as accumulator
-        if (method.getReturnType() == null || !method.getReturnType().equals(type)) return null;
+        if (method.getReturnType() == null || !isTypeAllowedForReduce(accumulator, method.getReturnType())) return null;
 
         // Method must have more than 1 parameter
         if (method.getParameterList().getParametersCount() == 0) return null;
 
         // First method parameter must be same type as accumulator
-        if (!method.getParameterList().getParameters()[0].getType().equals(type)) return null;
+        if (!isTypeAllowedForReduce(accumulator, method.getParameterList().getParameters()[0].getType())) return null;
 
         if (isStatic(method)) {
           // Static methods have 2 params
           if (method.getParameterList().getParametersCount() != 2) return null;
 
           // Second method parameter must be same type as accumulator
-          if (!method.getParameterList().getParameters()[1].getType().equals(type)) return null;
+          if (!isTypeAllowedForReduce(accumulator, method.getParameterList().getParameters()[1].getType())) return null;
 
           expr1 = ParenthesesUtils.stripParentheses(mce.getArgumentList().getExpressions()[0]);
           expr2 = ParenthesesUtils.stripParentheses(mce.getArgumentList().getExpressions()[1]);
@@ -371,8 +382,8 @@ public class ReduceHandling {
           expr2 = ParenthesesUtils.stripParentheses(mce.getArgumentList().getExpressions()[0]);
         }
 
-        if (expr1 == null || !type.equals(expr1.getType())) return null;
-        if (expr2 == null || !type.equals(expr2.getType())) return null;
+        if (expr1 == null || !isTypeAllowedForReduce(accumulator, expr1.getType())) return null;
+        if (expr2 == null || !isTypeAllowedForReduce(accumulator, expr2.getType())) return null;
 
         opData = getAssociativeOperation(method);
         if (opData == null) return null;
@@ -380,7 +391,7 @@ public class ReduceHandling {
         if (isStatic(method)) {
           format = ((PsiClass)parent).getQualifiedName() + '.' + method.getName() + "(%s, %s)";
         } else {
-          format = "%s" + method.getName() + "(%s)";
+          format = "%s." + method.getName() + "(%s)";
         }
       }
     }

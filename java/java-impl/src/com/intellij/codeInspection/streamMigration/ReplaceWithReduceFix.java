@@ -21,72 +21,17 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
   public static String replaceWithReduction(@NotNull PsiLoopStatement loopStatement,
                                             @NotNull PsiVariable var,
                                             @NotNull PsiAssignmentExpression assignment,
-                                            @NotNull StreamApiMigrationInspection.TerminalBlock tb) {
-    if (!(assignment.getLExpression() instanceof PsiReferenceExpression)) return null;
-    PsiVariable accumulator = ReduceHandling.resolveVariable(assignment.getLExpression());
-    if (accumulator == null) return null;
-
+                                            @NotNull StreamApiMigrationInspection.TerminalBlock tb,
+                                            @NotNull ReduceHandling.ReductionData data) {
     StringBuilder result = new StringBuilder(".reduce(");
 
-    PsiExpression init = var.getInitializer();
-    StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
-    if (status == StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN || init == null) {
-      result.append(accumulator.getName());
-    } else {
-      result.append(init.getText());
-    }
+    // Get identity value
+    result.append(data.getOperatorData().getFirst());
 
     result.append(", (a, b) -> ");
-
-    if (JavaTokenType.PLUSEQ.equals(assignment.getOperationTokenType())) {
-      result.append("a + ");
-      if (ExpressionUtils.isReferenceTo(assignment.getRExpression(), tb.getVariable())) {
-        result.append('b');
-      } else {
-        result.append(assignment.getRExpression().getText());
-      }
-    } else if (JavaTokenType.ASTERISKEQ.equals(assignment.getOperationTokenType())) {
-      result.append("a * ");
-      if (ExpressionUtils.isReferenceTo(assignment.getRExpression(), tb.getVariable())) {
-        result.append('b');
-      } else {
-        result.append(assignment.getRExpression().getText());
-      }
-    } else if (JavaTokenType.EQ.equals(assignment.getOperationTokenType())) {
-      if (assignment.getRExpression() instanceof PsiBinaryExpression) {
-        PsiBinaryExpression binOp = (PsiBinaryExpression)assignment.getRExpression();
-        String operator = JavaTokenType.PLUS.equals(binOp.getOperationTokenType()) ? "+" : "*";
-        boolean plainOp = ExpressionUtils.isReferenceTo(binOp.getLOperand(), accumulator);
-        String leftOp = plainOp ? "a" : "b", rightOp = plainOp ? "b" : "a";
-        if (ExpressionUtils.isReferenceTo(binOp.getLOperand(), accumulator) &&
-            !ExpressionUtils.isReferenceTo(binOp.getROperand(), tb.getVariable())) {
-          rightOp = binOp.getROperand().getText();
-        } else if (ExpressionUtils.isReferenceTo(binOp.getROperand(), accumulator) &&
-                   !ExpressionUtils.isReferenceTo(binOp.getLOperand(), tb.getVariable())) {
-          leftOp = binOp.getLOperand().getText();
-        }
-        result.append(leftOp).append(' ').append(operator).append(' ').append(rightOp);
-      } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
-        // Check that accumulator is valid as a method call on the accumulator variable
-        PsiMethodCallExpression mce = (PsiMethodCallExpression) assignment.getRExpression();
-        if (mce == null) return null;
-
-        // Resolve to the method declaration to verify the annotation for associativity
-        PsiElement element = mce.getMethodExpression().resolve();
-        if (element == null || !(element instanceof PsiMethod)) return null;
-        PsiMethod operation = (PsiMethod) element;
-
-        boolean plainOp = ExpressionUtils.isReferenceTo(mce.getMethodExpression().getQualifierExpression(), accumulator);
-        String leftOp = plainOp ? "a" : "b", rightOp = plainOp ? "b" : "a";
-
-        if (plainOp && !ExpressionUtils.isReferenceTo(mce.getArgumentList().getExpressions()[0], tb.getVariable())) {
-          rightOp = mce.getArgumentList().getExpressions()[0].getText();
-        }
-
-        result.append(leftOp).append('.').append(operation.getName()).append('(').append(rightOp).append(')');
-      }
-    }
+    result.append(String.format(data.getFormat(), data.isReversed() ? "b" : "a", data.isReversed() ? "a" : "b"));
     result.append(")");
+
     return result.toString();
   }
 
@@ -107,18 +52,27 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
 
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     StreamApiMigrationInspection.Operation op = tb.getLastOperation();
+    if (!data.getExpression().equals(tb.getVariable())) {
+      op = new StreamApiMigrationInspection.MapOp(op, data.getExpression(), tb.getVariable(), accumulator.getType());
+    }
     StringBuilder builder = generateStream(op);
 
     PsiExpression init = accumulator.getInitializer();
     StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(accumulator, loopStatement);
-    builder.append(replaceWithReduction(loopStatement, accumulator, stmt, tb));
+    builder.append(replaceWithReduction(loopStatement, accumulator, stmt, tb, data));
     if (status == StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN || init == null) {
-      builder.insert(0, " = ");
-      builder.insert(0, accumulator.getName());
-      builder.append(";");
-      return loopStatement.replace(elementFactory.createStatementFromText(builder.toString(), loopStatement));
+      String newExpression = accumulator.getName() + " = " + String.format(data.getFormat(), accumulator.getName(), builder.toString()) + ";";
+      return loopStatement.replace(elementFactory.createStatementFromText(newExpression, loopStatement));
     } else {
-      return replaceInitializer(loopStatement, accumulator, init, builder.toString(), status);
+      String newExpression = builder.toString();
+      if (!init.getText().equals(data.getOperatorData().getFirst())) {
+        String initText = init.getText();
+        if (init instanceof PsiBinaryExpression) {
+          initText = '(' + initText + ')';
+        }
+        newExpression = String.format(data.getFormat(), initText, newExpression);
+      }
+      return replaceInitializer(loopStatement, accumulator, init, newExpression, status);
     }
   }
 
