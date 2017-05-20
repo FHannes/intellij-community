@@ -62,10 +62,6 @@ public class ReduceHandling {
     operations.put(clazz + '.' + method, new Pair<>(identity, idempotent));
   }
 
-  // TODO: Support unary and binary
-  // TODO: Identify idempotent operations for patternµ
-  // TODO: Ensure types match for operators (primitive != classtype)
-
   static {
     // boolean
     addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.AND, "true", true);
@@ -179,6 +175,27 @@ public class ReduceHandling {
     }
   }
 
+  @Nullable
+  public static String operatorToString(IElementType elementType) {
+    if (JavaTokenType.AND.equals(elementType)) {
+      return "&";
+    } else if (JavaTokenType.ANDAND.equals(elementType)) {
+      return "&&";
+    } else if (JavaTokenType.ASTERISK.equals(elementType)) {
+      return "*";
+    } else if (JavaTokenType.OR.equals(elementType)) {
+      return "|";
+    } else if (JavaTokenType.OROR.equals(elementType)) {
+      return "||";
+    } else if (JavaTokenType.PLUS.equals(elementType)) {
+      return "+";
+    } else if (JavaTokenType.XOR.equals(elementType)) {
+      return "^";
+    } else {
+      return null;
+    }
+  }
+
   private static Pair<String, Boolean> getAssociativeOperation(PsiMethod method) {
     PsiElement parent = method.getParent();
     if (!(parent instanceof PsiClass)) return null;
@@ -282,9 +299,7 @@ public class ReduceHandling {
 
     PsiExpression expr1 = null, expr2 = null;
     Pair<String, Boolean> opData = null;
-    PsiExpression returnExpr = null;
     String format = "";
-    boolean reversed = false;
 
     IElementType op = mapAssignOperator(assignment.getOperationTokenType());
 
@@ -299,7 +314,7 @@ public class ReduceHandling {
       if (!type.equals(expr1.getType())) return null;
       if (expr2 == null || !type.equals(expr2.getType())) return null;
 
-      format = "%s " + op.toString() + " %s";
+      format = "%s " + operatorToString(op) + " %s";
     } else if (JavaTokenType.EQ.equals(assignment.getOperationTokenType())) {
       if (assignment.getRExpression() instanceof PsiBinaryExpression) {
         PsiBinaryExpression binOp = (PsiBinaryExpression)assignment.getRExpression();
@@ -315,7 +330,7 @@ public class ReduceHandling {
         if (!type.equals(expr1.getType())) return null;
         if (expr2 == null || !type.equals(expr2.getType())) return null;
 
-        format = "%s " + op.toString() + " %s";
+        format = "%s " + operatorToString(op) + " %s";
       } else if (assignment.getRExpression() instanceof PsiMethodCallExpression) {
         // Check that accumulator is valid as a method call
         PsiMethodCallExpression mce = (PsiMethodCallExpression) assignment.getRExpression();
@@ -370,6 +385,9 @@ public class ReduceHandling {
       }
     }
 
+    boolean reversed;
+    PsiExpression returnExpr;
+
     boolean ref1 = ExpressionUtils.isReferenceTo(expr1, accumulator);
     boolean ref2 = ExpressionUtils.isReferenceTo(expr2, accumulator);
     if (ref1 & !ref2) {
@@ -401,7 +419,7 @@ public class ReduceHandling {
     if (stmt == null) return null;
 
     ReduceHandling.ReductionData data = getReductionAccumulator(stmt);
-    if (!variables.contains(data.getAccumulator())) return null;
+    if (data == null || !variables.contains(data.getAccumulator())) return null;
 
     return data;
   }
