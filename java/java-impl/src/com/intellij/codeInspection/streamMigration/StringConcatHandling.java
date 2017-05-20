@@ -344,28 +344,30 @@ public class StringConcatHandling {
       }
 
       // Setup branches
-      Optional<PsiCodeBlock> checkBranch = Optional.ofNullable(
-        (PsiBlockStatement) (appendElse ? ifStmt.getThenBranch() : ifStmt.getElseBranch()))
-        .map(PsiBlockStatement::getCodeBlock);
-      Optional<PsiCodeBlock> appendBranch = Optional.ofNullable(
-        (PsiBlockStatement) (appendElse ? ifStmt.getElseBranch() : ifStmt.getThenBranch()))
-        .map(PsiBlockStatement::getCodeBlock);
+      Optional<PsiStatement[]> checkBranch = Optional.ofNullable(appendElse ? ifStmt.getThenBranch() : ifStmt.getElseBranch())
+        .map(branch -> branch instanceof PsiBlockStatement
+                       ? ((PsiBlockStatement)branch).getCodeBlock().getStatements()
+                       : new PsiStatement[] { branch });
+      Optional<PsiStatement[]> appendBranch = Optional.ofNullable(appendElse ? ifStmt.getElseBranch() : ifStmt.getThenBranch())
+        .map(branch -> branch instanceof PsiBlockStatement
+                       ? ((PsiBlockStatement)branch).getCodeBlock().getStatements()
+                       : new PsiStatement[] { branch });
 
       if (!appendBranch.isPresent()) return null;
 
       // Check if delimiter is correct
-      if (appendBranch.get().getStatements().length != 1) return null;
-      delimVar = getConcatVariable(appendBranch.get().getStatements()[0]);
+      if (appendBranch.get().length != 1) return null;
+      delimVar = getConcatVariable(appendBranch.get()[0]);
       if (delimVar == null) return null;
-      PsiExpression delim = getAppendParam(delimVar, appendBranch.get().getStatements()[0],
+      PsiExpression delim = getAppendParam(delimVar, appendBranch.get()[0],
                                            delimVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING));
       if (!isConstantValue(delim, loop)) return null;
 
       if (tb.getStatements().length == 2) {
         if (!checkBranch.isPresent()) return null;
         // Check correct checking on first iteration
-        if (checkBranch.get().getStatements().length != 1) return null;
-        if (!isValidCheckSetter(checkBranch.get().getStatements()[0], checkVar, initVal, true)) return null;
+        if (checkBranch.get().length != 1) return null;
+        if (!isValidCheckSetter(checkBranch.get()[0], checkVar, initVal, true)) return null;
       } else { // 3 statements in terminal block
         // If the for-loop contains 3 statements, the check variable is set at the end of the loop somewhere, not in the if-statement
         if (checkBranch.isPresent()) return null;
