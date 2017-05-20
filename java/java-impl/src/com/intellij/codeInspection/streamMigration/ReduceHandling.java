@@ -69,14 +69,14 @@ public class ReduceHandling {
     addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.ANDAND, "true", false);
     addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.OROR, "false", true);
 
-    // char
+    /*// char
     addAssociativeOperator(PsiType.CHAR, JavaTokenType.PLUS, "0", false);
     addAssociativeOperator(PsiType.CHAR, JavaTokenType.ASTERISK, "1", false);
     addAssociativeOperator(PsiType.CHAR, JavaTokenType.AND, "1", true);
     addAssociativeOperator(PsiType.CHAR, JavaTokenType.OR, "0", true);
     addAssociativeOperator(PsiType.CHAR, JavaTokenType.XOR, "", false);
 
-    /*// byte
+    // byte
     addAssociativeOperator(PsiType.BYTE, JavaTokenType.PLUS, "0", false);
     addAssociativeOperator(PsiType.BYTE, JavaTokenType.ASTERISK, "1", false);
     addAssociativeOperator(PsiType.BYTE, JavaTokenType.AND, "$FF", true);
@@ -109,8 +109,8 @@ public class ReduceHandling {
     addAssociativeOperator(PsiType.FLOAT, JavaTokenType.ASTERISK, "1F", false);
 
     // double
-    addAssociativeOperator(PsiType.FLOAT, JavaTokenType.PLUS, "0D", false);
-    addAssociativeOperator(PsiType.FLOAT, JavaTokenType.ASTERISK, "1D", false);
+    addAssociativeOperator(PsiType.DOUBLE, JavaTokenType.PLUS, "0D", false);
+    addAssociativeOperator(PsiType.DOUBLE, JavaTokenType.ASTERISK, "1D", false);
 
     // String
     addAssociativeOperator(CommonClassNames.JAVA_LANG_STRING, JavaTokenType.PLUS, "\"\"", false);
