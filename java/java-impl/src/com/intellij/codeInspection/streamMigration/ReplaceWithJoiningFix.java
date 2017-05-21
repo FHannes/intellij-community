@@ -35,10 +35,7 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     restoreComments(loopStatement, loopStatement.getBody());
     StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
-    if (stringConcat) {
-      // Unlike StringBuilder, String concats don't use in-place refactoring
-      if (status == StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN) return null;
-
+    if (stringConcat && !status.equals(StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN)) {
       // Get initializer constructor argument if present
       String sbArg = Optional.ofNullable(var.getInitializer()).map(PsiElement::getText).orElse(null);
       if (sbArg != null && !"\"\"".equals(sbArg)) {
@@ -47,7 +44,7 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
       }
     }
 
-    // Replace variable declaration type and initializer
+    // Replace initializer
     if (var.getTypeElement() != null) {
       if (checkVar != null) {
         if (StringConcatHandling.isVariableReferencedAfter(checkVar, loopStatement)) {
@@ -62,8 +59,13 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
         status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
       }
       if (stringConcat) {
-        PsiExpression initializer = var.getInitializer();
-        return replaceInitializer(loopStatement, var, initializer, builder.toString(), status);
+        if (!status.equals(StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN)) {
+          PsiExpression initializer = var.getInitializer();
+          return replaceInitializer(loopStatement, var, initializer, builder.toString(), status);
+        } else {
+          return loopStatement.replace(elementFactory.createStatementFromText(var.getName() + " += " + builder.toString(),
+                                                                              loopStatement));
+        }
       } else {
         return loopStatement.replace(elementFactory.createStatementFromText(var.getName() + ".append(" + builder.toString() + ");",
                                                                             loopStatement));
