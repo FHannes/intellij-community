@@ -615,7 +615,7 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
         .remove(variable -> isVariableSuitableForStream(variable, statement, tb)).toList();
 
       if (exitPoints.isEmpty()) {
-        if(getIncrementedVariable(tb, nonFinalVariables) != null) {
+        /*if(getIncrementedVariable(tb, nonFinalVariables) != null) {
           registerProblem(statement, "count", new ReplaceWithCountFix());
         }
         if(getAccumulatedVariable(tb, nonFinalVariables) != null) {
@@ -625,11 +625,11 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
         if((joinVar = StringConcatHandling.getJoinedVariable(statement, tb, nonFinalVariables)) != null) {
           registerProblem(statement, "joining",
                           new ReplaceWithJoiningFix(joinVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)));
-        }
+        }*/
         if (ReduceHandling.getReduceVar(statement, tb, nonFinalVariables) != null) {
           registerProblem(statement, "reduce", new ReplaceWithReduceFix());
         }
-        if(!nonFinalVariables.isEmpty()) {
+        /*if(!nonFinalVariables.isEmpty()) {
           return;
         }
         if (isCollectCall(tb)) {
@@ -666,9 +666,9 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
             fixes = new LocalQuickFix[] {forEachFix, new ReplaceWithForeachCallFix("forEachOrdered")};
           }
           registerProblem(statement, "forEach", fixes);
-        }
+        }*/
       } else {
-        if (!tb.hasOperations() && !REPLACE_TRIVIAL_FOREACH) return;
+        /*if (!tb.hasOperations() && !REPLACE_TRIVIAL_FOREACH) return;
         if (nonFinalVariables.isEmpty() && tb.getSingleStatement() instanceof PsiReturnStatement) {
           handleSingleReturn(statement, tb);
         }
@@ -703,7 +703,7 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
             if(tb.getVariable().getType() instanceof PsiPrimitiveType && !ExpressionUtils.isReferenceTo(rValue, tb.getVariable())) return;
             registerProblem(statement, "findFirst", new ReplaceWithFindFirstFix());
           }
-        }
+        }*/
       }
     }
 
