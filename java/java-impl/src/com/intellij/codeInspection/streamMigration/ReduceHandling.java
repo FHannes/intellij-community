@@ -430,14 +430,18 @@ public class ReduceHandling {
   public static boolean isSameExpression(PsiExpression expr1, PsiExpression expr2) {
     if (expr1.equals(expr2)) return true;
 
-    if (!(expr1 instanceof PsiReferenceExpression) || !(expr2 instanceof PsiReferenceExpression)) return false;
+    if (expr1 instanceof PsiReferenceExpression && expr2 instanceof PsiReferenceExpression) {
+      PsiElement elem1 = ((PsiReferenceExpression)expr1).resolve();
+      PsiElement elem2 = ((PsiReferenceExpression)expr2).resolve();
 
-    PsiElement elem1 = ((PsiReferenceExpression) expr1).resolve();
-    PsiElement elem2 = ((PsiReferenceExpression) expr2).resolve();
+      if (elem1 == null || elem2 == null) return false;
 
-    if (elem1 == null || elem2 == null) return false;
+      return elem1.equals(elem2);
+    } else if (expr1 instanceof PsiLiteralExpression && expr2 instanceof PsiLiteralExpression) {
+      return expr1.getText().equals(expr2.getText());
+    }
 
-    return elem1.equals(elem2);
+    return false;
   }
 
   @Nullable
