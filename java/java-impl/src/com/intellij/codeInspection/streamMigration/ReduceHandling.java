@@ -360,14 +360,16 @@ public class ReduceHandling {
         if (method.getReturnType() == null || !isTypeAllowedForReduce(accumulator, method.getReturnType())) return null;
 
         // Method must have more than 1 parameter
-        if (method.getParameterList().getParametersCount() == 0) return null;
+        if (method.getParameterList().getParametersCount() == 0 &&
+            mce.getArgumentList().getExpressions().length == 0) return null;
 
         // First method parameter must be same type as accumulator
         if (!isTypeAllowedForReduce(accumulator, method.getParameterList().getParameters()[0].getType())) return null;
 
         if (isStatic(method)) {
           // Static methods have 2 params
-          if (method.getParameterList().getParametersCount() != 2) return null;
+          if (method.getParameterList().getParametersCount() != 2 &&
+              mce.getArgumentList().getExpressions().length != 2) return null;
 
           // Second method parameter must be same type as accumulator
           if (!isTypeAllowedForReduce(accumulator, method.getParameterList().getParameters()[1].getType())) return null;
@@ -376,7 +378,8 @@ public class ReduceHandling {
           expr2 = ParenthesesUtils.stripParentheses(mce.getArgumentList().getExpressions()[1]);
         } else {
           // Non-static methods have 1 param
-          if (method.getParameterList().getParametersCount() != 1) return null;
+          if (method.getParameterList().getParametersCount() != 1 &&
+            mce.getArgumentList().getExpressions().length != 1) return null;
 
           expr1 = ParenthesesUtils.stripParentheses(mce.getMethodExpression().getQualifierExpression());
           expr2 = ParenthesesUtils.stripParentheses(mce.getArgumentList().getExpressions()[0]);
@@ -395,9 +398,6 @@ public class ReduceHandling {
         }
       } else return null;
     } else return null;
-
-    // If there's no identity for the reduce, the function MUST be idempotent
-    if (opData.getFirst().isEmpty() && !opData.getSecond()) return null;
 
     boolean reversed;
     PsiExpression returnExpr;
@@ -425,6 +425,19 @@ public class ReduceHandling {
 
   public static boolean isFinal(PsiModifierListOwner element) {
     return element.getModifierList() != null && element.getModifierList().hasModifierProperty(PsiModifier.FINAL);
+  }
+
+  public static boolean isSameExpression(PsiExpression expr1, PsiExpression expr2) {
+    if (expr1.equals(expr2)) return true;
+
+    if (!(expr1 instanceof PsiReferenceExpression) || !(expr2 instanceof PsiReferenceExpression)) return false;
+
+    PsiElement elem1 = ((PsiReferenceExpression) expr1).resolve();
+    PsiElement elem2 = ((PsiReferenceExpression) expr2).resolve();
+
+    if (elem1 == null || elem2 == null) return false;
+
+    return elem1.equals(elem2);
   }
 
   @Nullable
