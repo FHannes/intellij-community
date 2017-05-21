@@ -4,13 +4,14 @@ import com.intellij.codeInsight.AnnotationUtil;
 import com.intellij.openapi.util.Pair;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
-import com.siyeh.ig.psiutils.ClassUtils;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author Frédéric Hannes
@@ -18,7 +19,6 @@ import java.util.*;
 public class ReduceHandling {
 
   @NonNls public static final String BE_KULEUVEN_CS_DTAI_ASSOCIATIVE = "be.kuleuven.cs.dtai.Associative";
-  @NonNls public static final String BE_KULEUVEN_CS_DTAI_IMMUTABLE = "be.kuleuven.cs.dtai.Immutable";
 
   @NonNls public static final Map<String, Map<IElementType, Pair<String, Boolean>>> associativeOperators = new HashMap<>();
   @NonNls private static final Map<String, Map<String, Pair<String, Boolean>>> associativeMemberOperations = new HashMap<>();
@@ -225,13 +225,7 @@ public class ReduceHandling {
       if (methodData != null && methodData.containsKey(method.getName())) return methodData.get(method.getName());
     }
 
-    if (!ClassUtils.isImmutable(method.getReturnType())) {
-      if (!(method.getReturnType() instanceof PsiClassType)) return null;
-
-      PsiClass returnClass = ((PsiClassType) method.getReturnType()).resolve();
-      if (returnClass == null || !AnnotationUtil.isAnnotated(returnClass, Collections.singletonList(BE_KULEUVEN_CS_DTAI_IMMUTABLE),
-                                                             false, true)) return null;
-    }
+    if (!CommonUtils.isImmutable(method.getReturnType())) return null;
 
     // Check for presence of Associative annotation
     PsiAnnotation annotation = AnnotationUtil.findAnnotation(method, true, BE_KULEUVEN_CS_DTAI_ASSOCIATIVE);
@@ -309,9 +303,9 @@ public class ReduceHandling {
     if (accumulator == null) return null;
     final PsiType type = accumulator.getType();
 
-    PsiExpression expr1 = null, expr2 = null;
-    Pair<String, Boolean> opData = null;
-    String format = "";
+    PsiExpression expr1, expr2;
+    Pair<String, Boolean> opData;
+    String format;
 
     IElementType op = mapAssignOperator(assignment.getOperationTokenType());
 

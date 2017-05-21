@@ -2,9 +2,7 @@ package com.intellij.codeInspection.streamMigration;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
-import com.siyeh.ig.psiutils.ExpressionUtils;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * @author Frédéric Hannes

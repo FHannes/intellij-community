@@ -4,7 +4,10 @@ import com.intellij.psi.*;
 import com.intellij.psi.controlFlow.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
-import com.siyeh.ig.psiutils.*;
+import com.siyeh.ig.psiutils.CollectionUtils;
+import com.siyeh.ig.psiutils.ExpressionUtils;
+import com.siyeh.ig.psiutils.ParenthesesUtils;
+import com.siyeh.ig.psiutils.VariableAccessUtils;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
@@ -170,7 +173,7 @@ public class StringConcatHandling {
       if (!fnl && isValueChangedBetween(var, loop)) return false;
 
       // The type of the variable must be an immutable class, or its contents could also change at runtime
-      return ClassUtils.isImmutable(var.getType());
+      return CommonUtils.isImmutable(var.getType());
     }
     return false;
   }
