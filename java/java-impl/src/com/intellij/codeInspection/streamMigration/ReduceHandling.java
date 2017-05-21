@@ -7,6 +7,7 @@ import com.intellij.psi.tree.IElementType;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
@@ -421,7 +422,7 @@ public class ReduceHandling {
     return element.getModifierList() != null && element.getModifierList().hasModifierProperty(PsiModifier.FINAL);
   }
 
-  public static boolean isSameExpression(PsiExpression expr1, PsiExpression expr2) {
+  public static boolean isSameExpression(@NotNull PsiExpression expr1, @NotNull PsiExpression expr2) {
     if (expr1.equals(expr2)) return true;
 
     if (expr1 instanceof PsiReferenceExpression && expr2 instanceof PsiReferenceExpression) {
