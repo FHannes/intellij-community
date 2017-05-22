@@ -38,7 +38,7 @@ public class Queue<T> {
   public void addLast(T object) {
     int currentSize = size();
     if (currentSize == myArray.length) {
-      myArray = normalize(Math.max(currentSize * 2, 5));
+      myArray = normalize(Math.max(currentSize * 3/2, 10));
       myFirst = 0;
       myLast = currentSize;
       isWrapped = false;
@@ -59,6 +59,15 @@ public class Queue<T> {
     myLast--;
     @SuppressWarnings("unchecked") T result = (T)myArray[myLast];
     myArray[myLast] = null;
+    return result;
+  }
+
+  public T peekLast() {
+    int last = myLast;
+    if (last == 0) {
+      last = myArray.length;
+    }
+    @SuppressWarnings("unchecked") T result = (T)myArray[last-1];
     return result;
   }
 
@@ -122,6 +131,7 @@ public class Queue<T> {
     return normalize(result);
   }
 
+  @NotNull
   private T[] normalize(T[] result) {
     if (isWrapped) {
       int tailLength = copyFromTo(myFirst, myArray.length, result, 0);
@@ -173,16 +183,13 @@ public class Queue<T> {
   @Override
   public String toString() {
     if (isEmpty()) return "<empty>";
-    List<Object> list = Arrays.asList(myArray);
-    if (isWrapped) {
-      return "[[[ " + list.subList(0, myLast) + " ||| ... " +
-             list.subList(myLast, myFirst) + " ... ||| " +
-             list.subList(myFirst, myArray.length) + " ]]]";
-    }
-    else {
-      return "[[[ ... " + list.subList(0, myFirst) + " ... ||| " +
-                 list.subList(myFirst, myLast) + " ||| ... " +
-                 list.subList(myFirst, myArray.length) + " ... ]]]";
-    }
+
+    return isWrapped ?
+           "[ " + sub(myFirst, myArray.length) + " ||| " + sub(0, myLast) + " ]" :
+           "[ " + sub(myFirst, myLast) + " ]";
+  }
+  private Object sub(int start, int end) {
+    if (start == end) return "";
+    return Arrays.asList(myArray).subList(start, end);
   }
 }

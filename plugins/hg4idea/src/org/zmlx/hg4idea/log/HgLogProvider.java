@@ -32,6 +32,7 @@ import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.vcs.log.*;
 import com.intellij.vcs.log.impl.LogDataImpl;
 import com.intellij.vcs.log.util.UserNameRegex;
+import com.intellij.vcs.log.util.VcsUserUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.zmlx.hg4idea.HgNameWithHashInfo;
@@ -72,7 +73,7 @@ public class HgLogProvider implements VcsLogProvider {
   public DetailedLogData readFirstBlock(@NotNull VirtualFile root,
                                         @NotNull Requirements requirements) throws VcsException {
     List<VcsCommitMetadata> commits = HgHistoryUtil.loadMetadata(myProject, root, requirements.getCommitCount(),
-                                                                 Collections.<String>emptyList());
+                                                                 Collections.emptyList());
     return new LogDataImpl(readAllRefs(root), commits);
   }
 
@@ -81,7 +82,7 @@ public class HgLogProvider implements VcsLogProvider {
   public LogData readAllHashes(@NotNull VirtualFile root, @NotNull final Consumer<TimedVcsCommit> commitConsumer) throws VcsException {
     Set<VcsUser> userRegistry = ContainerUtil.newHashSet();
     List<TimedVcsCommit> commits = HgHistoryUtil.readAllHashes(myProject, root, new CollectConsumer<>(userRegistry),
-                                                               Collections.<String>emptyList());
+                                                               Collections.emptyList());
     for (TimedVcsCommit commit : commits) {
       commitConsumer.consume(commit);
     }
@@ -250,7 +251,8 @@ public class HgLogProvider implements VcsLogProvider {
     if (filterCollection.getUserFilter() != null) {
       filterParameters.add("-r");
       String authorFilter =
-        StringUtil.join(ContainerUtil.map(filterCollection.getUserFilter().getUserNames(root), UserNameRegex.EXTENDED_INSTANCE), "|");
+        StringUtil.join(ContainerUtil.map(ContainerUtil.map(filterCollection.getUserFilter().getUsers(root), VcsUserUtil::toExactString),
+                                          UserNameRegex.EXTENDED_INSTANCE), "|");
       filterParameters.add("user('re:" + authorFilter + "')");
     }
 
@@ -331,6 +333,12 @@ public class HgLogProvider implements VcsLogProvider {
     HgRepository repository = myRepositoryManager.getRepositoryForRoot(root);
     if (repository == null) return null;
     return repository.getCurrentBranchName();
+  }
+
+  @Nullable
+  @Override
+  public VcsLogDiffHandler getDiffHandler() {
+    return null;
   }
 
   @Nullable

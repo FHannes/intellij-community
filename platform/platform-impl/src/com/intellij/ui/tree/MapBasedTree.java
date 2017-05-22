@@ -16,6 +16,7 @@
 package com.intellij.ui.tree;
 
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.util.Pair;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.event.TreeModelEvent;
@@ -25,6 +26,7 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static java.util.Collections.emptyList;
@@ -40,11 +42,34 @@ public final class MapBasedTree<K, N> {
 
   private final Map<K, Entry<N>> map;
   private final Function<N, K> keyFunction;
+  private final TreePath path;
   private volatile Entry<N> root;
+  private volatile Consumer<N> nodeRemoved;
+  private volatile Consumer<N> nodeInserted;
 
   public MapBasedTree(boolean identity, @NotNull Function<N, K> keyFunction) {
+    this(identity, keyFunction, null);
+  }
+
+  public MapBasedTree(boolean identity, @NotNull Function<N, K> keyFunction, TreePath path) {
     map = identity ? new IdentityHashMap<>() : new HashMap<>();
     this.keyFunction = keyFunction;
+    this.path = path;
+  }
+
+  public void invalidate() {
+    if (root != null) root.invalidate();
+    map.values().forEach(entry -> entry.invalidate());
+  }
+
+  public void onRemove(@NotNull Consumer<N> consumer) {
+    Consumer<N> old = nodeRemoved;
+    nodeRemoved = old == null ? consumer : old.andThen(consumer);
+  }
+
+  public void onInsert(@NotNull Consumer<N> consumer) {
+    Consumer<N> old = nodeInserted;
+    nodeInserted = old == null ? consumer : old.andThen(consumer);
   }
 
   public Entry<N> findEntry(K key) {
@@ -59,9 +84,7 @@ public final class MapBasedTree<K, N> {
   public Entry<N> getEntry(N node) {
     K key = getKey(node);
     Entry<N> entry = findEntry(key);
-    if (entry == null || entry.node == node) return entry;
-    LOG.warn("MapBasedTree: found another node with the key: " + key);
-    return null;
+    return entry == null || entry.node == node ? entry : null;
   }
 
   public Entry<N> getRootEntry() {
@@ -76,41 +99,43 @@ public final class MapBasedTree<K, N> {
     return null;
   }
 
-  public boolean updateRoot(N node) {
-    if (node == (root == null ? null : root.node)) return false;
+  public boolean updateRoot(Pair<N, Boolean> pair) {
+    N node = pair == null ? null : pair.first;
+    if (root == null ? node == null : root.node == node) return false;
 
-    K key = getKey(node);
-    Entry<N> entry = null;
-    if (key != null) {
-      entry = new Entry<>(null, node);
+    if (root != null) {
+      remove(root, keyFunction.apply(root.node));
+      root = null;
     }
-    else if (root == null) {
-      return false;
+    if (!map.isEmpty()) {
+      map.clear();
+      LOG.warn("MapBasedTree: clear lost entries");
     }
-    root = entry;
-    map.clear();
-    if (key != null) map.put(key, entry);
+    if (node != null) {
+      root = new Entry<>(path, null, node, pair.second);
+      insert(root, keyFunction.apply(node));
+    }
     return true;
   }
 
-  public UpdateResult<N> update(@NotNull Entry<N> parent, List<N> children) {
+  public UpdateResult<N> update(@NotNull Entry<N> parent, List<Pair<N, Boolean>> children) {
     List<Entry<N>> newChildren = new ArrayList<>(children == null ? 0 : children.size());
     List<Entry<N>> oldChildren = parent.children;
     Map<Entry<N>, K> mapInserted = new IdentityHashMap<>();
     Map<Entry<N>, K> mapContained = new IdentityHashMap<>();
 
     if (children != null && !children.isEmpty()) {
-      children.forEach(node -> {
-        if (node == null) {
+      children.forEach(pair -> {
+        if (pair == null || pair.first == null) {
           LOG.warn("MapBasedTree: ignore null node");
           return;
         }
-        K key = getKey(node);
+        K key = getKey(pair.first);
         if (key == null) return;
 
         Entry<N> entry = findEntry(key);
         if (entry == null) {
-          entry = new Entry<>(parent, node);
+          entry = new Entry<>(parent, parent.node, pair.first, pair.second);
           mapInserted.put(entry, key);
         }
         else if (parent != entry.getParentPath()) {
@@ -126,6 +151,7 @@ public final class MapBasedTree<K, N> {
     }
     parent.leaf = children == null;
     parent.children = guard(newChildren);
+    parent.valid = true;
 
     List<Entry<N>> removed = oldChildren;
     List<Entry<N>> inserted = newChildren;
@@ -140,7 +166,7 @@ public final class MapBasedTree<K, N> {
       contained = newChildren.stream().filter(entry -> mapContained.containsKey(entry)).collect(toList());
     }
     removeChildren(parent, removed);
-    mapInserted.forEach((entry, key) -> map.put(key, entry));
+    mapInserted.forEach(this::insert);
     return new UpdateResult<>(removed, inserted, contained);
   }
 
@@ -151,23 +177,40 @@ public final class MapBasedTree<K, N> {
           parent.loading = null;
         }
         else {
-          K key = getKey(entry.node);
-          if (key != null) {
-            Entry<N> removed = map.remove(key);
-            if (removed == null) {
-              LOG.warn("MapBasedTree: expected entry is not found");
-            }
-            else if (removed != entry) {
-              LOG.warn("MapBasedTree: do not remove unexpected entry");
-              map.put(key, removed);
-            }
-            else {
-              removeChildren(removed, removed.children);
-            }
-          }
+          remove(entry, getKey(entry.node));
         }
       }
     }
+  }
+
+  private void remove(Entry<N> entry, K key) {
+    if (key != null) {
+      Entry<N> removed = map.remove(key);
+      if (removed == null) {
+        LOG.warn("MapBasedTree: expected entry is not found");
+      }
+      else if (removed != entry) {
+        LOG.warn("MapBasedTree: do not remove unexpected entry");
+        map.put(key, removed);
+        return;
+      }
+    }
+    removeChildren(entry, entry.children);
+    Consumer<N> consumer = nodeRemoved;
+    if (consumer != null) consumer.accept(entry.node);
+  }
+
+  private void insert(Entry<N> entry, K key) {
+    if (key != null) {
+      Entry<N> removed = map.put(key, entry);
+      if (removed != null) {
+        LOG.warn("MapBasedTree: do not replace unexpected entry");
+        map.put(key, removed);
+        return;
+      }
+    }
+    Consumer<N> consumer = nodeInserted;
+    if (consumer != null) consumer.accept(entry.node);
   }
 
   private static <T> List<T> guard(List<T> list) {
@@ -176,16 +219,24 @@ public final class MapBasedTree<K, N> {
 
   public static final class Entry<N> extends TreePath {
     private final N node;
-    private final Entry<N> parent;
+    private final N parent;
     private volatile int index;
     private volatile boolean leaf;
     private volatile List<Entry<N>> children;
     private volatile N loading;
+    private volatile boolean valid;
 
-    private Entry(Entry<N> parent, N node) {
-      super(parent, node);
+    private Entry(TreePath path, N parent, N node, Boolean leaf) {
+      super(path, node);
       this.node = node;
       this.parent = parent;
+      this.leaf = Boolean.TRUE.equals(leaf);
+      if (this.leaf) children = emptyList();
+      invalidate();
+    }
+
+    public void invalidate() {
+      valid = leaf;
     }
 
     public N getNode() {
@@ -193,25 +244,47 @@ public final class MapBasedTree<K, N> {
     }
 
     public N getParent() {
-      return parent == null ? null : parent.node;
+      return parent;
     }
 
     public boolean isLeaf() {
       return leaf;
     }
 
-    public List<N> getChildren() {
-      return children == null ? null : children.stream().map(entry -> entry.node).collect(toList());
+    public boolean isLoadingRequired() {
+      return !valid || children == null;
     }
 
-    public boolean isLoadingRequired() {
-      return children == null;
+    public int getChildCount() {
+      return children == null ? 0 : children.size();
+    }
+
+    public Entry<N> getChildEntry(int index) {
+      if (children != null && 0 <= index && index < children.size()) {
+        return children.get(index);
+      }
+      return null;
+    }
+
+    public N getChild(int index) {
+      Entry<N> entry = getChildEntry(index);
+      return entry == null ? null : entry.getNode();
+    }
+
+    public int getIndexOf(N child) {
+      if (children != null) {
+        for (int i = 0; i < children.size(); i++) {
+          if (child == children.get(i).getNode()) return i;
+        }
+      }
+      return -1;
     }
 
     void setLoadingChildren(N loading) {
       if (children != null) LOG.warn("MapBasedTree: rewrite loaded nodes");
       this.loading = loading;
-      children = loading == null ? emptyList() : singletonList(new Entry<>(this, loading));
+      children = loading == null ? emptyList() : singletonList(new Entry<>(this, node, loading, true));
+      valid = true;
     }
   }
 

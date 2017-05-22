@@ -16,9 +16,9 @@
 package com.intellij.codeInsight.completion
 
 import com.intellij.JavaTestUtil
+import com.intellij.codeInsight.CodeInsightSettings
 import com.intellij.codeInsight.lookup.LookupElementPresentation
 import com.intellij.testFramework.LightProjectDescriptor
-
 /**
  * @author anna
  */
@@ -271,4 +271,28 @@ class Test88 {
     myFixture.type(':')
     checkResultByFile(getTestName(false) + "_after.java")
   }
+
+  void testPreferLocalsOverMethodRefs() {
+    CodeInsightSettings.getInstance().COMPLETION_CASE_SENSITIVE = CodeInsightSettings.NONE
+    configureByTestName()
+    myFixture.assertPreferredCompletionItems 0, "psiElement1 -> ", "psiElement", "getParent", "PsiElement"
+  }
+
+  void testStaticallyImportedFromInterface() {
+    myFixture.addClass("package pkg;\n" +
+                       "public interface Point {\n" +
+                       "    static Point point(double x, double y) {}\n" +
+                       "}")
+    configureByTestName()
+    myFixture.type('\n')
+    checkResultByFile(getTestName(false) + "_after.java")
+  }
+
+  void testOverrideMethodAsDefault() {
+    configureByTestName()
+    assert LookupElementPresentation.renderElement(myFixture.lookupElements[0]).itemText == 'default void run'
+    myFixture.type('\t')
+    checkResultByFile(getTestName(false) + "_after.java")
+  }
+
 }

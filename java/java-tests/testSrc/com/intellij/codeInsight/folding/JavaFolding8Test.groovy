@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,41 +15,19 @@
  */
 package com.intellij.codeInsight.folding
 
-import com.intellij.codeInsight.folding.impl.CodeFoldingManagerImpl
-import com.intellij.codeInsight.folding.impl.JavaCodeFoldingSettingsImpl
 import com.intellij.codeInsight.folding.impl.JavaFoldingBuilder
-import com.intellij.openapi.editor.ex.FoldingModelEx
 import com.intellij.openapi.editor.impl.FoldingModelImpl
 import com.intellij.testFramework.LightProjectDescriptor
-import com.intellij.testFramework.fixtures.LightCodeInsightFixtureTestCase
 import org.jetbrains.annotations.NotNull
 
 /**
  * @author peter
  */
-class JavaFolding8Test extends LightCodeInsightFixtureTestCase {
-
-  JavaCodeFoldingSettingsImpl myFoldingSettings
-  JavaCodeFoldingSettingsImpl myFoldingStateToRestore
-
+class JavaFolding8Test extends JavaFoldingTestCase {
   @NotNull
   @Override
   protected LightProjectDescriptor getProjectDescriptor() {
     return JAVA_8
-  }
-
-  @Override
-  void setUp() {
-    super.setUp()
-    myFoldingSettings = JavaCodeFoldingSettings.instance as JavaCodeFoldingSettingsImpl
-    myFoldingStateToRestore = new JavaCodeFoldingSettingsImpl()
-    myFoldingStateToRestore.loadState(myFoldingSettings)
-  }
-
-  @Override
-  protected void tearDown() {
-    myFoldingSettings.loadState(myFoldingStateToRestore)
-    super.tearDown()
   }
 
   void "test no plain lambda folding where anonymous class can be real lambda but fold otherwise"() {
@@ -97,12 +75,20 @@ class Test {
     assert foldingModel.getCollapsedRegionAtOffset(text.indexOf("MyAction("))?.placeholderText == '() ' + JavaFoldingBuilder.rightArrow + ' { '
   }
 
-  private def configure(String text) {
-    myFixture.configureByText("a.java", text)
-    CodeFoldingManagerImpl.getInstance(getProject()).buildInitialFoldings(myFixture.editor)
-    def foldingModel = myFixture.editor.foldingModel as FoldingModelEx
-    foldingModel.rebuild()
-    myFixture.doHighlighting()
-  }
+  void "test folding lambda with block body"() {
+    myFoldingSettings.collapseAnonymousClasses = true
+    def text = """\
+class Test {
+  void test() {
+    Runnable action = () -> {
+        System.out.println();
+        };
+    }
+}
+"""
+    configure text
+    def foldingModel = myFixture.editor.foldingModel as FoldingModelImpl
 
+    assert foldingModel.getCollapsedRegionAtOffset(text.indexOf("System.out.println"))?.placeholderText == '{...}'
+  }
 }

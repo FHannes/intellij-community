@@ -674,6 +674,10 @@ public class ExtractMethodTest extends LightCodeInsightTestCase {
     doTest();
   }
 
+  public void testFromLambdaBodyCapturedWildcardParams() throws Exception {
+    doTest();
+  }
+
   public void testFromLambdaBodyToAnonymous() throws Exception {
     doTest();
   }
@@ -887,6 +891,10 @@ public class ExtractMethodTest extends LightCodeInsightTestCase {
   }
 
   public void testDifferentAnnotations() throws Exception {
+    doTest();
+  }
+
+  public void testTypeUseAnnotationsOnParameter() throws Exception {
     doTest();
   }
 

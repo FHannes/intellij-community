@@ -324,6 +324,7 @@ public class CommonCodeStyleSettings {
   @BraceStyleConstant public int BRACE_STYLE = END_OF_LINE;
   @BraceStyleConstant public int CLASS_BRACE_STYLE = END_OF_LINE;
   @BraceStyleConstant public int METHOD_BRACE_STYLE = END_OF_LINE;
+  @BraceStyleConstant public int LAMBDA_BRACE_STYLE = END_OF_LINE;
 
   /**
    * Defines if 'flying geese' style should be used for curly braces formatting, e.g. if we want to format code like
@@ -343,11 +344,6 @@ public class CommonCodeStyleSettings {
    * </pre>
    */
   public boolean USE_FLYING_GEESE_BRACES = false;
-
-  /**
-   * Defines number of white spaces between curly braces in case of {@link #USE_FLYING_GEESE_BRACES 'flying geese'} style usage.
-   */
-  public int FLYING_GEESE_BRACES_GAP = 1;
 
   public boolean DO_NOT_INDENT_TOP_LEVEL_CLASS_MEMBERS = false;
 
@@ -392,6 +388,8 @@ public class CommonCodeStyleSettings {
   public boolean FINALLY_ON_NEW_LINE = false;
 
   public boolean INDENT_CASE_FROM_SWITCH = true;
+  
+  public boolean CASE_STATEMENT_ON_NEW_LINE = true;
 
   /**
    * Controls "break" position relative to "case".
@@ -929,7 +927,6 @@ public class CommonCodeStyleSettings {
 
     private FileIndentOptionsProvider myFileIndentOptionsProvider;
     private static final Key<CommonCodeStyleSettings.IndentOptions> INDENT_OPTIONS_KEY = Key.create("INDENT_OPTIONS_KEY");
-    private boolean myInaccurate;
     private boolean myOverrideLanguageOptions;
 
     @Override
@@ -1046,5 +1043,18 @@ public class CommonCodeStyleSettings {
     public void setOverrideLanguageOptions(boolean overrideLanguageOptions) {
       myOverrideLanguageOptions = overrideLanguageOptions;
     }
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (obj instanceof CommonCodeStyleSettings) {
+      if (
+        ReflectionUtil.comparePublicNonFinalFields(this, obj) &&
+        myIndentOptions.equals(((CommonCodeStyleSettings)obj).getIndentOptions())
+        ) {
+        return true;
+      }
+    }
+    return false;
   }
 }

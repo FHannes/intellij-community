@@ -14,36 +14,38 @@
  * limitations under the License.
  */
 
-/*
- * Created by IntelliJ IDEA.
- * User: Alexey
- * Date: 08.07.2006
- * Time: 0:07:45
- */
 package com.intellij.codeInspection;
 
 import com.intellij.JavaTestUtil;
 import com.intellij.codeInspection.ex.LocalInspectionToolWrapper;
 import com.intellij.codeInspection.nullable.NullableStuffInspection;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.SdkModificator;
 import com.intellij.openapi.roots.OrderRootType;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.testFramework.InspectionTestCase;
 import com.intellij.testFramework.PsiTestUtil;
 import org.jetbrains.annotations.NotNull;
 
 public class NullableStuffInspectionAncientTest extends InspectionTestCase {
-  private final NullableStuffInspection myInspection = new NullableStuffInspection();
-  {
-    myInspection.REPORT_ANNOTATION_NOT_PROPAGATED_TO_OVERRIDERS = false;
-  }
+  private NullableStuffInspection myInspection = new NullableStuffInspection();
 
   @Override
   protected String getTestDataPath() {
     return JavaTestUtil.getJavaTestDataPath() + "/inspection";
+  }
+
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    myInspection.REPORT_ANNOTATION_NOT_PROPAGATED_TO_OVERRIDERS = false;
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    myInspection = null;
+    super.tearDown();
   }
 
   public void testJdk14() throws Exception{
@@ -66,7 +68,7 @@ public class NullableStuffInspectionAncientTest extends InspectionTestCase {
 
   @NotNull
   private static Sdk removeAnnotationsJar(@NotNull Sdk sdk) {
-    return ApplicationManager.getApplication().runWriteAction((Computable<Sdk>)() -> {
+    return WriteAction.compute(() -> {
       Sdk clone;
       try {
         clone = (Sdk)sdk.clone();

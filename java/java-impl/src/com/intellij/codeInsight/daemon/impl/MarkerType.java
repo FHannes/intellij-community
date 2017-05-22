@@ -224,6 +224,11 @@ public class MarkerType {
   });
 
   private static String getOverriddenMethodTooltip(@NotNull PsiMethod method) {
+    final PsiClass aClass = method.getContainingClass();
+    if (aClass != null && CommonClassNames.JAVA_LANG_OBJECT.equals(aClass.getQualifiedName())) {
+      return DaemonBundle.message("method.is.implemented.too.many");
+    }
+
     PsiElementProcessor.CollectElementsWithLimit<PsiMethod> processor = new PsiElementProcessor.CollectElementsWithLimit<>(5);
     GlobalSearchScope scope = GlobalSearchScope.allScope(PsiUtilCore.getProjectInReadAction(method));
     OverridingMethodsSearch.search(method, scope, true).forEach(new PsiElementProcessorAdapter<>(processor));
@@ -236,8 +241,7 @@ public class MarkerType {
 
     PsiMethod[] overridings = processor.toArray(PsiMethod.EMPTY_ARRAY);
     if (overridings.length == 0) {
-      final PsiClass aClass = method.getContainingClass();
-      if (aClass != null && FunctionalExpressionSearch.search(aClass).findFirst() != null) {
+      if (aClass != null && isAbstract && FunctionalExpressionSearch.search(aClass).findFirst() != null) {
         return "Has functional implementations";
       }
       return null;
@@ -324,7 +328,7 @@ public class MarkerType {
       return null;
     }
 
-    Comparator<PsiClass> comparator = PsiClassListCellRenderer.INSTANCE.getComparator();
+    Comparator<PsiClass> comparator = new PsiClassListCellRenderer().getComparator();
     Arrays.sort(subclasses, comparator);
 
     String start = DaemonBundle.message(aClass.isInterface() ? "interface.is.implemented.by.header" : "class.is.subclassed.by.header");
@@ -333,7 +337,15 @@ public class MarkerType {
   }
 
   // Used in Kotlin, please don't make private
-  public static void navigateToSubclassedClass(MouseEvent e, @NotNull final PsiClass aClass) {
+  public static void navigateToSubclassedClass(MouseEvent e,
+                                               @NotNull final PsiClass aClass) {
+    navigateToSubclassedClass(e, aClass, new PsiClassOrFunctionalExpressionListCellRenderer());
+  }
+
+  // Used in Kotlin, please don't make private
+  public static void navigateToSubclassedClass(MouseEvent e,
+                                               @NotNull final PsiClass aClass,
+                                               PsiElementListCellRenderer<NavigatablePsiElement> renderer) {
     if (DumbService.isDumb(aClass.getProject())) {
       DumbService.getInstance(aClass.getProject()).showDumbModeNotification("Navigation to overriding methods is not possible during index update");
       return;
@@ -354,7 +366,6 @@ public class MarkerType {
     ContainerUtil.addIfNotNull(inheritors, collectProcessor.getFoundElement());
     ContainerUtil.addIfNotNull(inheritors, collectExprProcessor.getFoundElement());
     if (inheritors.isEmpty()) return;
-    final PsiClassOrFunctionalExpressionListCellRenderer renderer = new PsiClassOrFunctionalExpressionListCellRenderer();
     final SubclassUpdater subclassUpdater = new SubclassUpdater(aClass, renderer);
     Collections.sort(inheritors, renderer.getComparator());
     PsiElementListNavigator.openTargets(e, inheritors.toArray(new NavigatablePsiElement[inheritors.size()]), subclassUpdater.getCaption(inheritors.size()), CodeInsightBundle.message("goto.implementation.findUsages.title", aClass.getName()), renderer, subclassUpdater);
@@ -362,9 +373,9 @@ public class MarkerType {
 
   private static class SubclassUpdater extends ListBackgroundUpdaterTask {
     private final PsiClass myClass;
-    private final PsiClassOrFunctionalExpressionListCellRenderer myRenderer;
+    private final PsiElementListCellRenderer<NavigatablePsiElement> myRenderer;
 
-    private SubclassUpdater(@NotNull PsiClass aClass, @NotNull PsiClassOrFunctionalExpressionListCellRenderer renderer) {
+    private SubclassUpdater(@NotNull PsiClass aClass, @NotNull PsiElementListCellRenderer<NavigatablePsiElement> renderer) {
       super(aClass.getProject(), SEARCHING_FOR_OVERRIDDEN_METHODS);
       myClass = aClass;
       myRenderer = renderer;
@@ -462,17 +473,19 @@ public class MarkerType {
             return super.process(psiMethod);
           }
         });
-      PsiClass psiClass = ApplicationManager.getApplication().runReadAction((Computable<PsiClass>)myMethod::getContainingClass);
-      FunctionalExpressionSearch.search(psiClass).forEach(new CommonProcessors.CollectProcessor<PsiFunctionalExpression>() {
-        @Override
-        public boolean process(final PsiFunctionalExpression expr) {
-          if (!updateComponent(expr, myRenderer.getComparator())) {
-            indicator.cancel();
+      if (ReadAction.compute(() -> myMethod.hasModifierProperty(PsiModifier.ABSTRACT))) {
+        PsiClass psiClass = ReadAction.compute(myMethod::getContainingClass);
+        FunctionalExpressionSearch.search(psiClass).forEach(new CommonProcessors.CollectProcessor<PsiFunctionalExpression>() {
+          @Override
+          public boolean process(final PsiFunctionalExpression expr) {
+            if (!updateComponent(expr, myRenderer.getComparator())) {
+              indicator.cancel();
+            }
+            indicator.checkCanceled();
+            return super.process(expr);
           }
-          indicator.checkCanceled();
-          return super.process(expr);
-        }
-      });
+        });
+      }
     }
   }
 }

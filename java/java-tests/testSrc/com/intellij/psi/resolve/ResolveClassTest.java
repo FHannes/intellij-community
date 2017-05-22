@@ -187,7 +187,7 @@ public class ResolveClassTest extends ResolveTestCase {
     final VirtualFile file = ref.getElement().getContainingFile().getVirtualFile();
     assertNotNull(file);
     createFile(myModule, file.getParent(), "ModuleSourceAsLibrarySourceDep.java", loadFile("class/ModuleSourceAsLibrarySourceDep.java"));
-    ModuleRootModificationUtil.addModuleLibrary(myModule, "lib", Collections.<String>emptyList(), Collections.singletonList(file.getParent().getUrl()));
+    ModuleRootModificationUtil.addModuleLibrary(myModule, "lib", Collections.emptyList(), Collections.singletonList(file.getParent().getUrl()));
 
     assertInstanceOf(ref.resolve(), PsiClass.class);
   }
@@ -198,7 +198,7 @@ public class ResolveClassTest extends ResolveTestCase {
     final VirtualFile file = psiFile.getVirtualFile();
     assertNotNull(file);
     createFile(myModule, file.getParent(), "ModuleSourceAsLibraryClassesDep.java", loadFile("class/ModuleSourceAsLibraryClassesDep.java"));
-    ModuleRootModificationUtil.addModuleLibrary(myModule, "lib", Collections.singletonList(file.getParent().getUrl()), Collections.<String>emptyList());
+    ModuleRootModificationUtil.addModuleLibrary(myModule, "lib", Collections.singletonList(file.getParent().getUrl()), Collections.emptyList());
     //need this to ensure that PsiJavaFileBaseImpl.myResolveCache is filled to reproduce IDEA-91309
     DependenciesBuilder.analyzeFileDependencies(psiFile, new DependenciesBuilder.DependencyProcessor() {
       @Override
@@ -208,21 +208,29 @@ public class ResolveClassTest extends ResolveTestCase {
     assertInstanceOf(ref.resolve(), PsiClass.class);
   }
 
-
   public void testStaticImportInTheSameClassPerformance() throws Exception {
+    warmUpResolve();
+
     PsiReference ref = configure();
     ensureIndexUpToDate();
-    long start = System.currentTimeMillis();
-    assertNull(ref.resolve());
-    long elapsed = System.currentTimeMillis() - start;
-    PlatformTestUtil.assertTiming("exponent?", 500, elapsed);
+    PlatformTestUtil.startPerformanceTest("exponent?", 500, () -> assertNull(ref.resolve()))
+      .attempts(1).assertTiming();
   }
 
   private void ensureIndexUpToDate() {
     getJavaFacade().findClass(CommonClassNames.JAVA_UTIL_LIST, GlobalSearchScope.allScope(myProject));
   }
 
+  private void warmUpResolve() {
+    PsiJavaCodeReferenceElement ref = JavaPsiFacade.getElementFactory(myProject).createReferenceFromText("java.util.List<String>", null);
+    JavaResolveResult result = ref.advancedResolve(false);
+    assertNotNull(result.getElement());
+    assertSize(1, result.getSubstitutor().getSubstitutionMap().keySet());
+  }
+
   public void testStaticImportNetworkPerformance() throws Exception {
+    warmUpResolve();
+
     PsiReference ref = configure();
     int count = 15;
 
@@ -237,9 +245,8 @@ public class ResolveClassTest extends ResolveTestCase {
 
     ensureIndexUpToDate();
     System.gc();
-    long start = System.currentTimeMillis();
-    assertNull(ref.resolve());
-    PlatformTestUtil.assertTiming("exponent?", 20000, System.currentTimeMillis() - start);
+    PlatformTestUtil.startPerformanceTest("exponent?", 20000, () -> assertNull(ref.resolve()))
+      .attempts(1).assertTiming();
   }
 
   public void testQualifiedAnonymousClass() throws Exception {

@@ -34,8 +34,8 @@ import java.util.Map;
 import java.util.Set;
 
 public class PsiTypesUtil {
-  @NonNls private static final Map<String, String> ourUnboxedTypes = new THashMap<String, String>();
-  @NonNls private static final Map<String, String> ourBoxedTypes = new THashMap<String, String>();
+  @NonNls private static final Map<String, String> ourUnboxedTypes = new THashMap<>();
+  @NonNls private static final Map<String, String> ourBoxedTypes = new THashMap<>();
 
   static {
     ourUnboxedTypes.put(CommonClassNames.JAVA_LANG_BOOLEAN, "boolean");
@@ -74,10 +74,11 @@ public class PsiTypesUtil {
         }
       }
 
+      PsiType erasedComponentType = TypeConversionUtil.erasure(componentType);
       StringBuilder buffer = new StringBuilder();
       buffer.append(PsiKeyword.NEW);
       buffer.append(" ");
-      buffer.append(componentType.getCanonicalText());
+      buffer.append(erasedComponentType.getCanonicalText());
       buffer.append("[0]");
       for (int i = 0; i < count; i++) {
         buffer.append("[]");
@@ -333,39 +334,48 @@ public class PsiTypesUtil {
     return parameterType;
   }
 
-  public static PsiTypeParameter[] filterUnusedTypeParameters(final PsiType superReturnTypeInBaseClassType,
-                                                              final PsiTypeParameter[] typeParameters) {
-    if (typeParameters.length == 0) return typeParameters;
+  @NotNull
+  public static PsiTypeParameter[] filterUnusedTypeParameters(@NotNull PsiTypeParameter[] typeParameters,
+                                                              final PsiType... types) {
+    if (typeParameters.length == 0) return PsiTypeParameter.EMPTY_ARRAY;
 
-    final Set<PsiTypeParameter> usedParameters = new HashSet<PsiTypeParameter>();
-    superReturnTypeInBaseClassType.accept(new PsiTypeVisitor<Object>(){
-      @Nullable
-      @Override
-      public Object visitClassType(PsiClassType classType) {
-        final PsiClass aClass = classType.resolve();
-        if (aClass instanceof PsiTypeParameter && ArrayUtil.find(typeParameters, aClass) > -1) {
-          usedParameters.add((PsiTypeParameter)aClass);
+    final Set<PsiTypeParameter> usedParameters = new HashSet<>();
+    for (PsiType type : types) {
+      type.accept(new PsiTypeVisitor<Object>() {
+        @Nullable
+        @Override
+        public Object visitClassType(PsiClassType classType) {
+          final PsiClass aClass = classType.resolve();
+          if (aClass instanceof PsiTypeParameter && ArrayUtil.find(typeParameters, aClass) > -1) {
+            usedParameters.add((PsiTypeParameter)aClass);
+            return null;
+          }
+          for (PsiType type : classType.getParameters()) {
+            type.accept(this);
+          }
           return null;
         }
-        for (PsiType type : classType.getParameters()) {
-          type.accept(this);
+
+        @Nullable
+        @Override
+        public Object visitWildcardType(PsiWildcardType wildcardType) {
+          final PsiType bound = wildcardType.getBound();
+          return bound != null ? bound.accept(this) : null;
         }
-        return null;
-      }
 
-      @Nullable
-      @Override
-      public Object visitWildcardType(PsiWildcardType wildcardType) {
-        final PsiType bound = wildcardType.getBound();
-        return bound != null ? bound.accept(this) : null;
-      }
-
-      @Nullable
-      @Override
-      public Object visitArrayType(PsiArrayType arrayType) {
-        return arrayType.getComponentType().accept(this);
-      }
-    });
+        @Nullable
+        @Override
+        public Object visitArrayType(PsiArrayType arrayType) {
+          return arrayType.getComponentType().accept(this);
+        }
+      });
+    }
     return usedParameters.toArray(new PsiTypeParameter[usedParameters.size()]);
+  }
+
+  @NotNull
+  public static PsiTypeParameter[] filterUnusedTypeParameters(final PsiType superReturnTypeInBaseClassType,
+                                                              @NotNull PsiTypeParameter[] typeParameters) {
+    return filterUnusedTypeParameters(typeParameters, superReturnTypeInBaseClassType);
   }
 }

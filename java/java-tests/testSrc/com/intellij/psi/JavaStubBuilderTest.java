@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,12 +32,19 @@ import java.security.SecureRandom;
 
 @SuppressWarnings("SpellCheckingInspection")
 public class JavaStubBuilderTest extends LightIdeaTestCase {
-  private final StubBuilder myBuilder = new JavaLightStubBuilder();
+  private StubBuilder myBuilder;
 
   @Override
   public void setUp() throws Exception {
     super.setUp();
     LanguageLevelProjectExtension.getInstance(getProject()).setLanguageLevel(LanguageLevel.HIGHEST);
+    myBuilder = new JavaLightStubBuilder();
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    myBuilder = null;
+    super.tearDown();
   }
 
   public void testEmpty() {
@@ -495,15 +502,27 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
   }
 
   public void testModuleInfo() {
-    doTest("module M. /*ignore me*/ N {\n" +
-           "  requires A.B;\n" +
-           "  exports m.n;\n" +
+    doTest("@Deprecated open module M. /*ignore me*/ N {\n" +
+           "  requires transitive static A.B;\n" +
+           "  exports k.l;\n" +
+           "  opens m.n;\n" +
+           "  uses p.C;\n" +
+           "  provides p.C with x.Y;\n" +
            "}",
 
            "PsiJavaFileStub []\n" +
+           "  IMPORT_LIST:PsiImportListStub\n" +
            "  MODULE:PsiJavaModuleStub:M.N\n" +
-           "    REQUIRES_STATEMENT:PsiRequiresStatementStub:0:A.B\n" +
-           "    EXPORTS_STATEMENT:PsiExportsStatementStub:m.n\n");
+           "    MODIFIER_LIST:PsiModifierListStub[mask=8192]\n" +
+           "      ANNOTATION:PsiAnnotationStub[@Deprecated]\n" +
+           "        ANNOTATION_PARAMETER_LIST:PsiAnnotationParameterListStubImpl\n" +
+           "    REQUIRES_STATEMENT:PsiRequiresStatementStub:A.B\n" +
+           "      MODIFIER_LIST:PsiModifierListStub[mask=16392]\n" +
+           "    EXPORTS_STATEMENT:PsiPackageAccessibilityStatementStub[EXPORTS]:k.l\n" +
+           "    OPENS_STATEMENT:PsiPackageAccessibilityStatementStub[OPENS]:m.n\n" +
+           "    USES_STATEMENT:PsiUsesStatementStub:p.C\n" +
+           "    PROVIDES_STATEMENT:PsiProvidesStatementStub:p.C\n" +
+           "      PROVIDES_WITH_LIST:PsiRefListStub[PROVIDES_WITH_LIST:x.Y]\n");
   }
 
   public void testSOEProof() {
@@ -538,7 +557,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
     String text = FileUtil.loadFile(new File(path));
     PsiJavaFile file = (PsiJavaFile)createLightFile("test.java", text);
     String message = "Source file size: " + text.length();
-    PlatformTestUtil.startPerformanceTest(message, 4000, () -> myBuilder.buildStubTree(file)).cpuBound().assertTiming();
+    PlatformTestUtil.startPerformanceTest(message, 4000, () -> myBuilder.buildStubTree(file)).assertTiming();
   }
 
   private void doTest(String source, String expected) {

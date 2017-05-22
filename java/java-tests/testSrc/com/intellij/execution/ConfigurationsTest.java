@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
 import com.intellij.execution.testframework.SearchForTestsTask;
 import com.intellij.execution.testframework.TestSearchScope;
 import com.intellij.execution.ui.CommonJavaParametersPanel;
-import com.intellij.ide.util.AppPropertiesComponentImpl;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.options.Configurable;
@@ -97,7 +96,7 @@ public class ConfigurationsTest extends BaseConfigurationTestCase {
     Assertion.compareUnordered(new Module[]{module1, module2}, configuration.getValidModules());
 
     PsiClass innerTest = findClass(module1, INNER_TEST_NAME);
-    configuration = createJUnitConfiguration(innerTest, TestClassConfigurationProducer.class, new MapDataContext());
+    configuration = createJUnitConfiguration(innerTest, TestInClassConfigurationProducer.class, new MapDataContext());
     checkClassName(RT_INNER_TEST_NAME, configuration);
     checkCanRun(configuration);
 
@@ -152,7 +151,7 @@ public class ConfigurationsTest extends BaseConfigurationTestCase {
     PsiClass testA = findTestA(getModule1());
     JUnitConfiguration configuration = createConfiguration(testA);
     JavaParameters parameters = checkCanRun(configuration);
-    assertEmpty(parameters.getVMParametersList().getList());
+    assertEquals("[-Didea.test.cyclic.buffer.size=1048576]", parameters.getVMParametersList().toString());
     final SegmentedOutputStream notifications = new SegmentedOutputStream(System.out);
     assertTrue(JUnitStarter.checkVersion(parameters.getProgramParametersList().getArray(),
                                          new PrintStream(notifications)));
@@ -182,7 +181,8 @@ public class ConfigurationsTest extends BaseConfigurationTestCase {
     JavaParameters parameters = checkCanRun(configuration);
     List<String> lines = extractAllInPackageTests(parameters, psiPackage);
     Assertion.compareUnordered(
-      new Object[]{"", psiClass.getQualifiedName(), psiClass2.getQualifiedName(), derivedTest.getQualifiedName(), RT_INNER_TEST_NAME,
+      //category, filters, classNames...
+      new Object[]{"", "", psiClass.getQualifiedName(), psiClass2.getQualifiedName(), derivedTest.getQualifiedName(), RT_INNER_TEST_NAME,
         testB.getQualifiedName()},
       lines);
   }
@@ -200,7 +200,7 @@ public class ConfigurationsTest extends BaseConfigurationTestCase {
 //    checkCantRun(configuration, "No tests found in the package '");
 
     configuration.getPersistentData().PACKAGE_NAME = "com.abcent";
-    checkCantRun(configuration, "Package 'com.abcent' not found");
+    checkCantRun(configuration, "Package 'com.abcent' does not exist");
   }
 
   public void testAllInPackageForCommonAncestorModule() throws IOException, ExecutionException {
@@ -260,12 +260,11 @@ public class ConfigurationsTest extends BaseConfigurationTestCase {
     JUnitConfiguration oldRc = createConfiguration(findTestA(module));
     oldRc.setWorkingDirectory(module.getModuleFilePath());
 
-    RunManagerImpl runManager = new RunManagerImpl(myProject, new AppPropertiesComponentImpl());
-    Element element = new Element("configuration");
-    new RunnerAndConfigurationSettingsImpl(runManager, oldRc, false).writeExternal(element);
+    RunManagerImpl runManager = new RunManagerImpl(myProject);
+    Element element = new RunnerAndConfigurationSettingsImpl(runManager, oldRc, false).writeScheme();
 
     RunnerAndConfigurationSettingsImpl settings = new RunnerAndConfigurationSettingsImpl(runManager);
-    settings.readExternal(element);
+    settings.readExternal(element, false);
     JUnitConfiguration newRc = (JUnitConfiguration)settings.getConfiguration();
 
     checkTestObject(oldRc.getPersistentData().TEST_OBJECT, newRc);
@@ -289,7 +288,7 @@ public class ConfigurationsTest extends BaseConfigurationTestCase {
     checkContains(classPath, output);
 
     JUnitConfiguration junitConfiguration =
-      createJUnitConfiguration(findClass(module4, "TestApplication"), TestClassConfigurationProducer.class, new MapDataContext());
+      createJUnitConfiguration(findClass(module4, "TestApplication"), TestInClassConfigurationProducer.class, new MapDataContext());
     parameters = checkCanRun(junitConfiguration);
     classPath = parameters.getClassPath().getPathsString();
     checkContains(classPath, testOuput);
@@ -482,12 +481,9 @@ public class ConfigurationsTest extends BaseConfigurationTestCase {
     try {
       configuration.checkConfiguration();
     }
-    catch (RuntimeConfigurationError e) {
+    catch (RuntimeConfigurationException e) {
       assertTrue(e.getLocalizedMessage().startsWith(reasonBeginning));
       return;
-    }
-    catch (RuntimeConfigurationException ignored) {
-
     }
 
     RunProfileState state = configuration.getState(DefaultRunExecutor.getRunExecutorInstance(), new ExecutionEnvironmentBuilder(myProject, DefaultRunExecutor.getRunExecutorInstance()).runProfile(configuration).build());

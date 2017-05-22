@@ -104,10 +104,11 @@ public class SmartType18CompletionTest extends LightFixtureCompletionTestCase {
     myFixture.addClass("package foo; public class ImplBar implements intf.Intf<String> {}");
     myFixture.addClass("package foo; public class ImplFoo<T> implements intf.Intf<T> {}");
     myFixture.addClass("package foo; public class ImplIncompatible implements intf.Intf<Integer> {}");
+    myFixture.addClass("package foo; public abstract class ImplAbstract implements intf.Intf<String> { public ImplAbstract() {} }");
     myFixture.addClass("package foo; class ImplInaccessible implements intf.Intf<String> {}");
 
     configureByTestName();
-    myFixture.assertPreferredCompletionItems(0, "ImplBar::new", "ImplFoo::new", "()");
+    myFixture.assertPreferredCompletionItems(0, "ImplBar::new", "ImplFoo::new", "() -> ");
     myFixture.type('\n');
     checkResultByFile("/" + getTestName(false) + "-out.java");
   }
@@ -154,7 +155,10 @@ public class SmartType18CompletionTest extends LightFixtureCompletionTestCase {
     doTest(true);
   }
 
-  public void testStaticMethodReference() { doTest(false); }
+  public void testStaticMethodReference() { doTest(); }
+  public void testStaticMethodReferenceInContextWithTypeArgs() {
+    doTest();
+  }
 
   public void testOuterMethodReference() { doTest(true); }
   public void testNoAnonymousOuterMethodReference() { doAntiTest(); }
@@ -228,9 +232,19 @@ public void testConvertToObjectStream() {
     assertOrderedEquals(myFixture.getLookupElementStrings(), "get2");
   }
 
+  public void testInferredObjects() {
+    configureByTestName();
+    assertOrderedEquals(myFixture.getLookupElementStrings(), "M", "HM");
+  }
+
   public void testSuggestMapInheritors() { doTest(); }
 
   public void testUnboundTypeArgs() { doTest(); }
 
   public void testCallBeforeLambda() { doTest(false); }
+
+  public void testMapGetOrDefault() {
+    configureByTestName();
+    myFixture.assertPreferredCompletionItems(0, "TimeUnit.DAYS");
+  }
 }

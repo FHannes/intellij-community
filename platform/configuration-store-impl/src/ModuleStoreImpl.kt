@@ -16,8 +16,11 @@
 package com.intellij.configurationStore
 
 import com.intellij.openapi.components.*
+import com.intellij.openapi.diagnostic.runAndLogException
 import com.intellij.openapi.module.Module
-import java.io.File
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.util.containers.computeIfAny
+import com.intellij.util.io.exists
 import java.nio.file.Paths
 
 private val MODULE_FILE_STORAGE_ANNOTATION = FileStorageAnnotation(StoragePathMacros.MODULE_FILE, false)
@@ -29,33 +32,45 @@ private open class ModuleStoreImpl(module: Module, private val pathMacroManager:
 
   override final fun getPathMacroManagerForDefaults() = pathMacroManager
 
-  private class TestModuleStore(module: Module, pathMacroManager: PathMacroManager) : ModuleStoreImpl(module, pathMacroManager) {
-    private var moduleComponentLoadPolicy: StateLoadPolicy? = null
-
-    override fun setPath(path: String) {
-      super.setPath(path)
-
-      if (File(path).exists()) {
-        moduleComponentLoadPolicy = StateLoadPolicy.LOAD
-      }
-    }
-
-    override val loadPolicy: StateLoadPolicy
-      get() = moduleComponentLoadPolicy ?: (project.stateStore as ComponentStoreImpl).loadPolicy
+  // todo what about Upsource? For now this implemented not in the ModuleStoreBase because `project` and `module` are available only in this class (ModuleStoreImpl)
+  override fun <T> getStorageSpecs(component: PersistentStateComponent<T>, stateSpec: State, operation: StateStorageOperation): List<Storage> {
+    val result =  super.getStorageSpecs(component, stateSpec, operation)
+    return StreamProviderFactory.EP_NAME.getExtensions(project).computeIfAny {
+      LOG.runAndLogException { it.customizeStorageSpecs(component, storageManager.componentManager!!, result, operation) }
+    } ?: result
   }
+}
+
+private class TestModuleStore(module: Module, pathMacroManager: PathMacroManager) : ModuleStoreImpl(module, pathMacroManager) {
+  private var moduleComponentLoadPolicy: StateLoadPolicy? = null
+
+  override fun setPath(path: String) {
+    setPath(path, null)
+  }
+
+  override fun setPath(path: String, file: VirtualFile?) {
+    super.setPath(path, file)
+
+    if ((file != null && file.isValid) || Paths.get(path).exists()) {
+      moduleComponentLoadPolicy = StateLoadPolicy.LOAD
+    }
+  }
+
+  override val loadPolicy: StateLoadPolicy
+    get() = moduleComponentLoadPolicy ?: (project.stateStore as ComponentStoreImpl).loadPolicy
 }
 
 // used in upsource
 abstract class ModuleStoreBase : ComponentStoreImpl() {
   override abstract val storageManager: StateStorageManagerImpl
 
-  override final fun <T> getStorageSpecs(component: PersistentStateComponent<T>, stateSpec: State, operation: StateStorageOperation): Array<out Storage> {
+  override fun <T> getStorageSpecs(component: PersistentStateComponent<T>, stateSpec: State, operation: StateStorageOperation): List<Storage> {
     val storages = stateSpec.storages
-    if (storages.isEmpty()) {
-      return arrayOf(MODULE_FILE_STORAGE_ANNOTATION)
+    return if (storages.isEmpty()) {
+      listOf(MODULE_FILE_STORAGE_ANNOTATION)
     }
     else {
-      return super.getStorageSpecs(component, stateSpec, operation)
+      super.getStorageSpecs(component, stateSpec, operation)
     }
   }
 
@@ -63,5 +78,21 @@ abstract class ModuleStoreBase : ComponentStoreImpl() {
     if (!storageManager.addMacro(StoragePathMacros.MODULE_FILE, path)) {
       storageManager.getCachedFileStorages(listOf(StoragePathMacros.MODULE_FILE)).firstOrNull()?.setFile(null, Paths.get(path))
     }
+  }
+
+  override fun setPath(path: String, file: VirtualFile?) {
+    val isAdded = storageManager.addMacro(StoragePathMacros.MODULE_FILE, path)
+    // if file not null - update storage
+    storageManager.getOrCreateStorage(StoragePathMacros.MODULE_FILE, storageCustomizer = {
+      if (this !is FileBasedStorage) {
+        // upsource
+        return@getOrCreateStorage
+      }
+
+      setFile(file, if (isAdded) null else Paths.get(path))
+      // ModifiableModuleModel#newModule should always create a new module from scratch
+      // https://youtrack.jetbrains.com/issue/IDEA-147530
+      resolveVirtualFileOnlyOnWrite = isAdded
+    })
   }
 }

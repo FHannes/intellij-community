@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +27,8 @@ import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
-import com.intellij.openapi.editor.event.DocumentAdapter;
 import com.intellij.openapi.editor.event.DocumentEvent;
+import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.popup.JBPopup;
@@ -105,17 +105,17 @@ public class LiveTemplateSettingsEditor extends JPanel {
 
     createComponents(allowNoContext);
 
-    myKeyField.getDocument().addDocumentListener(new com.intellij.ui.DocumentAdapter() {
+    myKeyField.getDocument().addDocumentListener(new DocumentAdapter() {
       @Override
       protected void textChanged(javax.swing.event.DocumentEvent e) {
         myTemplate.setKey(StringUtil.notNullize(myKeyField.getText()).trim());
         myNodeChanged.run();
       }
     });
-    myDescription.getDocument().addDocumentListener(new com.intellij.ui.DocumentAdapter() {
+    myDescription.getDocument().addDocumentListener(new DocumentAdapter() {
       @Override
       protected void textChanged(javax.swing.event.DocumentEvent e) {
-        myTemplate.setDescription(StringUtil.notNullize(myDescription.getText()).trim());
+        myTemplate.setDescription(myDescription.getText());
         myNodeChanged.run();
       }
     });
@@ -172,18 +172,16 @@ public class LiveTemplateSettingsEditor extends JPanel {
 
     panel.add(createShortContextPanel(allowNoContexts), gb.nextLine().next().weighty(0).fillCellNone().anchor(GridBagConstraints.WEST));
 
-    myTemplateEditor.getDocument().addDocumentListener(
-      new DocumentAdapter() {
-        @Override
-        public void documentChanged(DocumentEvent e) {
-          validateEditVariablesButton();
+    myTemplateEditor.getDocument().addDocumentListener(new DocumentListener() {
+      @Override
+      public void documentChanged(DocumentEvent e) {
+        validateEditVariablesButton();
 
-          myTemplate.setString(myTemplateEditor.getDocument().getText());
-          applyVariables(updateVariablesByTemplateText());
-          myNodeChanged.run();
-        }
+        myTemplate.setString(myTemplateEditor.getDocument().getText());
+        applyVariables(updateVariablesByTemplateText());
+        myNodeChanged.run();
       }
-    );
+    });
 
     myEditVariablesButton.addActionListener(
       new ActionListener(){
@@ -242,7 +240,7 @@ public class LiveTemplateSettingsEditor extends JPanel {
     panel.add(expandWithLabel, gbConstraints);
 
     gbConstraints.gridx = 1;
-    gbConstraints.insets = new Insets(0, 4, 0, 0);
+    gbConstraints.insets = JBUI.insetsLeft(4);
     myExpandByCombo = new ComboBox<>(new String[]{myDefaultShortcutItem, SPACE, TAB, ENTER});
     myExpandByCombo.addItemListener(new ItemListener() {
       @Override
@@ -349,6 +347,10 @@ public class LiveTemplateSettingsEditor extends JPanel {
         contexts = "No applicable contexts" + (allowNoContexts ? "" : " yet");
         ctxLabel.setIcon(AllIcons.General.BalloonWarning);
         change.setText("Define");
+      }
+      else {
+        ctxLabel.setForeground(UIUtil.getLabelForeground());
+        ctxLabel.setIcon(null);
       }
       ctxLabel.setText(StringUtil.first(contexts + ". ", 100, true));
 
@@ -483,7 +485,9 @@ public class LiveTemplateSettingsEditor extends JPanel {
   }
 
   private void validateEditVariablesButton() {
-    myEditVariablesButton.setEnabled(!parseVariables().isEmpty());
+    boolean hasVariables = !parseVariables().isEmpty();
+    myEditVariablesButton.setEnabled(hasVariables);
+    myEditVariablesButton.setToolTipText(hasVariables ? null : "Disabled because the template has no variables (surrounded with $ signs)");
   }
 
   void resetUi() {

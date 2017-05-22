@@ -15,7 +15,6 @@
  */
 package com.jetbrains.python.console;
 
-import com.google.common.base.CharMatcher;
 import com.google.common.collect.Lists;
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.ExecutionHelper;
@@ -142,7 +141,7 @@ public class PydevConsoleRunnerImpl implements PydevConsoleRunner {
   protected int[] myPorts;
   private PydevConsoleCommunication myPydevConsoleCommunication;
   private PyConsoleProcessHandler myProcessHandler;
-  protected PydevConsoleExecuteActionHandler myConsoleExecuteActionHandler;
+  protected PythonConsoleExecuteActionHandler myConsoleExecuteActionHandler;
   private List<ConsoleListener> myConsoleListeners = ContainerUtil.createLockFreeCopyOnWriteList();
   private final PyConsoleType myConsoleType;
   private Map<String, String> myEnvironmentVariables;
@@ -286,12 +285,7 @@ public class PydevConsoleRunnerImpl implements PydevConsoleRunner {
           }
           catch (final Exception e) {
             LOG.warn("Error running console", e);
-            UIUtil.invokeAndWaitIfNeeded(new Runnable() {
-              @Override
-              public void run() {
-                showErrorsInConsole(e);
-              }
-            });
+            UIUtil.invokeAndWaitIfNeeded((Runnable)() -> showErrorsInConsole(e));
           }
         }
       }));
@@ -301,7 +295,7 @@ public class PydevConsoleRunnerImpl implements PydevConsoleRunner {
 
     DefaultActionGroup actionGroup = new DefaultActionGroup(createRerunAction());
 
-    final ActionToolbar actionToolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.UNKNOWN,
+    final ActionToolbar actionToolbar = ActionManager.getInstance().createActionToolbar("PydevConsoleRunnerErrors",
                                                                                         actionGroup, false);
 
     // Runner creating
@@ -328,7 +322,7 @@ public class PydevConsoleRunnerImpl implements PydevConsoleRunner {
   }
 
 
-  private void showContentDescriptor(RunContentDescriptor contentDescriptor) {
+  protected void showContentDescriptor(RunContentDescriptor contentDescriptor) {
     ToolWindow toolwindow = PythonConsoleToolWindow.getToolWindow(myProject);
     if (toolwindow != null) {
       PythonConsoleToolWindow.getInstance(myProject).init(toolwindow, contentDescriptor);
@@ -614,7 +608,7 @@ public class PydevConsoleRunnerImpl implements PydevConsoleRunner {
   protected void createContentDescriptorAndActions() {
     // Runner creating
     final DefaultActionGroup toolbarActions = new DefaultActionGroup();
-    final ActionToolbar actionToolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.UNKNOWN, toolbarActions, false);
+    final ActionToolbar actionToolbar = ActionManager.getInstance().createActionToolbar("PydevConsoleRunner", toolbarActions, false);
 
     // Runner creating
     final JPanel panel = new JPanel(new BorderLayout());
@@ -727,11 +721,6 @@ public class PydevConsoleRunnerImpl implements PydevConsoleRunner {
       .registerCustomShortcutSet(KeyEvent.VK_C, InputEvent.CTRL_MASK, myConsoleView.getConsoleEditor().getComponent());
     anAction.getTemplatePresentation().setVisible(false);
     return anAction;
-  }
-
-  private boolean isIndentSubstring(String text) {
-    int indentSize = myConsoleExecuteActionHandler.getPythonIndent();
-    return text.length() >= indentSize && CharMatcher.WHITESPACE.matchesAllOf(text.substring(text.length() - indentSize));
   }
 
   private void enableConsoleExecuteAction() {
@@ -873,7 +862,7 @@ public class PydevConsoleRunnerImpl implements PydevConsoleRunner {
   }
 
   @NotNull
-  protected PydevConsoleExecuteActionHandler createExecuteActionHandler() {
+  protected PythonConsoleExecuteActionHandler createExecuteActionHandler() {
     myConsoleExecuteActionHandler =
       new PydevConsoleExecuteActionHandler(myConsoleView, myProcessHandler, myPydevConsoleCommunication);
     myConsoleExecuteActionHandler.setEnabled(false);
@@ -907,7 +896,7 @@ public class PydevConsoleRunnerImpl implements PydevConsoleRunner {
   }
 
   @Override
-  public PydevConsoleExecuteActionHandler getConsoleExecuteActionHandler() {
+  public PythonConsoleExecuteActionHandler getConsoleExecuteActionHandler() {
     return myConsoleExecuteActionHandler;
   }
 

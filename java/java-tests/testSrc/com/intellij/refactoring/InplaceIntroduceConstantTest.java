@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2011 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import com.intellij.openapi.util.Pass;
 import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiLiteralExpression;
 import com.intellij.psi.PsiLocalVariable;
+import com.intellij.psi.PsiModifier;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.refactoring.introduce.inplace.AbstractInplaceIntroducer;
 import com.intellij.refactoring.introduceField.IntroduceConstantHandler;
@@ -28,20 +29,17 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * User: anna
- * Date: 3/16/11
+ * @author anna
+ * @since 16.03.2011
  */
 public class InplaceIntroduceConstantTest extends AbstractJavaInplaceIntroduceTest {
-
   private static final String BASE_PATH = "/refactoring/inplaceIntroduceConstant/";
 
-  public void testReplaceAll() throws Exception {
-
+  public void testReplaceAll() {
     doTest(new Pass<AbstractInplaceIntroducer>() {
       @Override
       public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
         inplaceIntroduceFieldPopup.setReplaceAllOccurrences(true);
-
       }
     });
   }
@@ -57,19 +55,16 @@ public class InplaceIntroduceConstantTest extends AbstractJavaInplaceIntroduceTe
     return expr instanceof PsiLiteralExpression ? expr : null;
   }
 
-  public void testReplaceAllInsideParenthesized() throws Exception {
-
+  public void testReplaceAllInsideParenthesized() {
     doTest(new Pass<AbstractInplaceIntroducer>() {
       @Override
       public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
         inplaceIntroduceFieldPopup.setReplaceAllOccurrences(true);
-
       }
     });
   }
 
-  public void testReplaceAllWithClassRefType() throws Exception {
-
+  public void testReplaceAllWithClassRefType() {
     doTest(new Pass<AbstractInplaceIntroducer>() {
       @Override
       public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
@@ -78,8 +73,8 @@ public class InplaceIntroduceConstantTest extends AbstractJavaInplaceIntroduceTe
       }
     });
   }
-  
-  public void testReplaceAllWithBrokenIdentifier() throws Exception {
+
+  public void testReplaceAllWithBrokenIdentifier() {
     doTest(new Pass<AbstractInplaceIntroducer>() {
       @Override
       public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
@@ -89,8 +84,7 @@ public class InplaceIntroduceConstantTest extends AbstractJavaInplaceIntroduceTe
     });
   }
 
-  public void testReplaceAllFromSecondOccurrence() throws Exception {
-
+  public void testReplaceAllFromSecondOccurrence() {
     doTest(new Pass<AbstractInplaceIntroducer>() {
       @Override
       public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
@@ -100,8 +94,7 @@ public class InplaceIntroduceConstantTest extends AbstractJavaInplaceIntroduceTe
     });
   }
 
-  public void testReplaceAllFromLiteral() throws Exception {
-
+  public void testReplaceAllFromLiteral() {
     doTest(new Pass<AbstractInplaceIntroducer>() {
       @Override
       public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
@@ -111,26 +104,34 @@ public class InplaceIntroduceConstantTest extends AbstractJavaInplaceIntroduceTe
     });
   }
 
-  public void testConflictingConstantName() throws Exception {
-
+  public void testConflictingConstantName() {
     doTest(new Pass<AbstractInplaceIntroducer>() {
       @Override
-      public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
-      }
+      public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) { }
     });
   }
 
-  public void testNoConflictingConstantName() throws Exception {
-
+  public void testNoConflictingConstantName() {
     doTest(new Pass<AbstractInplaceIntroducer>() {
       @Override
-      public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
-      }
+      public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) { }
     });
   }
 
-  public void testCorrectFinalPosition() throws Exception {
+  public void testEnsureVisibilityForAnno() {
+    JavaRefactoringSettings.getInstance().INTRODUCE_CONSTANT_VISIBILITY = PsiModifier.PRIVATE;
+    try {
+      doTest(new Pass<AbstractInplaceIntroducer>() {
+        @Override
+        public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) { }
+      });
+    }
+    finally {
+      JavaRefactoringSettings.getInstance().INTRODUCE_CONSTANT_VISIBILITY = null;
+    }
+  }
 
+  public void testCorrectFinalPosition() {
     doTest(new Pass<AbstractInplaceIntroducer>() {
       @Override
       public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
@@ -138,21 +139,21 @@ public class InplaceIntroduceConstantTest extends AbstractJavaInplaceIntroduceTe
       }
     });
   }
-  
-  public void testCorrectConstantPosition() throws Exception {
-     doTest(new Pass<AbstractInplaceIntroducer>() {
-       @Override
-       public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
-         type("R");
-       }
-     });
-   }
 
-  public void testEscapePosition() throws Exception {
+  public void testCorrectConstantPosition() {
+    doTest(new Pass<AbstractInplaceIntroducer>() {
+      @Override
+      public void pass(AbstractInplaceIntroducer inplaceIntroduceFieldPopup) {
+        type("R");
+      }
+    });
+  }
+
+  public void testEscapePosition() {
     doTestEscape();
   }
 
-  public void testEscapePositionOnLocal() throws Exception {
+  public void testEscapePositionOnLocal() {
     doTestEscape();
   }
 

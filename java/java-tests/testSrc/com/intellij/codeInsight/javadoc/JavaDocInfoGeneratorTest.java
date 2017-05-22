@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2015 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,16 @@
 package com.intellij.codeInsight.javadoc;
 
 import com.intellij.JavaTestUtil;
+import com.intellij.codeInsight.AnnotationUtil;
 import com.intellij.codeInsight.CodeInsightTestCase;
 import com.intellij.codeInsight.JavaExternalDocumentationTest;
 import com.intellij.lang.java.JavaDocumentationProvider;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
+import com.intellij.openapi.project.DumbServiceImpl;
 import com.intellij.openapi.projectRoots.Sdk;
+import com.intellij.openapi.projectRoots.SdkModificator;
 import com.intellij.openapi.roots.ModuleRootModificationUtil;
 import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.roots.libraries.Library;
@@ -35,6 +38,8 @@ import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.testFramework.IdeaTestUtil;
 import com.intellij.testFramework.PsiTestUtil;
+import com.intellij.util.containers.ContainerUtil;
+import org.intellij.lang.annotations.Flow;
 
 import java.io.File;
 import java.io.IOException;
@@ -349,7 +354,29 @@ public class JavaDocInfoGeneratorTest extends CodeInsightTestCase {
     useJava7();
     verifyJavaDoc(getTestClass());
   }
-  
+
+  public void testHideNonDocumentedFlowAnnotations() throws IOException {
+    ModuleRootModificationUtil.setModuleSdk(myModule, removeAnnotationsJar(PsiTestUtil.addJdkAnnotations(IdeaTestUtil.getMockJdk17())));
+
+    PsiMethod mapPut = myJavaFacade.findClass(CommonClassNames.JAVA_UTIL_MAP, GlobalSearchScope.allScope(myProject))
+      .findMethodsByName("put", false)[0];
+
+    PsiAnnotation annotation = AnnotationUtil.findAnnotation(mapPut, Flow.class.getName());
+    assertNotNull(annotation);
+    assertNull(annotation.getNameReferenceElement().resolve());
+
+    String doc = JavaDocumentationProvider.generateExternalJavadoc(mapPut);
+    assertFalse(doc, doc.contains("Flow"));
+  }
+
+  private static Sdk removeAnnotationsJar(Sdk sdk) {
+    SdkModificator modificator = sdk.getSdkModificator();
+    VirtualFile annotationsJar = ContainerUtil.find(modificator.getRoots(OrderRootType.CLASSES), r -> r.getName().contains("annotations"));
+    modificator.removeRoot(annotationsJar, OrderRootType.CLASSES);
+    modificator.commitChanges();
+    return sdk;
+  }
+
   public void testMatchingParameterNameFromParent() throws Exception {
     configureByFile();
     PsiClass psiClass = ((PsiJavaFile)myFile).getClasses()[1];
@@ -373,6 +400,24 @@ public class JavaDocInfoGeneratorTest extends CodeInsightTestCase {
   public void testDocumentationForJdkClassWithReferencesToClassesFromJavaLang() throws Exception {
     doTestAtCaret();
   }
+
+  public void testDocumentationForUncheckedExceptionsInSupers() throws Exception {
+    doTestAtCaret();
+  }
+
+  public void testDocumentationForGetterByField() throws Exception {
+    doTestAtCaret();
+  }
+
+  public void testDumbMode() throws Exception {
+    DumbServiceImpl.getInstance(myProject).setDumb(true);
+    try {
+      doTestAtCaret();
+    }
+    finally {
+      DumbServiceImpl.getInstance(myProject).setDumb(false);
+    }
+   }
 
   private void doTestAtCaret() throws Exception {
     configureByFile();

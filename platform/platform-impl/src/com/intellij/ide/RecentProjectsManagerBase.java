@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.project.ProjectManagerAdapter;
+import com.intellij.openapi.project.ProjectManagerListener;
 import com.intellij.openapi.project.impl.ProjectImpl;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.Pair;
@@ -106,6 +106,7 @@ public abstract class RecentProjectsManagerBase extends RecentProjectsManager im
   private final Map<String, String> myNameCache = Collections.synchronizedMap(new THashMap<String, String>());
   private Set<String> myDuplicatesCache = null;
   private boolean isDuplicatesCacheUpdating = false;
+  private boolean myBatchOpening;
 
   protected RecentProjectsManagerBase(@NotNull MessageBus messageBus) {
     MessageBusConnection connection = messageBus.connect();
@@ -270,7 +271,7 @@ public abstract class RecentProjectsManagerBase extends RecentProjectsManager im
       @Override
       public void paintIcon(Component c, Graphics g, int x, int y) {
         // [tav] todo: the icon is created in def screen scale
-        if (UIUtil.isJDKManagedHiDPIScreen()) {
+        if (UIUtil.isJreHiDPI()) {
           final Graphics2D newG = (Graphics2D)g.create(x, y, image.getWidth(), image.getHeight());
           float s = JBUI.sysScale();
           newG.scale(1/s, 1/s);
@@ -285,12 +286,12 @@ public abstract class RecentProjectsManagerBase extends RecentProjectsManager im
 
       @Override
       public int getIconWidth() {
-        return UIUtil.isJDKManagedHiDPIScreen() ? (int)(image.getWidth() / JBUI.sysScale()) : image.getWidth();
+        return UIUtil.isJreHiDPI() ? (int)(image.getWidth() / JBUI.sysScale()) : image.getWidth();
       }
 
       @Override
       public int getIconHeight() {
-        return UIUtil.isJDKManagedHiDPIScreen() ? (int)(image.getHeight() / JBUI.sysScale()) : image.getHeight();
+        return UIUtil.isJreHiDPI() ? (int)(image.getHeight() / JBUI.sysScale()) : image.getHeight();
       }
     };
   }
@@ -354,10 +355,11 @@ public abstract class RecentProjectsManagerBase extends RecentProjectsManager im
 
     if (!isDuplicatesCacheUpdating) {
       isDuplicatesCacheUpdating = true; //assuming that this check happens only on EDT. So, no synchronised block or double-checked locking needed
+      Set<String> names = ContainerUtil.newHashSet();
+      final HashSet<String> duplicates = ContainerUtil.newHashSet();
+      ArrayList<String> list = ContainerUtil.newArrayList(ContainerUtil.concat(openedPaths, recentPaths));
       ApplicationManager.getApplication().executeOnPooledThread(() -> {
-        Set<String> names = ContainerUtil.newHashSet();
-        final HashSet<String> duplicates = ContainerUtil.newHashSet();
-        for (String path : ContainerUtil.concat(openedPaths, recentPaths)) {
+        for (String path : list) {
           if (!names.add(getProjectName(path))) {
             duplicates.add(path);
           }
@@ -508,7 +510,7 @@ public abstract class RecentProjectsManagerBase extends RecentProjectsManager im
 
   protected abstract void doOpenProject(@NotNull String projectPath, @Nullable Project projectToClose, boolean forceOpenInNewFrame);
 
-  private class MyProjectListener extends ProjectManagerAdapter {
+  private class MyProjectListener implements ProjectManagerListener {
     @Override
     public void projectOpened(final Project project) {
       String path = getProjectPath(project);
@@ -610,12 +612,23 @@ public abstract class RecentProjectsManagerBase extends RecentProjectsManager im
           forceNewFrame = false;
         }
       }
-      for (String openPath : openPaths) {
-        if (ProjectKt.isValidProjectPath(openPath)) {
-          doOpenProject(openPath, null, forceNewFrame);
+      try {
+        myBatchOpening = true;
+        for (String openPath : openPaths) {
+          // https://youtrack.jetbrains.com/issue/IDEA-166321
+          if (ProjectKt.isValidProjectPath(openPath, true)) {
+            doOpenProject(openPath, null, forceNewFrame);
+          }
         }
       }
+      finally {
+        myBatchOpening = false;
+      }
     }
+  }
+
+  public boolean isBatchOpening() {
+    return myBatchOpening;
   }
 
   @Override
@@ -635,7 +648,7 @@ public abstract class RecentProjectsManagerBase extends RecentProjectsManager im
     myState.groups.remove(group);
   }
 
-  private class MyAppLifecycleListener extends AppLifecycleListener.Adapter {
+  private class MyAppLifecycleListener implements AppLifecycleListener {
     @Override
     public void appFrameCreated(final String[] commandLineArgs, @NotNull final Ref<Boolean> willOpenProject) {
       if (willReopenProjectOnStart()) {

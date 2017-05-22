@@ -27,11 +27,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
 
-/**
- * User: anna
- */
 public class RedundantLambdaCodeBlockInspection extends BaseJavaBatchLocalInspectionTool {
-  public static final Logger LOG = Logger.getInstance("#" + RedundantLambdaCodeBlockInspection.class.getName());
+  public static final Logger LOG = Logger.getInstance(RedundantLambdaCodeBlockInspection.class);
 
   @Nls
   @NotNull

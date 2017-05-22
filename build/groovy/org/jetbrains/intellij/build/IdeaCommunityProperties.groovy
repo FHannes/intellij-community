@@ -100,12 +100,13 @@ class IdeaCommunityProperties extends BaseIdeaProperties {
   MacDistributionCustomizer createMacCustomizer(String projectHome) {
     return new MacDistributionCustomizer() {
       {
-        helpId = "IJ"
+        icnsPath = "$projectHome/build/conf/ideaCE/mac/images/idea.icns"
         urlSchemes = ["idea"]
         associateIpr = true
         enableYourkitAgentInEAP = false
         bundleIdentifier = "com.jetbrains.intellij.ce"
-        dmgImagePath = "$projectHome/build/conf/mac/communitydmg.png"
+        dmgImagePath = "$projectHome/build/conf/ideaCE/mac/images/communitydmg.png"
+        icnsPathForEAP = "$projectHome/build/conf/ideaCE/mac/images/communityEAP.icns"
       }
 
       @Override

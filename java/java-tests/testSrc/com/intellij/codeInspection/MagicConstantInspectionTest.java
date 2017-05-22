@@ -14,14 +14,6 @@
  * limitations under the License.
  */
 
-/*
- * Created by IntelliJ IDEA.
- * User: max
- * Date: Apr 11, 2002
- * Time: 6:50:50 PM
- * To change template for new class use 
- * Code Style | Class Templates options (Tools | IDE Options).
- */
 package com.intellij.codeInspection;
 
 import com.intellij.JavaTestUtil;
@@ -92,6 +84,8 @@ public class MagicConstantInspectionTest extends InspectionTestCase {
   }
 
   public void testSimple() throws Exception { doTest(); }
+  
+  public void testManyConstantSources() throws Exception { doTest(); }
   // test that the optimisation for not loading AST works
   public void testWithLibrary() throws Exception { doTest(); }
 }

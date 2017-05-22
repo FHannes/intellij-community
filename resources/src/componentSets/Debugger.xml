@@ -29,19 +29,7 @@
     <component>
       <implementation-class>com.intellij.debugger.memory.component.InstancesTracker</implementation-class>
     </component>
-
-    <component>
-      <implementation-class>com.intellij.debugger.memory.component.CreationPositionTracker</implementation-class>
-    </component>
   </project-components>
-
-  <extensions defaultExtensionNs="com.intellij">
-    <toolWindow id="Memory View"
-                anchor="right"
-                icon="AllIcons.Debugger.MemoryView.ToolWindowDisabled"
-                factoryClass="com.intellij.debugger.memory.toolwindow.MemoryViewToolWindowFactory"
-                conditionClass="com.intellij.debugger.memory.toolwindow.MemoryViewToolWindowFactory$Condition"/>
-  </extensions>
 
   <!--
   <actions>

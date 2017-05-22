@@ -15,8 +15,11 @@
  */
 package com.intellij.openapi.actionSystem.impl;
 
+import com.intellij.featureStatistics.FeaturesUsageCollector;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
+import com.intellij.internal.statistic.ToolbarClicksCollector;
+import com.intellij.internal.statistic.UsageTrigger;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ActionButtonLook;
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
@@ -43,8 +46,6 @@ import java.beans.PropertyChangeListener;
 import static java.awt.event.KeyEvent.VK_SPACE;
 
 public class ActionButton extends JComponent implements ActionButtonComponent, AnActionHolder, Accessible {
-
-  private static final Icon ourEmptyIcon = EmptyIcon.ICON_18;
 
   private JBDimension myMinimumButtonSize;
   private PropertyChangeListener myPresentationListener;
@@ -153,6 +154,9 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
       }
       actionPerformed(event);
       manager.queueActionPerformedEvent(myAction, dataContext, event);
+      if (event.getInputEvent() instanceof MouseEvent) {
+        ToolbarClicksCollector.record(myAction, myPlace);
+      }
     }
   }
 
@@ -243,7 +247,7 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
    */
   protected Icon getIcon() {
     Icon icon = isButtonEnabled() ? myIcon : myDisabledIcon;
-    return icon == null ? ourEmptyIcon : icon;
+    return icon == null ? EmptyIcon.ICON_18 : icon;
   }
 
   public void updateIcon() {

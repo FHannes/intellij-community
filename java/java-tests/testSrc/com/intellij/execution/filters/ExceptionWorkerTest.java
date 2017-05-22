@@ -3,6 +3,7 @@ package com.intellij.execution.filters;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.util.Trinity;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.testFramework.fixtures.LightCodeInsightFixtureTestCase;
 
@@ -55,7 +56,34 @@ public class ExceptionWorkerTest extends LightCodeInsightFixtureTestCase {
     FilterMixin filter = (FilterMixin)new ExceptionExFilterFactory().create(GlobalSearchScope.projectScope(getProject()));
     final ArrayList<String> result = new ArrayList<>();
     filter.applyHeavyFilter(document, 0, 0, r -> r.getResultItems().forEach(
-      highlight -> result.add(new TextRange(highlight.getHighlightStartOffset(), highlight.getHighlightEndOffset() - 1).substring(testData))));
+      highlight -> result.add(new TextRange(highlight.getHighlightStartOffset(), highlight.getHighlightEndOffset()).substring(testData))));
     assertSameElements(result, "com.sample.RunningMain.func1", "com.sample.RunningMain.main");
+  }
+
+  public void testAnomalyParenthesisParsing() {
+    String[][] data = new String[][]{
+      {"at youtrack.jetbrains.com.Issue.IDEA_125137()(FooTest.groovy:2)\n", "youtrack.jetbrains.com.Issue", "IDEA_125137()",
+        "FooTest.groovy:2"},
+      {"at youtrack.jetbrains.com.Issue.IDEA_125137()Hmm(FooTest.groovy:2)\n", "youtrack.jetbrains.com.Issue", "IDEA_125137()Hmm",
+        "FooTest.groovy:2"},
+      {"p1.Cl.mee(p1.Cl.java:87) (A MESSAGE) IDEA-133794 (BUG START WITH 1)\n", "p1.Cl", "mee", "p1.Cl.java:87"}
+    };
+    for (String[] datum : data) {
+      assertParsed(datum[0], datum[1], datum[2], datum[3]);
+    }
+  }
+
+  private static void assertParsed(String line, String className, String methodName, String fileLine) {
+    assertTrue(line.endsWith("\n"));
+    Trinity<TextRange, TextRange, TextRange> trinity = ExceptionWorker.parseExceptionLine(line);
+    assertNotNull(trinity);
+    assertEquals(className, trinity.first.subSequence(line));
+    assertEquals(methodName, trinity.second.subSequence(line));
+    assertEquals(fileLine, trinity.third.subSequence(line));
+  }
+
+  public void testYourKitFormat() {
+    assertParsed("com.intellij.util.concurrency.Semaphore.waitFor(long) Semaphore.java:89\n",
+                 "com.intellij.util.concurrency.Semaphore", "waitFor", "Semaphore.java:89");
   }
 }

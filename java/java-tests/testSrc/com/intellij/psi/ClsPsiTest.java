@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.testFramework.LeakHunter;
 import com.intellij.testFramework.LightIdeaTestCase;
-import com.intellij.util.GCUtil;
+import com.intellij.util.ref.GCUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.indexing.FileBasedIndex;
 
@@ -52,6 +52,13 @@ public class ClsPsiTest extends LightIdeaTestCase {
     myScope = GlobalSearchScope.moduleWithDependenciesAndLibrariesScope(getModule());
     myObjectClass = getJavaFacade().findClass(CommonClassNames.JAVA_LANG_OBJECT, myScope);
     assertNotNull(myObjectClass);
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    myScope = null;
+    myObjectClass = null;
+    super.tearDown();
   }
 
   public void testClassFileUpdate() throws IOException {
@@ -420,10 +427,11 @@ public class ClsPsiTest extends LightIdeaTestCase {
   public void testModuleInfo() {
     PsiJavaFile file = getFile("../../stubBuilder/module-info");
     assertEquals(LanguageLevel.JDK_1_9, file.getLanguageLevel());
+    assertEquals("", file.getPackageName());
 
     PsiJavaModule module = file.getModuleDeclaration();
     assertNotNull(module);
-    assertEquals("M.N", module.getModuleName());
+    assertEquals("M.N", module.getName());
 
     assertNull(file.getPackageStatement());
     assertEquals(0, file.getClasses().length);

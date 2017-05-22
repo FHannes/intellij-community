@@ -91,6 +91,16 @@ public class HighlightingSessionImpl implements HighlightingSession {
     return session;
   }
 
+  static void waitForAllSessionsHighlightInfosApplied(@NotNull DaemonProgressIndicator progressIndicator) {
+    ConcurrentMap<PsiFile, HighlightingSession> map = progressIndicator.getUserData(HIGHLIGHTING_SESSION);
+    if (map != null) {
+      for (HighlightingSession session : map.values()) {
+        ((HighlightingSessionImpl)session).waitForHighlightInfosApplied();
+      }
+    }
+  }
+
+
   @NotNull
   @Override
   public PsiFile getPsiFile() {
@@ -138,12 +148,12 @@ public class HighlightingSessionImpl implements HighlightingSession {
   }
 
   void queueDisposeHighlighterFor(@NotNull HighlightInfo info) {
-    RangeHighlighterEx highlighter = info.highlighter;
+    RangeHighlighterEx highlighter = info.getHighlighter();
     if (highlighter == null) return;
     // that highlighter may have been reused for another info
     myEDTQueue.offer(() -> {
       Object actualInfo = highlighter.getErrorStripeTooltip();
-      if (actualInfo == info && info.highlighter == highlighter) highlighter.dispose();
+      if (actualInfo == info && info.getHighlighter() == highlighter) highlighter.dispose();
     });
   }
 

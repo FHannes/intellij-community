@@ -16,6 +16,7 @@
 package com.intellij.testIntegration.createTest;
 
 import com.intellij.codeInsight.CodeInsightBundle;
+import com.intellij.codeInsight.TestFrameworks;
 import com.intellij.codeInsight.intention.PsiElementBaseIntentionAction;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.command.CommandProcessor;
@@ -85,7 +86,7 @@ public class CreateTestAction extends PsiElementBaseIntentionAction {
 
     PsiClass psiClass = getContainingClass(element);
 
-    if (psiClass == null) return false;
+    if (psiClass == null || element.getContainingFile().getContainingDirectory() == null) return false;
 
     Module srcModule = ModuleUtilCore.findModuleForPsiElement(psiClass);
     if (srcModule == null) return false;
@@ -94,7 +95,8 @@ public class CreateTestAction extends PsiElementBaseIntentionAction {
         psiClass instanceof PsiAnonymousClass) {
       return false;
     }
-    return true;
+    
+    return TestFrameworks.detectFramework(psiClass) == null;
   }
 
   @Override

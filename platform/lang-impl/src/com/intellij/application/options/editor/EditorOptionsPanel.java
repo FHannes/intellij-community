@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,11 +28,9 @@ import com.intellij.openapi.application.ApplicationBundle;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.editor.Document;
-import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
-import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.EditorSettingsExternalizable;
 import com.intellij.openapi.editor.impl.softwrap.SoftWrapAppliancePlaces;
 import com.intellij.openapi.editor.richcopy.settings.RichCopySettings;
@@ -51,7 +49,6 @@ import com.intellij.openapi.vcs.impl.LineStatusTrackerSettingListener;
 import com.intellij.ui.ListCellRendererWrapper;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
-import com.intellij.ui.ComponentSettings;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -119,7 +116,6 @@ public class EditorOptionsPanel implements SearchableConfigurable {
       myCbEnableWheelFontChange.setText(ApplicationBundle.message("checkbox.enable.ctrl.mousewheel.changes.font.size.macos"));
     }
 
-
     myStripTrailingSpacesCombo.addItem(STRIP_CHANGED);
     myStripTrailingSpacesCombo.addItem(STRIP_ALL);
     myStripTrailingSpacesCombo.addItem(STRIP_NONE);
@@ -157,7 +153,7 @@ public class EditorOptionsPanel implements SearchableConfigurable {
     initVcsSettingsProcessing();
   }
 
-
+  @Override
   public void reset() {
     EditorSettingsExternalizable editorSettings = EditorSettingsExternalizable.getInstance();
     CodeInsightSettings codeInsightSettings = CodeInsightSettings.getInstance();
@@ -188,7 +184,7 @@ public class EditorOptionsPanel implements SearchableConfigurable {
     myCbVirtualPageAtBottom.setSelected(editorSettings.isAdditionalPageAtBottom());
 
     // Limits
-    myClipboardContentLimitTextField.setText(Integer.toString(uiSettings.MAX_CLIPBOARD_CONTENTS));
+    myClipboardContentLimitTextField.setText(Integer.toString(uiSettings.getMaxClipboardContents()));
 
     // Strip trailing spaces on save
 
@@ -219,7 +215,7 @@ public class EditorOptionsPanel implements SearchableConfigurable {
     myRbPreferScrolling.setSelected(!editorSettings.isRefrainFromScrolling());
 
 
-    myRecentFilesLimitField.setText(Integer.toString(uiSettings.RECENT_FILES_LIMIT));
+    myRecentFilesLimitField.setText(Integer.toString(uiSettings.getRecentFilesLimit()));
 
     myCbRenameLocalVariablesInplace.setSelected(editorSettings.isVariableInplaceRenameEnabled());
     myPreselectCheckBox.setSelected(editorSettings.isPreselectRename());
@@ -248,6 +244,7 @@ public class EditorOptionsPanel implements SearchableConfigurable {
     }
   }
 
+  @Override
   public void apply() throws ConfigurationException {
     EditorSettingsExternalizable editorSettings = EditorSettingsExternalizable.getInstance();
     CodeInsightSettings codeInsightSettings = CodeInsightSettings.getInstance();
@@ -257,7 +254,6 @@ public class EditorOptionsPanel implements SearchableConfigurable {
     // Display
 
     editorSettings.setSmoothScrolling(myCbSmoothScrolling.isSelected());
-    ComponentSettings.getInstance().setSmoothScrollingEnabled(myCbSmoothScrolling.isSelected());
 
 
     // Brace Highlighting
@@ -283,8 +279,8 @@ public class EditorOptionsPanel implements SearchableConfigurable {
 
     boolean uiSettingsChanged = false;
     int maxClipboardContents = getMaxClipboardContents();
-    if (uiSettings.MAX_CLIPBOARD_CONTENTS != maxClipboardContents) {
-      uiSettings.MAX_CLIPBOARD_CONTENTS = maxClipboardContents;
+    if (uiSettings.getMaxClipboardContents() != maxClipboardContents) {
+      uiSettings.setMaxClipboardContents(maxClipboardContents);
       uiSettingsChanged = true;
     }
 
@@ -349,9 +345,9 @@ public class EditorOptionsPanel implements SearchableConfigurable {
     String temp=myRecentFilesLimitField.getText();
     if(temp.trim().length() > 0){
       try {
-        int newRecentFilesLimit= Integer.parseInt(temp);
-        if(newRecentFilesLimit>0&&uiSettings.RECENT_FILES_LIMIT!=newRecentFilesLimit){
-          uiSettings.RECENT_FILES_LIMIT=newRecentFilesLimit;
+        int newRecentFilesLimit = Integer.parseInt(temp);
+        if (newRecentFilesLimit > 0 && uiSettings.getRecentFilesLimit() != newRecentFilesLimit) {
+          uiSettings.setRecentFilesLimit(newRecentFilesLimit);
           uiSettingsChanged = true;
         }
       }catch (NumberFormatException ignored){}
@@ -400,12 +396,10 @@ public class EditorOptionsPanel implements SearchableConfigurable {
   }
 
   public static void reinitAllEditors() {
-    Editor[] editors = EditorFactory.getInstance().getAllEditors();
-    for (Editor editor : editors) {
-      ((EditorEx)editor).reinitSettings();
-    }
+    EditorFactory.getInstance().refreshAllEditors();
   }
 
+  @Override
   public void disposeUIResources() {
     myErrorHighlightingPanel.disposeUIResources();
   }
@@ -421,6 +415,7 @@ public class EditorOptionsPanel implements SearchableConfigurable {
     return maxClipboardContents;
   }
 
+  @Override
   public boolean isModified() {
     EditorSettingsExternalizable editorSettings = EditorSettingsExternalizable.getInstance();
     CodeInsightSettings codeInsightSettings = CodeInsightSettings.getInstance();
@@ -447,7 +442,7 @@ public class EditorOptionsPanel implements SearchableConfigurable {
     // Limits
 
 
-    isModified |= getMaxClipboardContents() != uiSettings.MAX_CLIPBOARD_CONTENTS;
+    isModified |= getMaxClipboardContents() != uiSettings.getMaxClipboardContents();
 
     // Paste
 
@@ -468,7 +463,7 @@ public class EditorOptionsPanel implements SearchableConfigurable {
     isModified |= isModified(myRbPreferMovingCaret,  editorSettings.isRefrainFromScrolling());
 
 
-    isModified |= isModified(myRecentFilesLimitField, UISettings.getInstance().RECENT_FILES_LIMIT, RECENT_FILES_RANGE);
+    isModified |= isModified(myRecentFilesLimitField, UISettings.getInstance().getRecentFilesLimit(), RECENT_FILES_RANGE);
     isModified |= isModified(myCbRenameLocalVariablesInplace, editorSettings.isVariableInplaceRenameEnabled());
     isModified |= isModified(myPreselectCheckBox, editorSettings.isPreselectRename());
     isModified |= isModified(myShowInlineDialogForCheckBox, editorSettings.isShowInlineLocalDialog());

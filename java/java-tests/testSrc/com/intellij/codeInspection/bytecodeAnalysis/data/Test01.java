@@ -18,6 +18,8 @@ package com.intellij.codeInspection.bytecodeAnalysis.data;
 import com.intellij.codeInspection.bytecodeAnalysis.ExpectContract;
 import com.intellij.codeInspection.bytecodeAnalysis.ExpectNotNull;
 
+import java.lang.reflect.Array;
+
 /**
  * @author lambdamix
  */
@@ -89,4 +91,67 @@ public class Test01 {
     return !isNull(o);
   }
 
+  interface MySupplier {
+    String get();
+  }
+
+  @ExpectNotNull
+  @ExpectContract(pure = true)
+  public static MySupplier lambda(@ExpectNotNull String s) {
+    return () -> s.trim();
+  }
+
+  @ExpectNotNull
+  @ExpectContract(pure = true)
+  public MySupplier lambdaNonStatic(@ExpectNotNull String s) {
+    return () -> getThis().hashCode() + s.trim();
+  }
+
+  @ExpectNotNull
+  public MySupplier lambdaBranching(@ExpectNotNull String s, String t, boolean b) {
+    if(b) {
+      System.out.println(s);
+    } else {
+      System.out.println(t);
+    }
+    return () -> s.trim();
+  }
+
+  @ExpectNotNull
+  @ExpectContract(pure = true)
+  public static MySupplier methodReference(@ExpectNotNull String s) {
+    return s::trim;
+  }
+
+  @ExpectContract(pure = true)
+  public static void assertNotNull(@ExpectNotNull Object obj, String message) {
+    if(obj == null) {
+      throw new IllegalArgumentException(message);
+    }
+  }
+
+  @ExpectNotNull
+  @ExpectContract(pure = true)
+  public static long[] copyOfRange(@ExpectNotNull long[] arr, int from, int to) {
+    int diff = to - from;
+    if (diff < 0) {
+      throw new IllegalArgumentException("Invalid arguments: " + from + '>' + to);
+    }
+    long[] copy = new long[diff];
+    System.arraycopy(arr, from, copy, 0, Math.min(arr.length - from, diff));
+    return copy;
+  }
+
+  @ExpectContract(pure = true)
+  public static <I, O> O[] copyOfRangeObject(@ExpectNotNull I[] arr, int from, int to, @ExpectNotNull Class<? extends O[]> newType) {
+    int diff = to - from;
+    if (diff < 0) {
+      throw new IllegalArgumentException("Invalid arguments: " + from + '>' + to);
+    }
+    @SuppressWarnings("unchecked")
+    O[] copy = (O[]) Array.newInstance(newType.getComponentType(), diff);
+    //noinspection SuspiciousSystemArraycopy
+    System.arraycopy(arr, from, copy, 0, Math.min(arr.length - from, diff));
+    return copy;
+  }
 }

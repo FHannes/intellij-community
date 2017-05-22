@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ class JavaDocumentationTest extends LightCodeInsightFixtureTestCase {
     def ref = myFixture.file.findReferenceAt(myFixture.editor.caretModel.offset)
     def doc = CtrlMouseHandler.getInfo(ref.resolve(), ref.element)
 
-    assert doc == "Bar\n java.util.List&lt;java.lang.String&gt; foo(java.lang.String param)"
+    assert doc == "Bar\n List&lt;String&gt; foo(String param)"
   }
 
   void testGenericField() {
@@ -130,7 +130,7 @@ class JavaDocumentationTest extends LightCodeInsightFixtureTestCase {
     def ref = myFixture.file.findReferenceAt(myFixture.editor.caretModel.offset)
     def doc = CtrlMouseHandler.getInfo(ref.resolve(), ref.element)
 
-    assert doc == "Bar\n java.lang.Integer field"
+    assert doc == "Bar\n Integer field"
   }
 
   void testMethodInAnonymousClass() {
@@ -202,7 +202,7 @@ class JavaDocumentationTest extends LightCodeInsightFixtureTestCase {
         JavaPsiFacade.getInstance(project).findClass('Foo', it.resolveScope)?.findMethodBySignature(it, false)
       }
     }
-    PlatformTestUtil.registerExtension DocumentationDelegateProvider.EP_NAME, provider, testRootDisposable
+    PlatformTestUtil.registerExtension DocumentationDelegateProvider.EP_NAME, provider, myFixture.testRootDisposable
 
     configure '''\
 class Foo {
@@ -229,6 +229,26 @@ class Bar {
                       "</body></html>"
 
     assert doc == expected
+  }
+
+  void "test at method name with overloads"() {
+    def input = """\
+      class Foo {
+        void foo(String s) {
+          s.region<caret>Matches()
+        } 
+      }""".stripIndent()
+
+    def actual = JavaExternalDocumentationTest.getDocumentationText(myFixture.project, input)
+
+    def expected =
+      "<html>Candidates for method call <b>s.regionMatches()</b> are:<br>" +
+      "<br>" +
+      "&nbsp;&nbsp;<a href=\"psi_element://java.lang.String#regionMatches(int, java.lang.String, int, int)\">boolean regionMatches(int, String, int, int)</a><br>" +
+      "&nbsp;&nbsp;<a href=\"psi_element://java.lang.String#regionMatches(boolean, int, java.lang.String, int, int)\">boolean regionMatches(boolean, int, String, int, int)</a><br>" +
+      "</html>"
+
+    assert actual == expected
   }
 
   private void configure(String text) {

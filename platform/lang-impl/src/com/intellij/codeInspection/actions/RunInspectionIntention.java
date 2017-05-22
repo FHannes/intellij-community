@@ -47,10 +47,6 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 
-/**
- * User: anna
- * Date: 21-Feb-2006
- */
 public class RunInspectionIntention implements IntentionAction, HighPriorityAction {
   private final static Logger LOG = Logger.getInstance(RunInspectionIntention.class);
 
@@ -150,9 +146,7 @@ public class RunInspectionIntention implements IntentionAction, HighPriorityActi
         tw.getTool().readSettings(element);
       }
     }
-    catch (WriteExternalException ignored) {
-    }
-    catch (InvalidDataException ignored) {
+    catch (WriteExternalException | InvalidDataException ignored) {
     }
     model.setSingleTool(toolWrapper.getShortName());
     return model;

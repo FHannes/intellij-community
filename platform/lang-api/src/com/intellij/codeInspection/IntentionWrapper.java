@@ -16,6 +16,7 @@
 package com.intellij.codeInspection;
 
 import com.intellij.codeInsight.intention.IntentionAction;
+import com.intellij.codeInsight.intention.IntentionActionDelegate;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
@@ -25,16 +26,11 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.IncorrectOperationException;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Created by IntelliJ IDEA.
- * User: angus
- * Date: 4/20/11
- * Time: 9:27 PM
- */
-public class IntentionWrapper implements LocalQuickFix, IntentionAction, ActionClassHolder {
+public class IntentionWrapper implements LocalQuickFix, IntentionAction, ActionClassHolder, IntentionActionDelegate {
   private final IntentionAction myAction;
   private final PsiFile myFile;
 
@@ -101,5 +97,18 @@ public class IntentionWrapper implements LocalQuickFix, IntentionAction, ActionC
   public Class getActionClass() {
     return getAction().getClass();
   }
-}
 
+  @NotNull
+  @Override
+  public IntentionAction getDelegate() {
+    return myAction;
+  }
+
+  @Contract("null, _ -> null")
+  public static LocalQuickFix wrapToQuickFix(@Nullable IntentionAction action, @NotNull PsiFile file) {
+    if (action == null) return null;
+    if (action instanceof LocalQuickFix) return (LocalQuickFix)action;
+    return new IntentionWrapper(action, file);
+  }
+
+}

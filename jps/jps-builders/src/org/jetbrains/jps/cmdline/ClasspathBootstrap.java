@@ -27,11 +27,14 @@ import com.intellij.util.containers.ContainerUtil;
 import com.jgoodies.forms.layout.CellConstraints;
 import io.netty.util.NetUtil;
 import net.n3.nanoxml.IXMLBuilder;
+import org.apache.http.HttpConnection;
+import org.apache.http.client.HttpClient;
+import org.eclipse.aether.artifact.Artifact;
+import org.jetbrains.idea.maven.aether.ArtifactRepositoryManager;
 import org.jetbrains.jps.builders.impl.java.EclipseCompilerTool;
 import org.jetbrains.jps.builders.java.JavaCompilingTool;
 import org.jetbrains.jps.builders.java.JavaSourceTransformer;
 import org.jetbrains.jps.javac.ExternalJavacProcess;
-import org.jetbrains.jps.javac.JavaCompilerToolExtension;
 import org.jetbrains.jps.javac.OptimizedFileManagerUtil;
 import org.jetbrains.jps.model.JpsModel;
 import org.jetbrains.jps.model.impl.JpsModelImpl;
@@ -39,9 +42,7 @@ import org.jetbrains.jps.model.serialization.JpsProjectLoader;
 import org.jetbrains.org.objectweb.asm.ClassVisitor;
 import org.jetbrains.org.objectweb.asm.ClassWriter;
 
-import javax.tools.JavaCompiler;
-import javax.tools.StandardJavaFileManager;
-import javax.tools.ToolProvider;
+import javax.tools.*;
 import java.io.File;
 import java.util.*;
 
@@ -74,9 +75,23 @@ public class ClasspathBootstrap {
     cp.add(getResourcePath(CellConstraints.class));  // jGoodies-forms
     cp.addAll(getInstrumentationUtilRoots());
     cp.add(getResourcePath(IXMLBuilder.class));  // nano-xml
-    cp.add(getJpsPluginSystemClassesPath().getAbsolutePath().replace('\\', '/'));
+
+    // aether-based repository libraries support
+    cp.add(getResourcePath(ArtifactRepositoryManager.class));  // aether-dependency-resolver
+    final String aetherPath = getResourcePath(Artifact.class); // aether-1.1.0-all.jar
+    cp.add(aetherPath);
+    cp.add(FileUtil.toSystemIndependentName(new File(new File(aetherPath).getParentFile(), "maven-aether-provider-3.3.9-all.jar").getAbsolutePath())); 
+    cp.add(getResourcePath(HttpClient.class));  // httpclient
+    cp.add(getResourcePath(HttpConnection.class));  // httpcore
+    //noinspection UnnecessaryFullyQualifiedName
+    cp.add(getResourcePath(org.apache.commons.codec.binary.Base64.class));  // commons-codec
+    //noinspection UnnecessaryFullyQualifiedName
+    cp.add(getResourcePath(org.apache.commons.logging.LogFactory.class));  // commons-logging
+    //noinspection UnnecessaryFullyQualifiedName
+    cp.add(getResourcePath(org.slf4j.Marker.class));  // slf4j
+
     cp.addAll(getJavac8RefScannerClasspath());
-    //don't forget to update layoutCommunityJps() in layouts.gant accordingly
+    //don't forget to update CommunityStandaloneJpsBuilder.layoutJps accordingly
 
     try {
       final Class<?> cmdLineWrapper = Class.forName("com.intellij.rt.execution.CommandLineWrapper");
@@ -103,7 +118,7 @@ public class ClasspathBootstrap {
   }
 
   public static List<File> getExternalJavacProcessClasspath(String sdkHome, JavaCompilingTool compilingTool) {
-    final Set<File> cp = new LinkedHashSet<File>();
+    final Set<File> cp = new LinkedHashSet<>();
     cp.add(getResourceFile(ExternalJavacProcess.class)); // self
     // util
     for (String path : PathManager.getUtilClassPath()) {
@@ -142,17 +157,22 @@ public class ClasspathBootstrap {
       else {
         // last resort
         final JavaCompiler systemCompiler = ToolProvider.getSystemJavaCompiler();
+        Class compilerClass;
         if (systemCompiler != null) {
-          final String localJarPath = FileUtil.toSystemIndependentName(getResourceFile(systemCompiler.getClass()).getPath());
-          String relPath = FileUtil.getRelativePath(localJavaHome, localJarPath, '/');
+          compilerClass = systemCompiler.getClass();
+        }
+        else {
+          compilerClass = Class.forName("com.sun.tools.javac.api.JavacTool", false, ClasspathBootstrap.class.getClassLoader());
+        }
+        String localJarPath = FileUtil.toSystemIndependentName(getResourceFile(compilerClass).getPath());
+        String relPath = FileUtil.getRelativePath(localJavaHome, localJarPath, '/');
+        if (relPath != null) {
+          if (relPath.contains("..")) {
+            relPath = FileUtil.getRelativePath(FileUtil.toSystemIndependentName(new File(localJavaHome).getParent()), localJarPath, '/');
+          }
           if (relPath != null) {
-            if (relPath.contains("..")) {
-              relPath = FileUtil.getRelativePath(FileUtil.toSystemIndependentName(new File(localJavaHome).getParent()), localJarPath, '/');
-            }
-            if (relPath != null) {
-              final File targetFile = new File(sdkHome, relPath);
-              cp.add(targetFile);  // tools.jar
-            }
+            final File targetFile = new File(sdkHome, relPath);
+            cp.add(targetFile);  // tools.jar
           }
         }
       }
@@ -167,11 +187,7 @@ public class ClasspathBootstrap {
       cp.add(getResourceFile(t.getClass()));
     }
 
-    for (JavaCompilerToolExtension toolExtension : JavaCompilerToolExtension.getExtensions()) {
-      cp.add(getResourceFile(toolExtension.getClass()));
-    }
-
-    return new ArrayList<File>(cp);
+    return new ArrayList<>(cp);
   }
 
   public static String getResourcePath(Class aClass) {
@@ -192,23 +208,6 @@ public class ClasspathBootstrap {
     else {
       //running from jars: instrumentation-util-8 is located in the same jar
       return Collections.singletonList(instrumentationUtilPath);
-    }
-  }
-
-  private static File getJpsPluginSystemClassesPath() {
-    File classesRoot = new File(getResourcePath(ClasspathBootstrap.class));
-    if (classesRoot.isDirectory()) {
-      //running from sources: load classes from .../out/production/jps-plugin-system
-      return new File(classesRoot.getParentFile(), "jps-plugin-system");
-    }
-    else {
-      File jar = new File(classesRoot.getParentFile(), "rt/jps-plugin-system.jar");
-      if (jar.exists()) {
-        //running from installed IDE
-        return jar;
-      }
-      //running from standalone JPS distribution
-      return new File(classesRoot.getParentFile(), "jps-plugin-system.jar");
     }
   }
 

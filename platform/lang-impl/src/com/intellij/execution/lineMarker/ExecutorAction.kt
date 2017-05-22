@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,18 +17,14 @@ package com.intellij.execution.lineMarker
 
 import com.intellij.execution.Executor
 import com.intellij.execution.ExecutorRegistry
-import com.intellij.execution.RunnerRegistry
 import com.intellij.execution.actions.*
 import com.intellij.execution.configurations.LocatableConfiguration
 import com.intellij.execution.impl.RunManagerImpl
 import com.intellij.execution.impl.RunnerAndConfigurationSettingsImpl
 import com.intellij.ide.DataManager
-import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DataContext
-import com.intellij.openapi.diagnostic.catchAndLog
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.diagnostic.runAndLogException
 import com.intellij.openapi.util.Key
 import com.intellij.util.containers.mapSmart
 import com.intellij.util.containers.mapSmartNotNull
@@ -39,7 +35,9 @@ private val CONFIGURATION_CACHE = Key.create<List<ConfigurationFromContext>>("Co
 /**
  * @author Dmitry Avdeev
  */
-class ExecutorAction private constructor(private val origin: AnAction, private val executor: Executor, private val order: Int) : AnAction() {
+class ExecutorAction private constructor(private val origin: AnAction,
+                                         private val executor: Executor,
+                                         private val order: Int) : ActionGroup() {
   init {
     copyFrom(origin)
   }
@@ -74,7 +72,7 @@ class ExecutorAction private constructor(private val origin: AnAction, private v
       }
 
       return RunConfigurationProducer.getProducers(context.project).mapSmartNotNull {
-        LOG.catchAndLog {
+        LOG.runAndLogException {
           val configuration = it.createLightConfiguration(context) ?: return@mapSmartNotNull null
           val settings = RunnerAndConfigurationSettingsImpl(RunManagerImpl.getInstanceImpl(context.project), configuration, false)
           ConfigurationFromContextImpl(it, settings, context.psiLocation)
@@ -86,12 +84,25 @@ class ExecutorAction private constructor(private val origin: AnAction, private v
   override fun update(e: AnActionEvent) {
     val name = getActionName(e.dataContext, executor)
     e.presentation.isEnabledAndVisible = name != null
+    origin.update(e)
     e.presentation.text = name
   }
 
   override fun actionPerformed(e: AnActionEvent) {
     origin.actionPerformed(e)
   }
+
+  override fun canBePerformed(context: DataContext): Boolean = origin !is ActionGroup || origin.canBePerformed(context)
+
+  override fun getChildren(e: AnActionEvent?): Array<AnAction> = (origin as? ActionGroup)?.getChildren(e) ?: AnAction.EMPTY_ARRAY
+
+  override fun isDumbAware(): Boolean = origin.isDumbAware
+
+  override fun isPopup(): Boolean = origin !is ActionGroup || origin.isPopup
+
+  override fun hideIfNoVisibleChildren(): Boolean = origin is ActionGroup && origin.hideIfNoVisibleChildren()
+
+  override fun disableIfNoVisibleChildren(): Boolean = origin !is ActionGroup || origin.disableIfNoVisibleChildren()
 
   private fun getActionName(dataContext: DataContext, executor: Executor): String? {
     val list = getConfigurations(dataContext)
@@ -100,10 +111,26 @@ class ExecutorAction private constructor(private val origin: AnAction, private v
     }
 
     val configuration = list.getOrNull(if (order < list.size) order else 0)?.configuration as LocatableConfiguration
-    if (RunnerRegistry.getInstance().getRunner(executor.id, configuration) == null) {
-      return null
-    }
-
     return executor.getStartActionText(BaseRunConfigurationAction.suggestRunActionName(configuration))
+  }
+
+  override fun equals(other: Any?): Boolean {
+    if (this === other) return true
+    if (other?.javaClass != javaClass) return false
+
+    other as ExecutorAction
+
+    if (origin != other.origin) return false
+    if (executor != other.executor) return false
+    if (order != other.order) return false
+
+    return true
+  }
+
+  override fun hashCode(): Int {
+    var result = origin.hashCode()
+    result = 31 * result + executor.hashCode()
+    result = 31 * result + order
+    return result
   }
 }

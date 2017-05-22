@@ -18,6 +18,9 @@ package com.intellij.codeInsight.intention.impl.config;
 
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInsight.intention.IntentionActionBean;
+import com.intellij.codeInsight.intention.IntentionActionDelegate;
+import com.intellij.openapi.actionSystem.ShortcutProvider;
+import com.intellij.openapi.actionSystem.ShortcutSet;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
@@ -28,7 +31,7 @@ import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class IntentionActionWrapper implements IntentionAction {
+public class IntentionActionWrapper implements IntentionAction, ShortcutProvider, IntentionActionDelegate {
   private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.intention.impl.config.IntentionActionWrapper");
 
   private IntentionAction myDelegate;
@@ -36,7 +39,7 @@ public class IntentionActionWrapper implements IntentionAction {
   private final IntentionActionBean myExtension;
   private String myFullFamilyName;
 
-  public IntentionActionWrapper(@NotNull IntentionActionBean extension, String[] categories) {
+  IntentionActionWrapper(@NotNull IntentionActionBean extension, String[] categories) {
     myExtension = extension;
     myCategories = categories;
   }
@@ -83,6 +86,8 @@ public class IntentionActionWrapper implements IntentionAction {
     return result;
   }
 
+  @NotNull
+  @Override
   public synchronized IntentionAction getDelegate() {
     if (myDelegate == null) {
       try {
@@ -99,7 +104,8 @@ public class IntentionActionWrapper implements IntentionAction {
     return myExtension.className;
   }
 
-  public ClassLoader getImplementationClassLoader() {
+  @NotNull
+  ClassLoader getImplementationClassLoader() {
     return myExtension.getLoaderForClass();
   }
 
@@ -111,5 +117,12 @@ public class IntentionActionWrapper implements IntentionAction {
   @Override
   public boolean equals(Object obj) {
     return super.equals(obj) || getDelegate().equals(obj);
+  }
+
+  @Nullable
+  @Override
+  public ShortcutSet getShortcut() {
+    IntentionAction delegate = getDelegate();
+    return delegate instanceof ShortcutProvider ? ((ShortcutProvider)delegate).getShortcut() : null;
   }
 }

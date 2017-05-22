@@ -26,12 +26,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Created by IntelliJ IDEA.
- * User: vnikolaenko
- * Date: 25.09.2008
- * Time: 15:10:10
- */
 public class RegExpCompletionTest extends CodeInsightFixtureTestCase {
 
   // util methods
@@ -87,7 +81,7 @@ public class RegExpCompletionTest extends CodeInsightFixtureTestCase {
     @Override
     protected String getBasePath() {
       String homePath = PathManager.getHomePath();
-      File candidate = new File(homePath, "community/RegExpSupport");
+      File candidate = new File(homePath, "community/RegExpSupport/testData/completion");
       if (candidate.isDirectory()) {
         return "/community/RegExpSupport/testData/completion";
       }

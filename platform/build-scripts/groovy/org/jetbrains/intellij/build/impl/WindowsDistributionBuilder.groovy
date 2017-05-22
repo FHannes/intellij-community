@@ -82,15 +82,19 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
   void buildArtifacts(String winDistPath) {
     def arch = customizer.bundledJreArchitecture
     def jreDirectoryPath64 = arch != null ? buildContext.bundledJreManager.extractWinJre(arch) : null
-    List<String> jreDirectoryPaths = [jreDirectoryPath64];
+    List<String> jreDirectoryPaths = [jreDirectoryPath64]
 
     if (customizer.getBaseDownloadUrlForJre() != null && arch != JvmArchitecture.x32) {
-      File archive = buildContext.bundledJreManager.findWinJreArchive()
+      File archive = buildContext.bundledJreManager.findWinJreArchive(JvmArchitecture.x32)
       if (archive != null && archive.exists()) {
-        buildContext.ant.copy(file: archive, tofile: "${buildContext.paths.artifacts}/${buildContext.bundledJreManager.archiveNameJre(buildContext)}", overwrite: "true")
         //prepare folder with jre x86 for win archive
         def jreDirectoryPath = buildContext.bundledJreManager.extractWinJre(JvmArchitecture.x32)
-        jreDirectoryPaths = [jreDirectoryPath64, jreDirectoryPath];
+        buildContext.ant.tar(tarfile: "${buildContext.paths.artifacts}/${buildContext.bundledJreManager.archiveNameJre(buildContext)}", longfile: "gnu", compression: "gzip") {
+          tarfileset(dir: "${jreDirectoryPath}/jre32") {
+            include(name: "**/**")
+          }
+        }
+        jreDirectoryPaths = [jreDirectoryPath64, jreDirectoryPath]
       }
     }
 
@@ -174,14 +178,14 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
       String vmOptions = "$buildContext.additionalJvmArguments -Didea.paths.selector=${buildContext.systemSelector}".trim()
       def productName = buildContext.applicationInfo.shortProductName
 
-      String jdkEnvVarSuffix = arch == JvmArchitecture.x64 && customizer.include32BitLauncher ? "_64" : "";
+      String jdkEnvVarSuffix = arch == JvmArchitecture.x64 && customizer.include32BitLauncher ? "_64" : ""
       String vmOptionsEnvVarSuffix = arch == JvmArchitecture.x64 && customizer.include32BitLauncher ? "64" : ""
       def envVarBaseName = buildContext.productProperties.getEnvironmentVariableBaseName(buildContext.applicationInfo)
       new File(launcherPropertiesPath).text = """
 IDS_JDK_ONLY=$buildContext.productProperties.toolsJarRequired
 IDS_JDK_ENV_VAR=${envVarBaseName}_JDK$jdkEnvVarSuffix
 IDS_APP_TITLE=$productName Launcher
-IDS_VM_OPTIONS_PATH=%USERPROFILE%\\\\.$buildContext.systemSelector
+IDS_VM_OPTIONS_PATH=%USERPROFILE%\\\\.$buildContext.systemSelector\\\\config
 IDS_VM_OPTION_ERRORFILE=-XX:ErrorFile=%USERPROFILE%\\\\java_error_in_${lowerCaseProductName}_%p.log
 IDS_VM_OPTION_HEAPDUMPPATH=-XX:HeapDumpPath=%USERPROFILE%\\\\java_error_in_${lowerCaseProductName}.hprof
 IDC_WINLAUNCHER=${upperCaseProductName}_LAUNCHER

@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-/*
- * User: anna
- * Date: 15-Apr-2009
- */
 package com.intellij.codeInspection.ex;
 
 import com.intellij.codeHighlighting.HighlightDisplayLevel;
@@ -394,10 +390,10 @@ public class ToolsImpl implements Tools {
     myEnabled = enabled;
   }
 
-  public void enableTool(NamedScope namedScope, Project project) {
+  public void enableTool(@NotNull NamedScope namedScope, Project project) {
     if (myTools != null) {
       for (ScopeToolState state : myTools) {
-        if (Comparing.equal(state.getScope(project), namedScope)) {
+        if (namedScope.equals(state.getScope(project))) {
           state.setEnabled(true);
         }
       }

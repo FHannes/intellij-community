@@ -22,19 +22,19 @@ import com.intellij.internal.statistic.UsageTrigger;
 import com.intellij.internal.statistic.beans.ConvertUsagesUtil;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.Extensions;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.wm.IdeFocusManager;
+import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.platform.CustomStepProjectGenerator;
 import com.intellij.platform.DirectoryProjectGenerator;
 import com.intellij.platform.PlatformProjectOpenProcessor;
@@ -50,6 +50,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.util.EnumSet;
 import java.util.List;
 
 import static com.intellij.platform.ProjectTemplatesFactory.CUSTOM_GROUP;
@@ -157,9 +158,11 @@ public class AbstractNewProjectStep extends DefaultActionGroup implements DumbAw
     public void consume(@Nullable final ProjectSettingsStepBase settings) {
       if (settings == null) return;
 
-      final Project project = ProjectManager.getInstance().getDefaultProject();
+      // todo projectToClose should be passed from calling action, this is just a quick workaround
+      IdeFrame frame = IdeFocusManager.getGlobalInstance().getLastFocusedFrame();
+      final Project projectToClose = frame != null ? frame.getProject() : null;
       final DirectoryProjectGenerator generator = settings.getProjectGenerator();
-      doGenerateProject(project, settings.getProjectLocation(), generator,
+      doGenerateProject(projectToClose, settings.getProjectLocation(), generator,
                         file -> getProjectSettings(generator));
     }
 
@@ -167,18 +170,19 @@ public class AbstractNewProjectStep extends DefaultActionGroup implements DumbAw
     abstract protected Object getProjectSettings(@NotNull DirectoryProjectGenerator generator);
   }
 
-  public static Project doGenerateProject(@Nullable final Project project,
+  public static Project doGenerateProject(@Nullable final Project projectToClose,
                                           @NotNull final String locationString,
                                           @Nullable final DirectoryProjectGenerator generator,
                                           @NotNull final Function<VirtualFile, Object> settingsComputable) {
     final File location = new File(FileUtil.toSystemDependentName(locationString));
     if (!location.exists() && !location.mkdirs()) {
       String message = ActionsBundle.message("action.NewDirectoryProject.cannot.create.dir", location.getAbsolutePath());
-      Messages.showErrorDialog(project, message, ActionsBundle.message("action.NewDirectoryProject.title"));
+      Messages.showErrorDialog(projectToClose, message, ActionsBundle.message("action.NewDirectoryProject.title"));
       return null;
     }
 
-    final VirtualFile baseDir = ApplicationManager.getApplication().runWriteAction((Computable<VirtualFile>)() -> LocalFileSystem.getInstance().refreshAndFindFileByIoFile(location));
+    final VirtualFile baseDir =
+      WriteAction.compute(() -> LocalFileSystem.getInstance().refreshAndFindFileByIoFile(location));
     if (baseDir == null) {
       LOG.error("Couldn't find '" + location + "' in VFS");
       return null;
@@ -187,7 +191,7 @@ public class AbstractNewProjectStep extends DefaultActionGroup implements DumbAw
 
     if (baseDir.getChildren().length > 0) {
       String message = ActionsBundle.message("action.NewDirectoryProject.not.empty", location.getAbsolutePath());
-      int rc = Messages.showYesNoDialog(project, message, ActionsBundle.message("action.NewDirectoryProject.title"), Messages.getQuestionIcon());
+      int rc = Messages.showYesNoDialog(projectToClose, message, ActionsBundle.message("action.NewDirectoryProject.title"), Messages.getQuestionIcon());
       if (rc == Messages.YES) {
         return PlatformProjectOpenProcessor.getInstance().doOpenProject(baseDir, null, false);
       }
@@ -219,7 +223,7 @@ public class AbstractNewProjectStep extends DefaultActionGroup implements DumbAw
         }
       };
     }
-    return PlatformProjectOpenProcessor.doOpenProject(baseDir, null, false, -1, callback, false);
+    EnumSet<PlatformProjectOpenProcessor.Option> options = EnumSet.noneOf(PlatformProjectOpenProcessor.Option.class);
+    return PlatformProjectOpenProcessor.doOpenProject(baseDir, projectToClose, -1, callback, options);
   }
-
 }

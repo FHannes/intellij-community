@@ -1,17 +1,15 @@
 package org.jetbrains.plugins.javaFX.sceneBuilder;
 
 import com.intellij.internal.statistic.UsageTrigger;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.JavaSdkVersion;
-import com.intellij.openapi.projectRoots.JdkVersionUtil;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.*;
 import com.intellij.openapi.roots.libraries.LibraryUtil;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.StreamUtil;
 import com.intellij.openapi.util.text.StringUtil;
@@ -225,7 +223,7 @@ public class SceneBuilderImpl implements SceneBuilder {
     if (jdk == null) return true;
     final String versionString = jdk.getVersionString();
     if (versionString != null) {
-      final JavaSdkVersion jdkVersion = JdkVersionUtil.getVersion(versionString);
+      final JavaSdkVersion jdkVersion = JavaSdkVersion.fromVersionString(versionString);
       if (jdkVersion != null) {
         return targetLevel.isAtLeast(jdkVersion.getMaxLanguageLevel());
       }
@@ -283,7 +281,7 @@ public class SceneBuilderImpl implements SceneBuilder {
 
   @NotNull
   private static URLClassLoader createProjectContentClassLoader(Project project) {
-    final List<String> pathList = ApplicationManager.getApplication().runReadAction((Computable<List<String>>)() ->
+    final List<String> pathList = ReadAction.compute(() ->
       OrderEnumerator.orderEntries(project).productionOnly().withoutSdk().recursively().getPathsList().getPathList());
 
     final List<URL> classpathUrls = new ArrayList<>();

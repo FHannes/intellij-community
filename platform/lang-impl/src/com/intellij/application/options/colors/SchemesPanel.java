@@ -17,25 +17,25 @@
 package com.intellij.application.options.colors;
 
 import com.intellij.application.options.SkipSelfSearchComponent;
-import com.intellij.application.options.schemes.AbstractSchemesPanel;
-import com.intellij.application.options.schemes.DefaultSchemeActions;
+import com.intellij.application.options.schemes.AbstractSchemeActions;
+import com.intellij.application.options.schemes.SimpleSchemesPanel;
+import com.intellij.application.options.schemes.SchemesModel;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
-import com.intellij.openapi.editor.colors.impl.AbstractColorsScheme;
-import com.intellij.openapi.ui.ComboBox;
 import com.intellij.util.EventDispatcher;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-
-public class SchemesPanel extends AbstractSchemesPanel<EditorColorsScheme> implements SkipSelfSearchComponent {
+public class SchemesPanel extends SimpleSchemesPanel<EditorColorsScheme> implements SkipSelfSearchComponent {
   private final ColorAndFontOptions myOptions;
 
   private final EventDispatcher<ColorAndFontSettingsListener> myDispatcher = EventDispatcher.create(ColorAndFontSettingsListener.class);
 
   public SchemesPanel(ColorAndFontOptions options) {
+    this(options, DEFAULT_VGAP);
+  }
+
+  public SchemesPanel(ColorAndFontOptions options, int vGap) {
+    super(vGap);
     myOptions = options;
   }
 
@@ -60,30 +60,14 @@ public class SchemesPanel extends AbstractSchemesPanel<EditorColorsScheme> imple
   public void resetSchemesCombo(final Object source) {
     if (this != source) {
       setListLoaded(false);
-
       EditorColorsScheme selectedSchemeBackup = myOptions.getSelectedScheme();
-      getSchemesCombo().removeAllItems();
-
-      String[] schemeNames = myOptions.getSchemeNames();
-      MySchemeItem itemToSelect = null;
-      for (String schemeName : schemeNames) {
-        EditorColorsScheme scheme = myOptions.getScheme(schemeName); 
-        MySchemeItem item = new MySchemeItem(scheme);
-        if (scheme == selectedSchemeBackup) itemToSelect = item;
-        getSchemesCombo().addItem(item);
-      }
-
-      getSchemesCombo().setSelectedItem(itemToSelect);
+      resetSchemes(myOptions.getOrderedSchemes());
+      selectScheme(selectedSchemeBackup);
       setListLoaded(true);
-
       myDispatcher.getMulticaster().schemeChanged(this);
     }
   }
   
-  @Nullable
-  private String getSelectedSchemeName() {
-    return getSchemesCombo().getSelectedIndex() != -1 ? ((MySchemeItem)getSchemesCombo().getSelectedItem()).getSchemeName() : null;
-  }
 
   private void setListLoaded(final boolean b) {
     myListLoaded = b;
@@ -94,62 +78,54 @@ public class SchemesPanel extends AbstractSchemesPanel<EditorColorsScheme> imple
   }
 
   @Override
-  protected ComboBox createSchemesCombo() {
-    ComboBox schemesCombo = new ComboBox();
-    schemesCombo.addActionListener(new ActionListener() {
-      @Override
-      public void actionPerformed(@NotNull ActionEvent e) {
-        String selectedName = getSelectedSchemeName();
-        if (selectedName != null) {
-          myOptions.selectScheme(selectedName);
-          if (areSchemesLoaded()) {
-            myDispatcher.getMulticaster().schemeChanged(SchemesPanel.this);
+  protected AbstractSchemeActions<EditorColorsScheme> createSchemeActions() {
+    return
+      new ColorSchemeActions(this) {
+
+        @NotNull
+        @Override
+        protected ColorAndFontOptions getOptions() {
+          return myOptions;
+        }
+
+        @Override
+        protected void onSchemeChanged(@Nullable EditorColorsScheme scheme) {
+          if (scheme != null) {
+            myOptions.selectScheme(scheme.getName());
+            if (areSchemesLoaded()) {
+              myDispatcher.getMulticaster().schemeChanged(SchemesPanel.this);
+            }
           }
         }
-      }
-    });
-    return schemesCombo;
+
+        @Override
+        protected void renameScheme(@NotNull EditorColorsScheme scheme, @NotNull String newName) {
+          if (myOptions.saveSchemeAs(scheme, newName)) {
+            myOptions.removeScheme(scheme);
+            myOptions.selectScheme(newName);
+          }
+        }
+      };
+  }
+
+  @NotNull
+  @Override
+  public SchemesModel<EditorColorsScheme> getModel() {
+    return myOptions;
   }
 
   @Override
-  protected DefaultSchemeActions<EditorColorsScheme> createSchemeActions() {
-    return
-      new ColorSchemeActions() {
-      @NotNull
-      @Override
-      protected JComponent getParentComponent() {
-        return getToolbarPanel();
-      }
-
-      @NotNull
-      @Override
-      protected ColorAndFontOptions getOptions() {
-        return myOptions;
-      }
-
-      @Nullable
-      @Override
-      protected EditorColorsScheme getCurrentScheme() {
-        return myOptions != null ? myOptions.getScheme(getSelectedSchemeName()) : null;
-      }
-    };
+  protected boolean supportsProjectSchemes() {
+    return false;
   }
 
-  private final static class MySchemeItem {
-    private EditorColorsScheme myScheme;
-
-    public MySchemeItem(EditorColorsScheme scheme) {
-      myScheme = scheme;
-    }
-    
-    public String getSchemeName() {
-      return myScheme.getName();
-    }
-
-    @Override
-    public String toString() {
-      return AbstractColorsScheme.getDisplayName(myScheme);
-    }
+  @Override
+  protected boolean highlightNonDefaultSchemes() {
+    return true;
   }
-  
+
+  @Override
+  public boolean useBoldForNonRemovableSchemes() {
+    return true;
+  }
 }

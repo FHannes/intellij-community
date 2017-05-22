@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,16 +22,13 @@ import com.intellij.compiler.CompilerWorkspaceConfiguration;
 import com.intellij.compiler.MalformedPatternException;
 import com.intellij.compiler.impl.javaCompiler.javac.JavacConfiguration;
 import com.intellij.compiler.server.BuildManager;
-import com.intellij.ide.DataManager;
 import com.intellij.ide.PowerSaveMode;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.compiler.CompilerBundle;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SearchableConfigurable;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.Gray;
@@ -41,14 +38,13 @@ import com.intellij.ui.components.JBLabel;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.ContainerUtilRt;
 import com.intellij.util.execution.ParametersListUtil;
+import com.intellij.util.ui.JBUI;
 import com.intellij.xml.util.XmlStringUtil;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.util.*;
 import java.util.List;
 
@@ -112,16 +108,7 @@ public class CompilerUIConfigurable implements SearchableConfigurable, Configura
                                                       s -> StringUtil.startsWithIgnoreCase(s, "-Xmx")) == null);
       }
     });
-    myConfigureAnnotations.addActionListener(new ActionListener() {
-      @Override
-      public void actionPerformed(ActionEvent e) {
-        Project project = CommonDataKeys.PROJECT.getData(DataManager.getInstance().getDataContext(myPanel));
-        if (project == null) {
-          project = ProjectManager.getInstance().getDefaultProject();
-        }
-        new NullableNotNullDialog(project).show();
-      }
-    });
+    myConfigureAnnotations.addActionListener(NullableNotNullDialog.createActionListener(myPanel));
   }
 
   private void tweakControls(@NotNull Project project) {
@@ -347,5 +334,7 @@ public class CompilerUIConfigurable implements SearchableConfigurable, Configura
   private void createUIComponents() {
     myResourcePatternsField = new RawCommandLineEditor(ParametersListUtil.COLON_LINE_PARSER, ParametersListUtil.COLON_LINE_JOINER);
     myResourcePatternsField.setDialogCaption("Resource patterns");
+    myHeapSizeField = new JTextField();
+    myHeapSizeField.setPreferredSize(new Dimension(JBUI.scale(50), myHeapSizeField.getPreferredSize().height));
   }
 }

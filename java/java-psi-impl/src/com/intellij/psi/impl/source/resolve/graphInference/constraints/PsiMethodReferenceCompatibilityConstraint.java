@@ -16,6 +16,7 @@
 package com.intellij.psi.impl.source.resolve.graphInference.constraints;
 
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.source.resolve.graphInference.FunctionalInterfaceParameterizationUtil;
 import com.intellij.psi.impl.source.resolve.graphInference.InferenceSession;
@@ -30,11 +31,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-/**
- * User: anna
- */
 public class PsiMethodReferenceCompatibilityConstraint implements ConstraintFormula {
-  private static final Logger LOG = Logger.getInstance("#" + PsiMethodReferenceCompatibilityConstraint.class.getName());
+  private static final Logger LOG = Logger.getInstance(PsiMethodReferenceCompatibilityConstraint.class);
   private final PsiMethodReferenceExpression myExpression;
   private PsiType myT;
 
@@ -125,8 +123,10 @@ public class PsiMethodReferenceCompatibilityConstraint implements ConstraintForm
         }
 
         if (applicableMethodReturnType != null) {
-          final PsiType capturedReturnType = PsiUtil.captureToplevelWildcards(psiSubstitutor.substitute(applicableMethodReturnType), myExpression);
-          constraints.add(new TypeCompatibilityConstraint(returnType, session.substituteWithInferenceVariables(capturedReturnType)));
+          applicableMethodReturnType = psiSubstitutor.substitute(applicableMethodReturnType);
+          applicableMethodReturnType = Registry.is("unsound.capture.conversion.java.spec.change") ? applicableMethodReturnType
+                                                                                                  : PsiUtil.captureToplevelWildcards(applicableMethodReturnType, myExpression);
+          constraints.add(new TypeCompatibilityConstraint(returnType, session.substituteWithInferenceVariables(applicableMethodReturnType)));
         }
       }
       return true;
@@ -164,7 +164,7 @@ public class PsiMethodReferenceCompatibilityConstraint implements ConstraintForm
 
     if (element instanceof PsiMethod) {
       final PsiMethod method = (PsiMethod)element;
-      final PsiType referencedMethodReturnType;
+      PsiType referencedMethodReturnType;
       final PsiClass containingClass = method.getContainingClass();
       LOG.assertTrue(containingClass != null, method);
       PsiSubstitutor psiSubstitutor = getSubstitutor(signature, qualifierResolveResult, method, containingClass, myExpression);
@@ -211,8 +211,10 @@ public class PsiMethodReferenceCompatibilityConstraint implements ConstraintForm
         session.initBounds(myExpression, containingClass.getTypeParameters());
       }
 
-      final PsiType capturedReturnType = PsiUtil.captureToplevelWildcards(psiSubstitutor.substitute(referencedMethodReturnType), myExpression);
-      constraints.add(new TypeCompatibilityConstraint(returnType, session.substituteWithInferenceVariables(capturedReturnType)));
+      referencedMethodReturnType = psiSubstitutor.substitute(referencedMethodReturnType);
+      referencedMethodReturnType = Registry.is("unsound.capture.conversion.java.spec.change") ? referencedMethodReturnType
+                                                                                              : PsiUtil.captureToplevelWildcards(referencedMethodReturnType, myExpression);
+      constraints.add(new TypeCompatibilityConstraint(returnType, session.substituteWithInferenceVariables(referencedMethodReturnType)));
     }
     
     return true;
@@ -237,9 +239,9 @@ public class PsiMethodReferenceCompatibilityConstraint implements ConstraintForm
           psiSubstitutor = getParameterizedTypeSubstitutor(qContainingClass, pType);
         }
         else if (member instanceof PsiMethod && ((PsiMethod)member).isConstructor() || member instanceof PsiClass) {
-          //15.13.1 
+          //15.13.1
           //If ClassType is a raw type, but is not a non-static member type of a raw type, 
-          //the candidate notional member methods are those specified in §15.9.3 for a class instance creation expression that uses <> 
+          //the candidate notional member methods are those specified in p15.9.3 for a class instance creation expression that uses <>
           //to elide the type arguments to a class.
           final PsiResolveHelper helper = JavaPsiFacade.getInstance(methodReferenceExpression.getProject()).getResolveHelper();
           final PsiType[] paramTypes =
@@ -247,7 +249,11 @@ public class PsiMethodReferenceCompatibilityConstraint implements ConstraintForm
           LOG.assertTrue(paramTypes.length == signature.getParameterTypes().length, "expr: " + methodReferenceExpression + "; " +
                                                                                     paramTypes.length + "; " +
                                                                                     Arrays.toString(signature.getParameterTypes()));
-          psiSubstitutor = helper.inferTypeArguments(qContainingClass.getTypeParameters(),
+          if (Arrays.deepEquals(signature.getParameterTypes(), paramTypes)) {
+            return PsiSubstitutor.EMPTY;
+          }
+
+          psiSubstitutor = helper.inferTypeArguments(PsiTypesUtil.filterUnusedTypeParameters(qContainingClass.getTypeParameters(), paramTypes),
                                                      paramTypes,
                                                      signature.getParameterTypes(),
                                                      PsiUtil.getLanguageLevel(methodReferenceExpression));

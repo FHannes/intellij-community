@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2013 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,17 +28,22 @@ public class FieldAccessedNotGuardedInspectionTest extends LightCodeInsightFixtu
   }
 
   public void testJavax_itself() throws Exception {
-    myFixture.addClass("package javax.annotation.concurrent;\n" + getGuardedByAnnotationText());
     doTest();
   }
 
   public void testSyncOnFieldQualifier() throws Exception {
-    myFixture.addClass("package javax.annotation.concurrent;\n" + getGuardedByAnnotationText());
     doTest();
   }
 
   public void testFieldAccessNotGuarded() {
-    myFixture.addClass("package javax.annotation.concurrent;\n" + getGuardedByAnnotationText());
+    doTest();
+  }
+
+  public void testCheapReadWriteLock() {
+    doTest();
+  }
+
+  public void testStaticSyncOnClass() {
     doTest();
   }
 
@@ -59,6 +64,7 @@ public class FieldAccessedNotGuardedInspectionTest extends LightCodeInsightFixtu
   @Override
   protected void setUp() throws Exception {
     super.setUp();
+    myFixture.addClass("package javax.annotation.concurrent;\n" + getGuardedByAnnotationText());
     myFixture.enableInspections(new FieldAccessNotGuardedInspection());
   }
 

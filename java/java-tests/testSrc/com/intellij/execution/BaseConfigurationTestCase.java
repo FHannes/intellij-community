@@ -20,10 +20,10 @@ import com.intellij.execution.actions.ConfigurationFromContext;
 import com.intellij.execution.actions.RunConfigurationProducer;
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.junit.JUnitConfiguration;
-import com.intellij.execution.junit.JUnitConfigurationProducer;
+import com.intellij.execution.testframework.AbstractJavaTestConfigurationProducer;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.LangDataKeys;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.application.ex.PathManagerEx;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
@@ -32,7 +32,6 @@ import com.intellij.openapi.module.StdModuleTypes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ModuleRootModificationUtil;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.JavaPsiFacade;
@@ -56,6 +55,12 @@ public abstract class BaseConfigurationTestCase extends IdeaTestCase {
   protected void setUp() throws Exception {
     super.setUp();
     myTempFiles = new TempFiles(myFilesToDelete);
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    myModulesToDispose.clear();
+    super.tearDown();
   }
 
   protected void addModule(String path) throws IOException {
@@ -101,26 +106,15 @@ public abstract class BaseConfigurationTestCase extends IdeaTestCase {
   @NotNull
   public static Module createTempModule(TempFiles tempFiles, final Project project) {
     final String tempPath = tempFiles.createTempFile("xxx").getAbsolutePath();
-    return ApplicationManager.getApplication().runWriteAction(new Computable<Module>() {
-      @Override
-      public Module compute() {
-        Module result = ModuleManager.getInstance(project).newModule(tempPath, StdModuleTypes.JAVA.getId());
-        PlatformTestUtil.saveProject(project);
-        return result;
-      }
-    });
+    Module result = WriteAction.compute(() -> ModuleManager.getInstance(project).newModule(tempPath, StdModuleTypes.JAVA.getId()));
+    PlatformTestUtil.saveProject(project);
+    return result;
   }
 
   protected static VirtualFile findFile(String path) {
     String filePath = PathManagerEx.getTestDataPath() + File.separator + "junit" + File.separator + "configurations" +
                       File.separator + path;
     return LocalFileSystem.getInstance().findFileByPath(filePath.replace(File.separatorChar, '/'));
-  }
-
-  @Override
-  protected void tearDown() throws Exception {
-    myModulesToDispose.clear();
-    super.tearDown();
   }
 
   protected void disposeModule(Module module) {
@@ -157,7 +151,7 @@ public abstract class BaseConfigurationTestCase extends IdeaTestCase {
   }
 
   protected JUnitConfiguration createJUnitConfiguration(@NotNull PsiElement psiElement,
-                                                        @NotNull Class<? extends JUnitConfigurationProducer> producerClass,
+                                                        @NotNull Class<? extends AbstractJavaTestConfigurationProducer> producerClass,
                                                         @NotNull MapDataContext dataContext) {
     ConfigurationContext context = createContext(psiElement, dataContext);
     RunConfigurationProducer producer = RunConfigurationProducer.getInstance(producerClass);

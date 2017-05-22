@@ -37,7 +37,7 @@ import java.util.List;
 public class PythonCompletionTest extends PyTestCase {
 
   private void doTest() {
-    CamelHumpMatcher.forceStartMatching(getTestRootDisposable());
+    CamelHumpMatcher.forceStartMatching(myFixture.getTestRootDisposable());
     final String testName = getTestName(true);
     myFixture.configureByFile(testName + ".py");
     myFixture.completeBasic();
@@ -730,11 +730,17 @@ public class PythonCompletionTest extends PyTestCase {
 
   // PY-9342
   public void testBoundMethodSpecialAttributes() {
-    List<String>  suggested = doTestByText("{}.update.im_<caret>");
+    List<String>  suggested = doTestByText("class C(object):\n" +
+                                           "  def f(self): pass\n" +
+                                           "\n" +
+                                           "C().f.im_<caret>");
     assertNotNull(suggested);
     assertContainsElements(suggested, PyNames.LEGACY_METHOD_SPECIAL_ATTRIBUTES);
 
-    suggested = doTestByText("{}.update.__<caret>");
+    suggested = doTestByText("class C(object):\n" +
+                             "  def f(self): pass\n" +
+                             "\n" +
+                             "C().f.__<caret>");
     assertNotNull(suggested);
     assertContainsElements(suggested, PyNames.METHOD_SPECIAL_ATTRIBUTES);
     assertDoesntContain(suggested, PyNames.FUNCTION_SPECIAL_ATTRIBUTES);
@@ -1002,11 +1008,6 @@ public class PythonCompletionTest extends PyTestCase {
     doTest();
   }
 
-  // PY-12425
-  public void testInstanceFromProvidedCallAttr() {
-    doMultiFileTest();
-  }
-
   // PY-18684
   public void testRPowSignature() {
     doTest();
@@ -1102,6 +1103,44 @@ public class PythonCompletionTest extends PyTestCase {
 
     assertNotNull(suggested);
     assertContainsElements(suggested, "baz");
+  }
+
+  // PY-22570
+  public void testNamesReexportedViaStarImport() {
+    myFixture.copyDirectoryToProject(getTestName(true), "");
+    myFixture.configureByFile("a.py");
+    myFixture.completeBasic();
+    final List<String> variants = myFixture.getLookupElementStrings();
+    assertSameElements(variants, "mod1", "mod2", "foo", "_bar");
+  }
+
+  // PY-23150
+  public void testHeavyStarPropagation() {
+    doMultiFileTest();
+    assertSize(802, myFixture.getLookupElements());
+  }
+
+  // PY-22828
+  public void testNoImportedBuiltinNames() {
+    final List<String> suggested = doTestByText("T<caret>\n");
+    assertNotNull(suggested);
+    assertContainsElements(suggested, "TypeError");
+    assertDoesntContain(suggested, "TypeVar");
+  }
+
+  // PY-22828
+  public void testNoProtectedBuiltinNames() {
+    final List<String> suggested = doTestByText("_<caret>\n");
+    assertNotNull(suggested);
+    assertContainsElements(suggested, "__import__");
+    assertDoesntContain(suggested, "_T", "_KT");
+  }
+
+  // PY-21519
+  public void testTypeComment() {
+    myFixture.copyFileToProject("../typing/typing.py");
+    final List<String> variants = doTestByFile();
+    assertContainsElements(variants, "List", "Union", "Optional");
   }
 
   @Override

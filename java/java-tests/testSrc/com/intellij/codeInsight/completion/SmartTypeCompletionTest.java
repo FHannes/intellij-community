@@ -669,7 +669,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     final SmartCompletionContextType completionContextType =
       ContainerUtil.findInstance(TemplateContextType.EP_NAME.getExtensions(), SmartCompletionContextType.class);
     ((TemplateImpl)template).getTemplateContext().setEnabled(completionContextType, true);
-    CodeInsightTestUtil.addTemplate(template, getTestRootDisposable());
+    CodeInsightTestUtil.addTemplate(template, myFixture.getTestRootDisposable());
     doTest();
   }
 
@@ -830,7 +830,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
   }
   public void testNoClassLiteral() throws Exception {
     doActionTest();
-    assertStringItems("Object.class", "getClass", "forName", "forName");
+    assertStringItems("forName", "forName", "Object.class", "getClass");
   }
 
   public void testClassLiteralInAnno2() throws Throwable {
@@ -1250,4 +1250,19 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
   }
 
   public void testQualifyOuterClassCall() { doActionTest(); }
+
+  public void testExpressionSubtypesInCast() {
+    configureByTestName();
+    myFixture.assertPreferredCompletionItems(0, "String", "StringBuffer", "StringBuilder");
+  }
+
+  public void testStaticBuilder() { doTest(); }
+  public void testStaticBuilderWithArguments() { doTest(); }
+
+  public void testStaticBuilderWithGenerics() {
+    configureByTestName();
+    assertEquals("Map.builder().get(...)", LookupElementPresentation.renderElement(myItems[0]).getItemText());
+    myFixture.type('\t');
+    checkResultByTestName();
+  }
 }

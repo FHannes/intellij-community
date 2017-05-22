@@ -19,6 +19,9 @@ import com.intellij.JavaTestUtil
 import com.intellij.codeInsight.template.impl.TemplateManagerImpl
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.psi.PsiMethod
+import com.intellij.psi.statistics.StatisticsManager
+import com.intellij.psi.statistics.impl.StatisticsManagerImpl
+
 /**
  * @author peter
  */
@@ -34,7 +37,7 @@ class SignatureCompletionTest extends LightFixtureCompletionTestCase {
     super.setUp()
     Registry.get("java.completion.argument.live.template").value = true
     Registry.get("java.completion.show.constructors").value = true
-    TemplateManagerImpl.setTemplateTesting(getProject(), getTestRootDisposable())
+    TemplateManagerImpl.setTemplateTesting(getProject(), myFixture.getTestRootDisposable())
   }
 
   @Override
@@ -82,6 +85,18 @@ class SignatureCompletionTest extends LightFixtureCompletionTestCase {
     myFixture.complete(CompletionType.SMART)
     myFixture.type('\n')
     checkResult()
+  }
+
+  void testCollectStatisticsOnMethods() {
+    ((StatisticsManagerImpl)StatisticsManager.instance).enableStatistics(myFixture.testRootDisposable)
+    configureByTestName()
+    myFixture.assertPreferredCompletionItems 0, 'test1', 'test2'
+    myFixture.lookup.currentItem = myFixture.lookupElements[1]
+    myFixture.type('\n2\n')
+    checkResult()
+    myFixture.type(';\ntes')
+    myFixture.completeBasic()
+    myFixture.assertPreferredCompletionItems 0, 'test2', 'test1'
   }
 
 }

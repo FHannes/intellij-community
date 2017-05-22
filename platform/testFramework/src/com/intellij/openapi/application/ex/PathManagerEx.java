@@ -14,14 +14,6 @@
  * limitations under the License.
  */
 
-/*
- * Created by IntelliJ IDEA.
- * User: mike
- * Date: Aug 19, 2002
- * Time: 8:21:52 PM
- * To change template for new class use
- * Code Style | Class Templates options (Tools | IDE Options).
- */
 package com.intellij.openapi.application.ex;
 
 import com.intellij.openapi.application.PathManager;
@@ -29,11 +21,9 @@ import com.intellij.openapi.module.impl.ModuleManagerImpl;
 import com.intellij.openapi.module.impl.ModulePath;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.JDOMUtil;
-import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.testFramework.Parameterized;
 import com.intellij.testFramework.TestRunnerUtil;
-import com.intellij.util.PathUtil;
 import com.intellij.util.containers.ContainerUtil;
 import gnu.trove.THashSet;
 import junit.framework.TestCase;
@@ -185,7 +175,7 @@ public class PathManagerEx {
   /**
    * @return path to 'community' project home if {@code testClass} is located in the community project and path to 'ultimate' project otherwise
    */
-  public static String getHomePath(Class<? extends TestCase> testClass) {
+  public static String getHomePath(Class<?> testClass) {
     TestDataLookupStrategy strategy = isLocatedInCommunity() ? TestDataLookupStrategy.COMMUNITY : determineLookupStrategy(testClass);
     return strategy == TestDataLookupStrategy.COMMUNITY_FROM_ULTIMATE ? getCommunityHomePath() : PathManager.getHomePath();
   }
@@ -334,10 +324,7 @@ public class PathManagerEx {
     try {
       return Class.forName(className, true, classLoader);
     }
-    catch (NoClassDefFoundError e) {
-      return null;
-    }
-    catch (ClassNotFoundException e) {
+    catch (NoClassDefFoundError | ClassNotFoundException e) {
       return null;
     }
   }
@@ -410,14 +397,11 @@ public class PathManagerEx {
       Element element = JDomSerializationUtil.findComponent(JDOMUtil.load(modulesXml), ModuleManagerImpl.COMPONENT_NAME);
       assert element != null;
       for (ModulePath file : ModuleManagerImpl.getPathsToModuleFiles(element)) {
-        ourCommunityModules.add(FileUtil.getNameWithoutExtension(PathUtil.getFileName(file.getPath())));
+        ourCommunityModules.add(file.getModuleName());
       }
       return ourCommunityModules;
     }
-    catch (JDOMException e) {
-      throw new RuntimeException("Cannot read modules from " + modulesXml.getAbsolutePath(), e);
-    }
-    catch (IOException e) {
+    catch (JDOMException | IOException e) {
       throw new RuntimeException("Cannot read modules from " + modulesXml.getAbsolutePath(), e);
     }
   }

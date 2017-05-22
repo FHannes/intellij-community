@@ -38,6 +38,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
+import static com.intellij.openapi.vcs.Executor.echo;
+import static com.intellij.openapi.vcs.Executor.touch;
 import static git4idea.test.GitExecutor.*;
 import static java.util.Collections.singleton;
 
@@ -62,7 +64,7 @@ public class GitLogProviderTest extends GitSingleRepoTest {
     createTaggedBranch();
 
     VcsLogProvider.DetailedLogData block =
-      myLogProvider.readFirstBlock(myProjectRoot, new RequirementsImpl(1000, false, Collections.<VcsRef>emptySet()));
+      myLogProvider.readFirstBlock(myProjectRoot, new RequirementsImpl(1000, false, Collections.emptySet()));
     assertOrderedEquals(block.getCommits(), expectedLogWithoutTaggedBranch);
   }
 
@@ -123,7 +125,7 @@ public class GitLogProviderTest extends GitSingleRepoTest {
     git("update-ref refs/remotes/origin/HEAD master");
 
     VcsLogProvider.DetailedLogData block = myLogProvider.readFirstBlock(myProjectRoot,
-                                                                        new RequirementsImpl(1000, false, Collections.<VcsRef>emptySet()));
+                                                                        new RequirementsImpl(1000, false, Collections.emptySet()));
     assertFalse("origin/HEAD should be ignored", ContainerUtil.exists(block.getRefs(), ref -> ref.getName().equals("origin/HEAD")));
   }
 
@@ -133,7 +135,7 @@ public class GitLogProviderTest extends GitSingleRepoTest {
     git("tag build");
 
     VcsLogProvider.DetailedLogData data = myLogProvider.readFirstBlock(myProjectRoot,
-                                                                       new RequirementsImpl(1000, true, Collections.<VcsRef>emptySet()));
+                                                                       new RequirementsImpl(1000, true, Collections.emptySet()));
     List<VcsCommitMetadata> expectedLog = log();
     assertOrderedEquals(data.getCommits(), expectedLog);
     assertTrue(ContainerUtil.exists(data.getRefs(), ref -> ref.getName().equals("build") && ref.getType() == GitRefManager.LOCAL_BRANCH));
@@ -165,11 +167,11 @@ public class GitLogProviderTest extends GitSingleRepoTest {
 
     touch(fileName, "content" + Math.random());
     String smallBrackets = addCommit("[git] " + fileName);
-    touch(fileName, "content" + Math.random());
+    echo(fileName, "content" + Math.random());
     String bigBrackets = addCommit("[GIT] " + fileName);
-    touch(fileName, "content" + Math.random());
+    echo(fileName, "content" + Math.random());
     String smallNoBrackets = addCommit("git " + fileName);
-    touch(fileName, "content" + Math.random());
+    echo(fileName, "content" + Math.random());
     String bigNoBrackets = addCommit("GIT " + fileName);
 
     String text = "[git]";

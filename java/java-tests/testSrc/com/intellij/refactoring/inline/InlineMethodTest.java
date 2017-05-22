@@ -145,6 +145,10 @@ public class InlineMethodTest extends LightRefactoringTestCase {
     doTest();
   }
 
+  public void testEnumConstantConstructorWithArgs() throws Exception {
+    doTest();
+  }
+
   public void testConstantInChainingConstructor() throws Exception {   // IDEADEV-28136
     doTest();
   }
@@ -231,6 +235,10 @@ public class InlineMethodTest extends LightRefactoringTestCase {
     doTestConflict("Inline cannot be applied to multiline method in constructor call");
   }
 
+  public void testMethodReferenceInsideMethodCall() throws Exception {
+    doTest();
+  }
+
   private void doTestConflict(final String conflict) throws Exception {
     try {
       doTest();
@@ -309,6 +317,10 @@ public class InlineMethodTest extends LightRefactoringTestCase {
     doTestConflict("Inlined method is used in method reference with side effects in qualifier");
   }
 
+  public void testRedundantCastOnMethodReferenceToLambda() throws Exception {
+    doTest();
+  }
+
   public void testInaccessibleSuperCallWhenQualifiedInline() throws Exception {
     doTestConflict("Inlined method calls super.bar() which won't be accessed in class <b><code>B</code></b>");
   }
@@ -347,6 +359,10 @@ public class InlineMethodTest extends LightRefactoringTestCase {
 
   public void testRespectProjectScopeSrcConstructorCall() throws Exception {
     doTest();
+  }
+
+  public void testChainedConstructorWithMultipleStatements() throws Exception {
+    doTestInlineThisOnly();
   }
 
   @Override
@@ -398,7 +414,8 @@ public class InlineMethodTest extends LightRefactoringTestCase {
     final boolean condition = InlineMethodProcessor.checkBadReturns(method) && !InlineUtil.allUsagesAreTailCalls(method);
     assertFalse("Bad returns found", condition);
     final InlineMethodProcessor processor =
-      new InlineMethodProcessor(getProject(), method, refExpr, myEditor, options.isInlineThisOnly(), nonCode, nonCode);
+      new InlineMethodProcessor(getProject(), method, refExpr, myEditor, options.isInlineThisOnly(), nonCode, nonCode,
+                                !options.isKeepTheDeclaration());
     processor.run();
   }
 }

@@ -53,7 +53,6 @@ public class DataFlowInspectionAncientTest extends InspectionTestCase {
   public void testExceptionCFG() { doTest(true); }
   public void testInst() { doTest(true); }
   public void testWrongEqualTypes() { doTest(true); }
-  public void testSCR13702() { doTest(); }
   public void testSCR13626() { doTest(); }
   public void testSCR13871() { doTest(); }
   public void testInstanceof() { doTest(); }
@@ -100,7 +99,6 @@ public class DataFlowInspectionAncientTest extends InspectionTestCase {
   public void testForEachNPE() { doTest15(); }
   public void testArrayAccessNPE() { doTest15(); }
   public void testArrayAccessDoesntCancelAnalysis() { doTest15(); }
-  public void testCompileTimeConst() { doTest15(true); }
   public void testAutoboxing() { doTest15(true); }
   public void testUnboxingNPE() { doTest15(true); }
   public void testStrangeArrayIndexOutOfBounds() { doTest15(); }

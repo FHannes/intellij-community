@@ -144,6 +144,7 @@ public class PreferByKindWeigher extends LookupElementWeigher {
     suitableClass,
     nonInitialized,
     classNameOrGlobalStatic,
+    unlikelyClass,
     improbableKeyword,
   }
 
@@ -175,6 +176,11 @@ public class PreferByKindWeigher extends LookupElementWeigher {
       if (containingClass != null && CommonClassNames.JAVA_UTIL_COLLECTIONS.equals(containingClass.getQualifiedName())) {
         return MyResult.collectionFactory;
       }
+    }
+    if (object instanceof PsiClass &&
+        CommonClassNames.JAVA_LANG_STRING.equals(((PsiClass)object).getQualifiedName()) &&
+        JavaSmartCompletionContributor.AFTER_NEW.accepts(myPosition)) {
+      return MyResult.unlikelyClass;
     }
     Boolean expectedTypeMember = item.getUserData(MembersGetter.EXPECTED_TYPE_MEMBER);
     if (expectedTypeMember != null) {
@@ -263,12 +269,16 @@ public class PreferByKindWeigher extends LookupElementWeigher {
     }
     if (JavaKeywordCompletion.PRIMITIVE_TYPES.contains(keyword) || PsiKeyword.VOID.equals(keyword)) {
       boolean inCallArg = psiElement().withParents(PsiReferenceExpression.class, PsiExpressionList.class).accepts(myPosition);
-      return inCallArg ? ThreeState.NO : ThreeState.UNSURE;
+      return inCallArg || isInMethodTypeArg(myPosition) ? ThreeState.NO : ThreeState.UNSURE;
     }
     return ThreeState.UNSURE;
   }
 
-  private static boolean isOnTopLevelInVoidMethod(PsiStatement statement) {
+  static boolean isInMethodTypeArg(PsiElement position) {
+    return psiElement().inside(PsiReferenceParameterList.class).accepts(position);
+  }
+
+  private static boolean isOnTopLevelInVoidMethod(@NotNull PsiStatement statement) {
     if (!(statement.getParent() instanceof PsiCodeBlock)) return false;
 
     PsiElement parent = statement.getParent().getParent();
@@ -292,7 +302,10 @@ public class PreferByKindWeigher extends LookupElementWeigher {
   }
 
   private static boolean isLastStatement(PsiStatement statement) {
-    if (statement == null || !(statement.getParent() instanceof PsiCodeBlock)) {
+    if (statement == null) {
+      return false;
+    }
+    if (!(statement.getParent() instanceof PsiCodeBlock)) {
       return true;
     }
     PsiStatement[] siblings = ((PsiCodeBlock)statement.getParent()).getStatements();

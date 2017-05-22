@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import com.intellij.psi.CommonClassNames;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiType;
-import com.intellij.refactoring.introduce.inplace.OccurrencesChooser;
 import com.intellij.refactoring.introduceVariable.InputValidator;
 import com.intellij.refactoring.introduceVariable.IntroduceVariableBase;
 import com.intellij.refactoring.introduceVariable.IntroduceVariableSettings;
@@ -240,8 +239,7 @@ public class IntroduceVariableTest extends LightCodeInsightTestCase {
       doTest(new MockIntroduceVariableHandler("str", false, false, false, "int"));
     }
     catch (Exception e) {
-      assertEquals(e.getMessage(), "Error message:Cannot perform refactoring.\n" +
-                                   "Selected block should represent an expression");
+      assertEquals("Error message:Cannot perform refactoring.\nSelected block should represent an expression", e.getMessage());
       return;
     }
     fail("Should not be able to perform refactoring");
@@ -280,8 +278,7 @@ public class IntroduceVariableTest extends LightCodeInsightTestCase {
       doTest(new MockIntroduceVariableHandler("strs", false, false, false, "java.lang.String[]"));
     }
     catch (Exception e) {
-      assertEquals(e.getMessage(), "Error message:Cannot perform refactoring.\n" +
-                                   "Selected block should represent an expression");
+      assertEquals("Error message:Cannot perform refactoring.\nSelected block should represent an expression", e.getMessage());
       return;
     }
     fail("Should not be able to perform refactoring");
@@ -292,8 +289,7 @@ public class IntroduceVariableTest extends LightCodeInsightTestCase {
       doTest(new MockIntroduceVariableHandler("strs", false, false, false, "java.lang.String[]"));
     }
     catch (Exception e) {
-      assertEquals(e.getMessage(), "Error message:Cannot perform refactoring.\n" +
-                                   "Selected block should represent an expression");
+      assertEquals("Error message:Cannot perform refactoring.\nSelected block should represent an expression", e.getMessage());
       return;
     }
     fail("Should not be able to perform refactoring");
@@ -365,7 +361,7 @@ public class IntroduceVariableTest extends LightCodeInsightTestCase {
                                                    boolean declareFinalIfAll,
                                                    boolean anyAssignmentLHS,
                                                    InputValidator validator,
-                                                   PsiElement anchor, final OccurrencesChooser.ReplaceChoice replaceChoice) {
+                                                   PsiElement anchor, final JavaReplaceChoice replaceChoice) {
         final PsiType type = typeSelectorManager.getDefaultType();
         assertTrue(type.getPresentableText(), type.getPresentableText().equals(expectedTypeName));
         assertEquals("path", IntroduceVariableBase.getSuggestedName(type, expr).names[0]);
@@ -384,7 +380,7 @@ public class IntroduceVariableTest extends LightCodeInsightTestCase {
                                                    boolean declareFinalIfAll,
                                                    boolean anyAssignmentLHS,
                                                    InputValidator validator,
-                                                   PsiElement anchor, final OccurrencesChooser.ReplaceChoice replaceChoice) {
+                                                   PsiElement anchor, final JavaReplaceChoice replaceChoice) {
         final PsiType type = typeSelectorManager.getDefaultType();
         assertTrue(type.getPresentableText(), type.getPresentableText().equals("B"));
         return super.getSettings(project, editor, expr, occurrences, typeSelectorManager, declareFinalIfAll, anyAssignmentLHS,
@@ -397,8 +393,7 @@ public class IntroduceVariableTest extends LightCodeInsightTestCase {
     doTest(new MockIntroduceVariableHandler("sum", true, true, false, "int"){
       @Override
       protected void showErrorMessage(Project project, Editor editor, String message) {
-        assertEquals("Cannot perform refactoring.\n" +
-                     "Extracting selected expression would change the semantic of the whole expression.", message);
+        assertEquals("Cannot perform refactoring.\nExtracting selected expression would change the semantic of the whole expression.", message);
       }
     });
   }
@@ -408,8 +403,7 @@ public class IntroduceVariableTest extends LightCodeInsightTestCase {
       doTest(new MockIntroduceVariableHandler("toString", false, false, false, CommonClassNames.JAVA_LANG_STRING));
     }
     catch (Exception e) {
-      assertEquals(e.getMessage(), "Error message:Cannot perform refactoring.\n" +
-                                   "Selected block should represent an expression");
+      assertEquals("Error message:Cannot perform refactoring.\nSelected block should represent an expression", e.getMessage());
       return;
     }
     fail("Should not be able to perform refactoring");
@@ -466,13 +460,8 @@ public class IntroduceVariableTest extends LightCodeInsightTestCase {
   public void testMethodRefNotInContextInferredFilterWithNonAcceptableSince() {
     //though test extracts method reference which is not suppose to appear with language level 1.7
     //@since 1.8 in Consumer prevent it to appear at first position
-    try {
-      setLanguageLevel(LanguageLevel.JDK_1_7);
-      doTest(new MockIntroduceVariableHandler("l", false, false, false, "D<java.lang.Integer>", false));
-    }
-    finally {
-      setLanguageLevel(getLanguageLevel());
-    }
+    setLanguageLevel(LanguageLevel.JDK_1_7);
+    doTest(new MockIntroduceVariableHandler("l", false, false, false, "D<java.lang.Integer>", false));
   }
 
   public void testOneLineLambdaVoidCompatible() {
@@ -493,7 +482,7 @@ public class IntroduceVariableTest extends LightCodeInsightTestCase {
   public void testPutInLambdaBodyVoidValueConflict() {
     doTest(new MockIntroduceVariableHandler("c", false, false, false, "int"));
   }
-  
+
   public void testPutInLambdaBodyVoid() {
     doTest(new MockIntroduceVariableHandler("s", false, false, false, "java.lang.String"));
   }
@@ -552,7 +541,7 @@ public class IntroduceVariableTest extends LightCodeInsightTestCase {
                                                    boolean declareFinalIfAll,
                                                    boolean anyAssignmentLHS,
                                                    InputValidator validator,
-                                                   PsiElement anchor, final OccurrencesChooser.ReplaceChoice replaceChoice) {
+                                                   PsiElement anchor, final JavaReplaceChoice replaceChoice) {
         final PsiType[] types = typeSelectorManager.getTypesForAll();
         assertTrue(types[0].getPresentableText(), types[0].getPresentableText().equals("B"));
         assertTrue(types[1].getPresentableText(), types[1].getPresentableText().equals("A"));

@@ -31,6 +31,11 @@ import java.io.File
 class PyVirtualEnvReader(val virtualEnvSdkPath: String) : EnvironmentUtil.ShellEnvReader() {
   private val LOG = Logger.getInstance("#com.jetbrains.python.run.PyVirtualEnvReader")
 
+  companion object {
+    val virtualEnvVars = listOf("PATH", "PS1", "VIRTUAL_ENV", "PYTHONHOME", "PROMPT", "_OLD_VIRTUAL_PROMPT", "_OLD_VIRTUAL_PYTHONHOME",
+                                "_OLD_VIRTUAL_PATH")
+  }
+
   // in case of Conda we need to pass an argument to an activate script that tells which exactly environment to activate
   val activate: Pair<String, String?>? = findActivateScript(virtualEnvSdkPath, shell)
 
@@ -62,6 +67,11 @@ class PyVirtualEnvReader(val virtualEnvSdkPath: String) : EnvironmentUtil.ShellE
     }
   }
 
+  override fun dumpProcessEnvToFile(command: MutableList<String>, envFile: File, lineSeparator: String?): MutableMap<String, String> {
+    // pass shell environment for correct virtualenv environment setup (virtualenv expects to be executed from the terminal)
+    return runProcessAndReadEnvs(command, null, EnvironmentUtil.getEnvironmentMap(), envFile, lineSeparator)
+  }
+
   private fun readVirtualEnvOnWindows(activate: Pair<String, String?>): MutableMap<String, String> {
     val activateFile = FileUtil.createTempFile("pycharm-virualenv-activate.", ".bat", false)
     val envFile = FileUtil.createTempFile("pycharm-virualenv-envs.", ".tmp", false)
@@ -81,7 +91,7 @@ class PyVirtualEnvReader(val virtualEnvSdkPath: String) : EnvironmentUtil.ShellE
 
   }
 
-  override fun getShellProcessCommand(): MutableList<String>? {
+  override fun getShellProcessCommand(): MutableList<String> {
     val shellPath = shell
 
     if (shellPath == null || !File(shellPath).canExecute()) {

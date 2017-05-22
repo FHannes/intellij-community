@@ -1,6 +1,7 @@
 package com.intellij.vcs.log;
 
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.VcsKey;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -18,6 +19,7 @@ import java.util.Set;
  * Provides the information needed to build the VCS log, such as the list of most recent commits with their parents.
  */
 public interface VcsLogProvider {
+  ExtensionPointName<VcsLogProvider> LOG_PROVIDER_EP = ExtensionPointName.create("com.intellij.logProvider");
 
   /**
    * Reads the most recent commits from the log together with all repository references.<br/>
@@ -144,6 +146,14 @@ public interface VcsLogProvider {
    */
   @Nullable
   String getCurrentBranch(@NotNull VirtualFile root);
+
+  /**
+   * Returns {@link VcsLogDiffHandler} for this provider in order to support comparing commits and with local version from log-based file history.
+   *
+   * @return diff handler or null if unsupported.
+   */
+  @Nullable
+  VcsLogDiffHandler getDiffHandler();
 
   interface Requirements {
 

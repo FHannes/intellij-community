@@ -36,10 +36,8 @@ import com.intellij.util.Processor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Stream;
 
 /**
  * @author cdr
@@ -125,7 +123,7 @@ public class HighlightControlFlowUtil {
     else {
       return false;
     }
-    if (isFieldInitializedInClassInitializer(field, isFieldStatic, initializers)) return true;
+    if (isFieldInitializedInClassInitializer(field, isFieldStatic, Arrays.stream(initializers))) return true;
     if (isFieldStatic) {
       return false;
     }
@@ -155,14 +153,9 @@ public class HighlightControlFlowUtil {
 
   private static boolean isFieldInitializedInClassInitializer(@NotNull PsiField field,
                                                               boolean isFieldStatic,
-                                                              PsiClassInitializer[] initializers) {
-    for (PsiClassInitializer initializer : initializers) {
-      if (initializer.hasModifierProperty(PsiModifier.STATIC) == isFieldStatic
-          && variableDefinitelyAssignedIn(field, initializer.getBody())) {
-        return true;
-      }
-    }
-    return false;
+                                                              Stream<PsiClassInitializer> initializers) {
+    return initializers.anyMatch(initializer -> initializer.hasModifierProperty(PsiModifier.STATIC) == isFieldStatic
+                                                && variableDefinitelyAssignedIn(field, initializer.getBody()));
   }
 
   private static boolean isFieldInitializedInOtherFieldInitializer(@NotNull PsiClass aClass,
@@ -289,7 +282,7 @@ public class HighlightControlFlowUtil {
         if (topBlock == null) return null;
         final PsiElement parent = topBlock.getParent();
         // access to final fields from inner classes always allowed
-        if (inInnerClass(expression, ((PsiField)variable).getContainingClass(),containingFile)) return null;
+        if (inInnerClass(expression, ((PsiField)variable).getContainingClass())) return null;
         final PsiCodeBlock block;
         final PsiClass aClass;
         if (parent instanceof PsiMethod) {
@@ -324,12 +317,16 @@ public class HighlightControlFlowUtil {
           final PsiField field = (PsiField)variable;
 
           aClass = field.getContainingClass();
+          final PsiField anotherField = PsiTreeUtil.getTopmostParentOfType(expression, PsiField.class);
           if (aClass == null ||
-              isFieldInitializedInOtherFieldInitializer(aClass, field, field.hasModifierProperty(PsiModifier.STATIC)) ||
-              field.hasModifierProperty(PsiModifier.STATIC) && isFieldInitializedInClassInitializer(field, true, aClass.getInitializers())) {
+              isFieldInitializedInOtherFieldInitializer(aClass, field, field.hasModifierProperty(PsiModifier.STATIC))) {
             return null;
           }
-          final PsiField anotherField = PsiTreeUtil.getTopmostParentOfType(expression, PsiField.class);
+          if (anotherField != null && !anotherField.hasModifierProperty(PsiModifier.STATIC) && field.hasModifierProperty(PsiModifier.STATIC) &&
+              isFieldInitializedInClassInitializer(field, true, Arrays.stream(aClass.getInitializers()))) {
+            return null;
+          }
+
           int offset = startOffset;
           if (anotherField != null && anotherField.getContainingClass() == aClass && !field.hasModifierProperty(PsiModifier.STATIC)) {
             offset = 0;
@@ -404,14 +401,18 @@ public class HighlightControlFlowUtil {
     return null;
   }
 
-  private static boolean inInnerClass(@NotNull PsiElement psiElement, @Nullable PsiClass containingClass, @NotNull PsiFile containingFile) {
+  private static boolean inInnerClass(@NotNull PsiElement psiElement, @Nullable PsiClass containingClass) {
     PsiElement element = psiElement;
     while (element != null) {
       if (element instanceof PsiClass) {
-        final boolean innerClass = !containingFile.getManager().areElementsEquivalent(element, containingClass);
+        final boolean innerClass = !psiElement.getManager().areElementsEquivalent(element, containingClass);
         if (innerClass) {
+          if (element instanceof PsiAnonymousClass) {
+            return !(PsiTreeUtil.isAncestor(((PsiAnonymousClass)element).getArgumentList(), psiElement, false) ||
+                     insideClassInitialization(containingClass, (PsiClass)element));
+          }
           final PsiLambdaExpression lambdaExpression = PsiTreeUtil.getParentOfType(psiElement, PsiLambdaExpression.class);
-          return lambdaExpression == null || !inLambdaInsideClassInitialization(containingClass, (PsiClass)element);
+          return lambdaExpression == null || !insideClassInitialization(containingClass, (PsiClass)element);
         }
         return false;
       }
@@ -420,7 +421,7 @@ public class HighlightControlFlowUtil {
     return false;
   }
 
-  private static boolean inLambdaInsideClassInitialization(@Nullable PsiClass containingClass, PsiClass aClass) {
+  private static boolean insideClassInitialization(@Nullable PsiClass containingClass, PsiClass aClass) {
     PsiMember member = aClass;
     while (member != null) {
       if (member.getContainingClass() == containingClass) {

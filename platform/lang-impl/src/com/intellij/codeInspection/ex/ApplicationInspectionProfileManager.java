@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ package com.intellij.codeInspection.ex;
 
 import com.intellij.codeHighlighting.HighlightDisplayLevel;
 import com.intellij.codeInsight.daemon.InspectionProfileConvertor;
-import com.intellij.codeInsight.daemon.impl.DaemonListeners;
 import com.intellij.codeInsight.daemon.impl.HighlightInfoType;
 import com.intellij.codeInsight.daemon.impl.SeveritiesProvider;
 import com.intellij.codeInsight.daemon.impl.SeverityRegistrar;
@@ -40,7 +39,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.profile.codeInspection.*;
-import com.intellij.ui.AppUIUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.messages.MessageBus;
 import org.jdom.Element;
@@ -50,8 +48,10 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.*;
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -101,12 +101,6 @@ public class ApplicationInspectionProfileManager extends BaseInspectionProfileMa
       @Override
       public void onSchemeAdded(@NotNull InspectionProfileImpl scheme) {
         fireProfileChanged(scheme);
-        onProfilesChanged();
-      }
-
-      @Override
-      public void onSchemeDeleted(@NotNull InspectionProfileImpl scheme) {
-        onProfilesChanged();
       }
     });
   }
@@ -170,8 +164,8 @@ public class ApplicationInspectionProfileManager extends BaseInspectionProfileMa
   }
 
   public InspectionProfileImpl loadProfile(@NotNull String path) throws IOException, JDOMException {
-    final File file = new File(path);
-    if (file.exists()) {
+    final Path file = Paths.get(path);
+    if (Files.isRegularFile(file)) {
       try {
         return InspectionProfileLoadUtil.load(file, myRegistrar, this);
       }
@@ -249,14 +243,6 @@ public class ApplicationInspectionProfileManager extends BaseInspectionProfileMa
   public void fireProfileChanged(@NotNull InspectionProfileImpl profile) {
     for (Project project : ProjectManager.getInstance().getOpenProjects()) {
       ProjectInspectionProfileManager.getInstance(project).fireProfileChanged(profile);
-    }
-
-    onProfilesChanged();
-  }
-
-  public static void onProfilesChanged() {
-    for (Project project : ProjectManager.getInstance().getOpenProjects()) {
-      AppUIUtil.invokeLaterIfProjectAlive(project, () -> DaemonListeners.getInstance(project).updateStatusBar());
     }
   }
 }

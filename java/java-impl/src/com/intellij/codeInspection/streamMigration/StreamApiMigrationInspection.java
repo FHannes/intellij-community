@@ -646,24 +646,24 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
         .remove(variable -> isVariableSuitableForStream(variable, statement, tb)).toList();
 
       TerminalBlock tbWithLimit = tb.tryPeelLimit(statement);
-      if (isCountOperation(statement, nonFinalVariables, tbWithLimit)) {
+      /*if (isCountOperation(statement, nonFinalVariables, tbWithLimit)) {
         registerProblem(statement, "count", new ReplaceWithCountFix());
       } else if (nonFinalVariables.isEmpty() && isCollectCall(tbWithLimit)) {
         handleCollect(statement, tbWithLimit);
         return;
       } else if (getAccumulatedVariable(tb, nonFinalVariables) != null) {
         registerProblem(statement, "sum", new ReplaceWithSumFix());
-      }
+      }*/
       if (exitPoints.isEmpty()) {
         PsiVariable joinVar;
         if((joinVar = StringConcatHandling.getJoinedVariable(statement, tb, nonFinalVariables)) != null) {
           registerProblem(statement, "joining",
                           new ReplaceWithJoiningFix(joinVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)));
         }
-        if (ReduceHandling.getReduceVar(statement, tb, nonFinalVariables) != null) {
+        /*if (ReduceHandling.getReduceVar(statement, tb, nonFinalVariables) != null) {
           registerProblem(statement, "reduce", new ReplaceWithReduceFix());
-        }
-        if(!nonFinalVariables.isEmpty()) {
+        }*/
+        /*if(!nonFinalVariables.isEmpty()) {
           return;
         }
         if (isCollectMapCall(statement, tb) && (REPLACE_TRIVIAL_FOREACH || tb.hasOperations())) {
@@ -678,9 +678,9 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
             fixes = new LocalQuickFix[] {forEachFix, new ReplaceWithForeachCallFix("forEachOrdered")};
           }
           registerProblem(statement, "forEach", fixes);
-        }
+        }*/
       } else {
-        if (!tb.hasOperations() && !REPLACE_TRIVIAL_FOREACH) return;
+        /*if (!tb.hasOperations() && !REPLACE_TRIVIAL_FOREACH) return;
         if (nonFinalVariables.isEmpty() && tb.getSingleStatement() instanceof PsiReturnStatement) {
           handleSingleReturn(statement, tb);
         }
@@ -715,7 +715,7 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
             if(tb.getVariable().getType() instanceof PsiPrimitiveType && !ExpressionUtils.isReferenceTo(rValue, tb.getVariable())) return;
             registerProblem(statement, "findFirst", new ReplaceWithFindFirstFix());
           }
-        }
+        }*/
       }
     }
 

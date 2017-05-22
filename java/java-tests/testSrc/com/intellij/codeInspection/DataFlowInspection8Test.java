@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,18 +18,32 @@ package com.intellij.codeInspection;
 import com.intellij.JavaTestUtil;
 import com.intellij.codeInsight.NullableNotNullManager;
 import com.intellij.codeInspection.dataFlow.DataFlowInspection;
+import com.intellij.openapi.Disposable;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.testFramework.IdeaTestUtil;
 import com.intellij.testFramework.LightProjectDescriptor;
+import com.intellij.testFramework.PsiTestUtil;
+import com.intellij.testFramework.fixtures.DefaultLightProjectDescriptor;
+import com.intellij.testFramework.fixtures.JavaCodeInsightTestFixture;
 import org.jetbrains.annotations.NotNull;
 
 /**
  * @author peter
  */
 public class DataFlowInspection8Test extends DataFlowInspectionTestCase {
+  private static final DefaultLightProjectDescriptor PROJECT_DESCRIPTOR = new DefaultLightProjectDescriptor() {
+    @Override
+    public Sdk getSdk() {
+      return PsiTestUtil.addJdkAnnotations(IdeaTestUtil.getMockJdk18());
+    }
+  };
+
   @NotNull
   @Override
   protected LightProjectDescriptor getProjectDescriptor() {
-    return JAVA_8;
+    return PROJECT_DESCRIPTOR;
   }
 
   @Override
@@ -46,7 +60,32 @@ public class DataFlowInspection8Test extends DataFlowInspectionTestCase {
   public void testNullableVoidLambda() { doTest(); }
   public void testNullableForeachVariable() { doTestWithCustomAnnotations(); }
   public void testGenericParameterNullity() { doTestWithCustomAnnotations(); }
+  public void testMethodReferenceConstantValue() { doTestWithCustomAnnotations(); }
+
   public void testOptionalOfNullable() { doTest(); }
+  public void testOptionalOrElse() { doTest(); }
+  public void testOptionalIsPresent() { doTest(); }
+  public void testOptionalGetWithoutIsPresent() {
+    myFixture.addClass("package org.junit;" +
+                       "public class Assert {" +
+                       "  public static void assertTrue(boolean b) {}" +
+                       "}");
+    myFixture.addClass("package org.testng;" +
+                       "public class Assert {" +
+                       "  public static void assertTrue(boolean b) {}" +
+                       "}");
+    myFixture.addClass("package com.google.common.base;\n" +
+                       "\n" +
+                       "public abstract class Optional<T> {\n" +
+                       "  public static <T> Optional<T> absent() {}\n" +
+                       "  public static <T> Optional<T> of(T ref) {}\n" +
+                       "  public static <T> Optional<T> fromNullable(T ref) {}\n" +
+                       "  public abstract T get();\n" +
+                       "  public abstract boolean isPresent();\n" +
+                       "}");
+    doTest();
+  }
+
   public void testPrimitiveInVoidLambda() { doTest(); }
   public void testNotNullLambdaParameter() { doTest(); }
   public void testNotNullOptionalLambdaParameter() { doTest(); }
@@ -90,16 +129,26 @@ public class DataFlowInspection8Test extends DataFlowInspectionTestCase {
   }
 
   private void setupCustomAnnotations() {
-    myFixture.addClass("package foo;\n\nimport java.lang.annotation.*;\n\n@Target({ElementType.TYPE_USE}) public @interface Nullable { }");
-    myFixture.addClass("package foo;\n\nimport java.lang.annotation.*;\n\n@Target({ElementType.TYPE_USE}) public @interface NotNull { }");
-    NullableNotNullManager nnnManager = NullableNotNullManager.getInstance(getProject());
-    nnnManager.setNotNulls("foo.NotNull");
-    nnnManager.setNullables("foo.Nullable");
-    Disposer.register(getTestRootDisposable(), () -> {
+    setupTypeUseAnnotations("foo", myFixture);
+  }
+
+  static void setupTypeUseAnnotations(String pkg, JavaCodeInsightTestFixture fixture) {
+    fixture.addClass("package " + pkg + ";\n\nimport java.lang.annotation.*;\n\n@Target({ElementType.TYPE_USE}) public @interface Nullable { }");
+    fixture.addClass("package " + pkg + ";\n\nimport java.lang.annotation.*;\n\n@Target({ElementType.TYPE_USE}) public @interface NotNull { }");
+    setCustomAnnotations(fixture.getProject(), fixture.getTestRootDisposable(), pkg + ".NotNull", pkg + ".Nullable");
+  }
+
+  static void setCustomAnnotations(Project project, Disposable parentDisposable, String notNull, String nullable) {
+    NullableNotNullManager nnnManager = NullableNotNullManager.getInstance(project);
+    nnnManager.setNotNulls(notNull);
+    nnnManager.setNullables(nullable);
+    Disposer.register(parentDisposable, () -> {
       nnnManager.setNotNulls();
       nnnManager.setNullables();
     });
   }
 
   public void testCapturedWildcardNotNull() { doTest(); }
+  public void testVarargNotNull() { doTestWithCustomAnnotations(); }
+
 }

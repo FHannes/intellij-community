@@ -18,6 +18,8 @@ package com.intellij.openapi.progress.util;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.impl.LaterInvocator;
+import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.DialogWrapperDialog;
@@ -25,6 +27,7 @@ import com.intellij.openapi.ui.DialogWrapperPeer;
 import com.intellij.openapi.ui.impl.DialogWrapperPeerImpl;
 import com.intellij.openapi.ui.impl.FocusTrackbackProvider;
 import com.intellij.openapi.ui.impl.GlassPaneDialogWrapperPeer;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.wm.WindowManager;
 import com.intellij.openapi.wm.ex.WindowManagerEx;
@@ -42,7 +45,9 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import javax.swing.border.Border;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
 import java.io.File;
 
 
@@ -193,14 +198,28 @@ class ProgressDialog implements Disposable {
   }
 
   void cancel() {
-    enableCancelButtonIfNeeded(false);
+    setCancelButtonEnabledASAP(false);
   }
 
-  void enableCancelButtonIfNeeded(final boolean enable) {
-    if (myProgressWindow.myShouldShowCancel) {
-      ApplicationManager.getApplication().invokeLater(() -> myCancelButton.setEnabled(enable), ModalityState.any());
+  private void setCancelButtonEnabledASAP(boolean enabled) {
+    UIUtil.invokeLaterIfNeeded(() -> {
+      myCancelButton.setEnabled(enabled);
+      myDisableCancelAlarm.cancelAllRequests();
+    });
+  }
+
+  void enableCancelButtonIfNeeded(boolean enable) {
+    if (!myProgressWindow.myShouldShowCancel) return;
+    
+    if (enable && !myProgressWindow.isCanceled()) {
+      setCancelButtonEnabledASAP(true);
+    } else {
+      myDisableCancelAlarm.cancelAllRequests();
+      myDisableCancelAlarm.addRequest(() -> setCancelButtonEnabledASAP(false), 500);
     }
   }
+
+  private final Alarm myDisableCancelAlarm = new Alarm(this);
 
   private void createCenterPanel() {
     // Cancel button (if any)
@@ -302,9 +321,11 @@ class ProgressDialog implements Disposable {
           }
         }
 
-        myProgressWindow.getFocusManager().requestFocus(myCancelButton, true).doWhenDone(myRepaintRunnable);
+        myProgressWindow.getFocusManager().requestFocusInProject(myCancelButton, myProgressWindow.myProject).doWhenDone(myRepaintRunnable);
       }
     });
+
+    Disposer.register(myPopup.getDisposable(), () -> myProgressWindow.exitModality());
 
     myPopup.show();
   }

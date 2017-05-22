@@ -350,9 +350,9 @@ open class KeymapImpl @JvmOverloads constructor(private var dataHolder: SchemeDa
     }
     return sortInRegistrationOrder(list)
   }
-
+  
   override fun getActionIds(firstKeyStroke: KeyStroke) = getActionIds(firstKeyStroke, { it.keystrokeToIds }, KeymapImpl::convertKeyStroke)
-
+  
   override fun getActionIds(firstKeyStroke: KeyStroke, secondKeyStroke: KeyStroke?): Array<String> {
     val ids = getActionIds(firstKeyStroke)
     var actualBindings: MutableList<String>? = null
@@ -402,7 +402,7 @@ open class KeymapImpl @JvmOverloads constructor(private var dataHolder: SchemeDa
     }
     while (true)
   }
-
+  
   override fun getActionIds(shortcut: MouseShortcut) = getActionIds(shortcut, { it.mouseShortcutToActionIds }, KeymapImpl::convertMouseShortcut)
 
   private fun <T> getActionIds(shortcut: T, shortcutToActionIds: (keymap: KeymapImpl) -> Map<T, MutableList<String>>, convertShortcut: (keymap: KeymapImpl, shortcut: T) -> T): Array<String> {
@@ -431,7 +431,7 @@ open class KeymapImpl @JvmOverloads constructor(private var dataHolder: SchemeDa
     }
     return sortInRegistrationOrder(list)
   }
-
+  
   fun isActionBound(actionId: String) = keymapManager.boundActions.contains(actionId)
 
   override fun getShortcuts(actionId: String?): Array<Shortcut> = getMutableShortcutList(actionId).let { if (it.isEmpty()) Shortcut.EMPTY_ARRAY else it.toTypedArray() }

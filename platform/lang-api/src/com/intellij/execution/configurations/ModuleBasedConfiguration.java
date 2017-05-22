@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,11 @@
 
 package com.intellij.execution.configurations;
 
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.module.ModuleUtilCore;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.util.xmlb.annotations.Property;
@@ -72,8 +71,10 @@ public abstract class ModuleBasedConfiguration<ConfigurationModule extends RunCo
     myModule.readExternal(element);
   }
 
-  protected void writeModule(final Element element) {
-    myModule.writeExternal(element);
+  protected void writeModule(@NotNull Element element) {
+    //if (myModule.getModule() != null) {
+      myModule.writeExternal(element);
+    //}
   }
 
   public Collection<Module> getAllModules() {
@@ -101,11 +102,7 @@ public abstract class ModuleBasedConfiguration<ConfigurationModule extends RunCo
       configuration.readExternal(element);
       return (ModuleBasedConfiguration)configuration;
     }
-    catch (InvalidDataException e) {
-      LOG.error(e);
-      return null;
-    }
-    catch (WriteExternalException e) {
+    catch (InvalidDataException | WriteExternalException e) {
       LOG.error(e);
       return null;
     }
@@ -114,7 +111,7 @@ public abstract class ModuleBasedConfiguration<ConfigurationModule extends RunCo
   @Override
   @NotNull
   public Module[] getModules() {
-    Module module = ApplicationManager.getApplication().runReadAction((Computable<Module>)() -> getConfigurationModule().getModule());
+    Module module = ReadAction.compute(() -> getConfigurationModule().getModule());
     return module == null ? Module.EMPTY_ARRAY : new Module[] {module};
   }
 
@@ -138,5 +135,9 @@ public abstract class ModuleBasedConfiguration<ConfigurationModule extends RunCo
       final Module[] modules = ModuleManager.getInstance(getProject()).getModules();
       configurationModule.setModule(modules.length == 1 ? modules[0] : null);
     }
+  }
+
+  public boolean isModuleDirMacroSupported() {
+    return false;
   }
 }

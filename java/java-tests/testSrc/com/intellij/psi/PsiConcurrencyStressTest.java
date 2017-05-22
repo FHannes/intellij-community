@@ -26,7 +26,6 @@ import com.intellij.codeInsight.daemon.impl.analysis.HighlightInfoHolder;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.Result;
 import com.intellij.openapi.application.ex.PathManagerEx;
-import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.extensions.Extensions;
@@ -38,6 +37,7 @@ import com.intellij.testFramework.IdeaTestUtil;
 import com.intellij.testFramework.PsiTestUtil;
 import com.intellij.testFramework.SkipSlowTestLocally;
 import com.intellij.testFramework.Timings;
+import com.intellij.util.ConcurrencyUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
@@ -55,13 +55,18 @@ public class PsiConcurrencyStressTest extends DaemonAnalyzerTestCase {
 
   @Override
   protected void setUp() throws Exception {
-    ApplicationInfoImpl.setInPerformanceTest(true);
     super.setUp();
 
     LanguageLevelProjectExtension.getInstance(myProject).setLanguageLevel(LanguageLevel.JDK_1_5);
     String root = PathManagerEx.getTestDataPath() + "/psi/repositoryUse/src";
     PsiTestUtil.removeAllRoots(myModule, IdeaTestUtil.getMockJdk17());
     PsiTestUtil.createTestProjectStructure(myProject, myModule, root, myFilesToDelete);
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    myFile = null;
+    super.tearDown();
   }
 
   public void testStress() throws Exception {
@@ -113,9 +118,7 @@ public class PsiConcurrencyStressTest extends DaemonAnalyzerTestCase {
     }
 
     assertTrue("Timed out", reads.await(5, TimeUnit.MINUTES));
-    for (Thread thread : threads) {
-      thread.join();
-    }
+    ConcurrencyUtil.joinAll(threads);
   }
 
   private static void mark(final String s) {

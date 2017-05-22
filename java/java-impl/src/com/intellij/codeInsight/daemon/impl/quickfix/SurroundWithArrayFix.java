@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-/*
- * User: anna
- * Date: 21-Mar-2008
- */
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.TargetElementUtil;
@@ -95,10 +91,10 @@ public class SurroundWithArrayFix extends PsiElementBaseIntentionAction {
         if (psiParameters.length > idx) {
           final PsiType paramType = psiParameters[idx].getType();
           if (paramType instanceof PsiArrayType) {
-            final PsiType expressionType = expression.getType();
+            final PsiType expressionType = TypeConversionUtil.erasure(expression.getType());
             if (expressionType != null) {
               final PsiType componentType = ((PsiArrayType)paramType).getComponentType();
-              if (expressionType.isAssignableFrom(componentType)) {
+              if (TypeConversionUtil.isAssignable(componentType, expressionType)) {
                 return expression;
               }
               final PsiClass psiClass = PsiUtil.resolveClassInType(componentType);
@@ -129,6 +125,7 @@ public class SurroundWithArrayFix extends PsiElementBaseIntentionAction {
   private static String getArrayCreation(@NotNull PsiExpression expression) {
     final PsiType expressionType = expression.getType();
     assert expressionType != null;
-    return "new " + expressionType.getCanonicalText() + "[]{" + expression.getText()+ "}";
+    final PsiType arrayComponentType = TypeConversionUtil.erasure(expressionType);
+    return "new " + arrayComponentType.getCanonicalText() + "[]{" + expression.getText()+ "}";
   }
 }

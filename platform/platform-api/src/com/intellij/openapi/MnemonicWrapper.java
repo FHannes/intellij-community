@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.intellij.openapi;
 
 import com.intellij.ide.ui.UISettings;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.util.ui.UIUtil;
@@ -87,7 +88,16 @@ abstract class MnemonicWrapper<T extends Component> implements Runnable, Propert
       myEvent = true;
       if (myTextChanged) updateText();
       setMnemonicCode(disabled ? KeyEvent.VK_UNDEFINED : myCode);
-      setMnemonicIndex(disabled ? -1 : myIndex);
+      try {
+        setMnemonicIndex(disabled ? -1 : myIndex);
+      }
+      catch (IllegalArgumentException cause) {
+        // EA-94674 - IAE: AbstractButton.setDisplayedMnemonicIndex
+        StringBuilder sb = new StringBuilder("cannot set mnemonic index ");
+        if (myTextChanged) sb.append("if text changed ");
+        String message = sb.append(myComponent).toString();
+        Logger.getInstance(MnemonicWrapper.class).warn(message, cause);
+      }
       Component component = getFocusableComponent();
       if (component != null) {
         component.setFocusable(disabled || myFocusable);
@@ -176,7 +186,7 @@ abstract class MnemonicWrapper<T extends Component> implements Runnable, Propert
   }
 
   boolean isDisabled() {
-    return UISettings.getShadowInstance().DISABLE_MNEMONICS_IN_CONTROLS;
+    return UISettings.getShadowInstance().getDisableMnemonicsInControls();
   }
 
   abstract String getText();
@@ -201,17 +211,6 @@ abstract class MnemonicWrapper<T extends Component> implements Runnable, Propert
       map.put(stroke, action);
     }
     return stroke;
-  }
-
-  private static class MenuWrapper extends ButtonWrapper {
-    private MenuWrapper(AbstractButton component) {
-      super(component);
-    }
-
-    @Override
-    boolean isDisabled() {
-      return UISettings.getShadowInstance().DISABLE_MNEMONICS;
-    }
   }
 
   private static class ButtonWrapper extends MnemonicWrapper<AbstractButton> {
@@ -239,7 +238,9 @@ abstract class MnemonicWrapper<T extends Component> implements Runnable, Propert
 
     @Override
     void setMnemonicCode(int code) {
-      myComponent.setMnemonic(code);
+      if (getMnemonicCode() != code) {
+        myComponent.setMnemonic(code);
+      }
       if (SystemInfo.isMac && Registry.is("ide.mac.alt.mnemonic.without.ctrl")) {
         InputMap map = myComponent.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         if (map != null) {
@@ -256,7 +257,9 @@ abstract class MnemonicWrapper<T extends Component> implements Runnable, Propert
 
     @Override
     void setMnemonicIndex(int index) {
-      myComponent.setDisplayedMnemonicIndex(index);
+      if (getMnemonicIndex() != index) {
+        myComponent.setDisplayedMnemonicIndex(index);
+      }
     }
   }
 

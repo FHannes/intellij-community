@@ -56,6 +56,11 @@ public class Disposer {
     }
   };
 
+  private static final String debugDisposer = System.getProperty("idea.disposer.debug");
+  public static boolean isDebugDisposerOn() {
+    return "on".equals(debugDisposer);
+  }
+
   private static boolean ourDebugMode;
 
   private Disposer() {
@@ -63,11 +68,13 @@ public class Disposer {
 
   @NotNull
   public static Disposable newDisposable() {
+    // must not be lambda because we care about identity in ObjectTree.myObject2NodeMap
     return newDisposable(null);
   }
 
   @NotNull
   public static Disposable newDisposable(@Nullable final String debugName) {
+    // must not be lambda because we care about identity in ObjectTree.myObject2NodeMap
     return new Disposable() {
       @Override
       public void dispose() {
@@ -144,7 +151,10 @@ public class Disposer {
   /**
    * @return old value
    */
-  public static boolean setDebugMode(final boolean debugMode) {
+  public static boolean setDebugMode(boolean debugMode) {
+    if (debugMode) {
+      debugMode = !"off".equals(debugDisposer);
+    }
     boolean oldValue = ourDebugMode;
     ourDebugMode = debugMode;
     return oldValue;

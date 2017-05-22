@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,12 +56,7 @@ public class MockProject extends MockComponentManager implements Project {
   @NotNull
   @Override
   public Condition<?> getDisposed() {
-    return new Condition() {
-      @Override
-      public boolean value(final Object o) {
-        return isDisposed();
-      }
-    };
+    return (Condition)o -> isDisposed();
   }
 
   @Override
@@ -83,13 +78,6 @@ public class MockProject extends MockComponentManager implements Project {
   @NotNull
   public String getName() {
     return "";
-  }
-
-  @Override
-  @Nullable
-  @NonNls
-  public String getPresentableUrl() {
-    return null;
   }
 
   @Override

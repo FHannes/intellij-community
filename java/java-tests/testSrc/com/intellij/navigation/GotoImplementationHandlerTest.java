@@ -16,11 +16,13 @@
 package com.intellij.navigation;
 
 import com.intellij.codeInsight.navigation.GotoTargetHandler;
+import com.intellij.openapi.roots.ModuleRootModificationUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiMethod;
+import com.intellij.testFramework.IdeaTestUtil;
 import com.intellij.testFramework.PlatformTestUtil;
 import com.intellij.testFramework.fixtures.CodeInsightTestUtil;
 import com.intellij.testFramework.fixtures.JavaCodeInsightFixtureTestCase;
@@ -95,7 +97,7 @@ public class GotoImplementationHandlerTest extends JavaCodeInsightFixtureTestCas
      PlatformTestUtil.startPerformanceTest(getTestName(false), 150, () -> {
        PsiElement[] impls = getTargets(file);
        assertEquals(3, impls.length);
-     }).cpuBound().usesAllCPUCores().assertTiming();
+     }).usesAllCPUCores().assertTiming();
   }
 
   public void testToStringOnQualified() {
@@ -122,7 +124,7 @@ public class GotoImplementationHandlerTest extends JavaCodeInsightFixtureTestCas
     PlatformTestUtil.startPerformanceTest(getTestName(false), 150, () -> {
       PsiElement[] impls = getTargets(file);
       assertEquals(3, impls.length);
-    }).cpuBound().usesAllCPUCores().assertTiming();
+    }).usesAllCPUCores().assertTiming();
   }
 
   public void testShowSelfNonAbstract() {
@@ -280,6 +282,29 @@ public class GotoImplementationHandlerTest extends JavaCodeInsightFixtureTestCas
 
     final PsiElement[] impls = getTargets(file);
     assertEquals(1, impls.length);
+  }
+
+  public void testPrivateClassInheritors() {
+    PsiFile file = myFixture.addFileToProject("Foo.java",
+                                                          "class C {\n" +
+                                                          "  private static class Pr<caret>ivate {}\n" +
+                                                          "  public static class Public extends Private {}" +
+                                                          "}");
+    myFixture.addClass("class Inheritor extends C.Public {}");
+    myFixture.configureFromExistingVirtualFile(file.getVirtualFile());
+
+    assertSize(2, getTargets(file));
+  }
+
+  public void testPrivateClassInheritorsInJdkDecompiled() {
+    ModuleRootModificationUtil.setModuleSdk(myModule, IdeaTestUtil.getMockJdk18());
+
+    PsiClass aClass = myFixture.getJavaFacade().findClass("java.util.ResourceBundle.CacheKeyReference");
+    PsiFile file = aClass.getContainingFile();
+    myFixture.configureFromExistingVirtualFile(file.getVirtualFile());
+    myFixture.getEditor().getCaretModel().moveToOffset(aClass.getTextOffset());
+
+    assertSize(2, getTargets(file));
   }
 
   private PsiElement[] getTargets(PsiFile file) {

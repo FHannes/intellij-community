@@ -112,6 +112,24 @@ public class Messages {
     return UIUtil.getQuestionIcon();
   }
 
+  @NotNull
+  public static Runnable createMessageDialogRemover(@Nullable Project project) {
+    Window projectWindow = project == null ? null : WindowManager.getInstance().suggestParentWindow(project);
+    return () -> UIUtil.invokeLaterIfNeeded(() -> makeCurrentMessageDialogGoAway(
+      projectWindow != null ? projectWindow.getOwnedWindows() : Window.getWindows()));
+  }
+
+  private static void makeCurrentMessageDialogGoAway(@NotNull Window[] checkWindows) {
+    for (Window w : checkWindows) {
+      JDialog dialog = w instanceof JDialog ? (JDialog)w : null;
+      if (dialog == null || !dialog.isModal()) continue;
+      JButton cancelButton = UIUtil.uiTraverser(dialog.getRootPane()).filter(JButton.class)
+        .filter(b -> CommonBundle.getCancelButtonText().equals(b.getText()))
+        .first();
+      if (cancelButton != null) cancelButton.doClick();
+    }
+  }
+
   /**
    * Please, use {@link #showOkCancelDialog} or {@link #showYesNoCancelDialog} if possible (these dialogs implements native OS behavior)!
    * @return number of button pressed: from 0 up to options.length-1 inclusive, or -1 for Cancel
@@ -1585,10 +1603,7 @@ public class Messages {
     UIUtil.FontSize fixedFontSize = fontSize == null ? UIUtil.FontSize.NORMAL : fontSize;
     messageComponent.setFont(UIUtil.getLabelFont(fixedFontSize));
     if (BasicHTML.isHTMLString(message)) {
-      HTMLEditorKit editorKit = UIUtil.getHTMLEditorKit();
-      Font font = UIUtil.getLabelFont(fixedFontSize);
-      editorKit.getStyleSheet().addRule(UIUtil.displayPropertiesToCSS(font, UIUtil.getLabelForeground()));
-      messageComponent.setEditorKit(editorKit);
+      messageComponent.setEditorKit(UIUtil.getHTMLEditorKit());
     }
     messageComponent.setText(message);
     messageComponent.setEditable(false);
@@ -1688,7 +1703,7 @@ public class Messages {
     }
   }
 
-  protected static class InputDialog extends MessageDialog {
+  public static class InputDialog extends MessageDialog {
     protected JTextComponent myField;
     private final InputValidator myValidator;
 
@@ -1758,7 +1773,7 @@ public class Messages {
               final String text = myField.getText().trim();
               actions[exitCode].setEnabled(myValidator == null || myValidator.checkInput(text));
               if (myValidator instanceof InputValidatorEx) {
-                setErrorText(((InputValidatorEx) myValidator).getErrorText(text));
+                setErrorText(((InputValidatorEx) myValidator).getErrorText(text), myField);
               }
             }
           });
@@ -1823,7 +1838,7 @@ public class Messages {
         textLabel.setUI(new MultiLineLabelUI());
         textComponent = textLabel;
       }
-      textComponent.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+      textComponent.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 20));
       return textComponent;
     }
 

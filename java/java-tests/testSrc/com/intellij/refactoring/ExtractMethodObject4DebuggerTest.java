@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-/*
- * User: anna
- * Date: 06-May-2008
- */
 package com.intellij.refactoring;
 
 import com.intellij.JavaTestUtil;
@@ -50,7 +46,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
     final JavaCodeFragmentFactory fragmentFactory = JavaCodeFragmentFactory.getInstance(getProject());
     final JavaCodeFragment fragment = codeBlock ? fragmentFactory.createCodeBlockCodeFragment(evaluatedText, context, false) : fragmentFactory.createExpressionCodeFragment(evaluatedText, context, null, false);
     final ExtractLightMethodObjectHandler.ExtractedData extractedData =
-      ExtractLightMethodObjectHandler.extractLightMethodObject(getProject(), getFile(), fragment, "test");
+      ExtractLightMethodObjectHandler.extractLightMethodObject(getProject(), context, fragment, "test");
     assertNotNull(extractedData);
     assertEquals(expectedCallSite, extractedData.getGeneratedCallText());
     final PsiClass innerClass = extractedData.getGeneratedInnerClass();
@@ -60,7 +56,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testSimpleGeneration() throws Exception {
     doTest("int i = 0; int j = 0;", "Test test = new Test().invoke();int i = test.getI();int j = test.getJ();",
 
-           "public class Test {\n" +
+           "static class Test {\n" +
            "        private int i;\n" +
            "        private int j;\n" +
            "\n" +
@@ -83,7 +79,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testInvokeReturnType() throws Exception {
     doTest("x = 6; y = 6;", "Test test = new Test().invoke();x = test.getX();y = test.getY();",
 
-           "public static class Test {\n" +
+           "static class Test {\n" +
            "        private int x;\n" +
            "        private int y;\n" +
            "\n" +
@@ -104,10 +100,10 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   }
 
   public void testAnonymousClassParams() throws Exception {
-    doTest("new I() {public void foo(int i) {i++;}};", "I result = new Test().invoke();",
+    doTest("new I() {public void foo(int i) {i++;}};", "I result = Test.invoke();",
 
-           "public class Test {\n" +
-           "        public I invoke() {\n" +
+           "static class Test {\n" +
+           "        static I invoke() {\n" +
            "            return new I() {\n" +
            "                public void foo(int i) {\n" +
            "                    i++;\n" +
@@ -120,7 +116,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testInnerClass() throws Exception {
     doTest("   new I(2).foo()", "new Test().invoke();",
 
-           "public class Test {\n" +
+           "class Test {\n" +
            "        public void invoke() {\n" +
            "            new Sample.I(2).foo();\n" +
            "        }\n" +
@@ -130,7 +126,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testResultExpr() throws Exception {
     doTest("   foo()", "int result = new Test().invoke();",
 
-           "public class Test {\n" +
+           "class Test {\n" +
            "        public int invoke() {\n" +
            "            return foo();\n" +
            "        }\n" +
@@ -140,7 +136,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testResultStatements() throws Exception {
     doTest("int i = 0;\nfoo()", "Test test = new Test().invoke();int i = test.getI();int result = test.getResult();",
 
-           "public class Test {\n" +
+           "class Test {\n" +
            "        private int i;\n" +
            "        private int result;\n" +
            "\n" +
@@ -164,7 +160,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testOffsetsAtCallSite() throws Exception {
     doTest("map.entrySet().stream().filter((a) -> (a.getKey()>0));",
            "Stream<Map.Entry<Integer,Integer>> result = new Test(map).invoke();",
-           "public class Test {\n" +
+           "static class Test {\n" +
            "        private Map<Integer, Integer> map;\n" +
            "\n" +
            "        public Test(Map<Integer, Integer> map) {\n" +
@@ -178,8 +174,8 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   }
 
   public void testHangingFunctionalExpressions() throws Exception {
-    doTest("() -> {}", "new Test().invoke();", "public class Test {\n" +
-                                               "        public void invoke() {\n" +
+    doTest("() -> {}", "Test.invoke();", "static class Test {\n" +
+                                               "        static void invoke() {\n" +
                                                "            () -> {\n" +
                                                "            };\n" +
                                                "        }\n" +
@@ -188,9 +184,9 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
 
   public void testArrayInitializer() throws Exception {
     doTest("{new Runnable() {public void run(){} } }", 
-           "Runnable[] result = new Test().invoke();",
-           "public class Test {\n" +
-           "        public Runnable[] invoke() {\n" +
+           "Runnable[] result = Test.invoke();",
+           "static class Test {\n" +
+           "        static Runnable[] invoke() {\n" +
            "            return new Runnable[]{new Runnable() {\n" +
            "                public void run() {\n" +
            "                }\n" +
@@ -201,9 +197,9 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
 
   public void testNewArrayInitializer() throws Exception {
     doTest("new Runnable[] {new Runnable() {public void run(){} } }",
-           "Runnable[] result = new Test().invoke();",
-           "public class Test {\n" +
-           "        public Runnable[] invoke() {\n" +
+           "Runnable[] result = Test.invoke();",
+           "static class Test {\n" +
+           "        static Runnable[] invoke() {\n" +
            "            return new Runnable[]{new Runnable() {\n" +
            "                public void run() {\n" +
            "                }\n" +
@@ -227,7 +223,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
            "      foo();\n" +
            "    });",
            "new Test(list).invoke();",
-           "public class Test {\n" +
+           "class Test {\n" +
            "        private List<Integer> list;\n" +
            "\n" +
            "        public Test(List<Integer> list) {\n" +
@@ -256,7 +252,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testOnClosingBrace() throws Exception {
     doTest("   foo()", "int result = new Test().invoke();",
 
-           "public class Test {\n" +
+           "class Test {\n" +
            "        public int invoke() {\n" +
            "            return foo();\n" +
            "        }\n" +
@@ -266,7 +262,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testOnClosingBraceLocalClass() throws Exception {
     doTest("   foo()", "int result = new Test().invoke();",
 
-           "public class Test {\n" +
+           "class Test {\n" +
            "        public int invoke() {\n" +
            "            return foo();\n" +
            "        }\n" +
@@ -276,7 +272,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testOnFieldInitialization() throws Exception {
     doTest("   foo()", "int result = new Test().invoke();",
 
-           "public class Test {\n" +
+           "class Test {\n" +
            "        public int invoke() {\n" +
            "            return foo();\n" +
            "        }\n" +
@@ -286,8 +282,8 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testOnEmptyMethod() throws Exception {
     doTest("   foo()", "int result = Test.invoke();",
 
-           "public static class Test {\n" +
-           "        public static int invoke() {\n" +
+           "static class Test {\n" +
+           "        static int invoke() {\n" +
            "            return foo();\n" +
            "        }\n" +
            "    }");
@@ -296,7 +292,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testOnSuperConstructorCall() throws Exception {
     doTest("   foo()", "int result = new Test().invoke();",
 
-           "public class Test {\n" +
+           "class Test {\n" +
            "        public int invoke() {\n" +
            "            return foo();\n" +
            "        }\n" +
@@ -306,7 +302,7 @@ public class ExtractMethodObject4DebuggerTest extends LightRefactoringTestCase {
   public void testOnPrivateField() throws Exception {
     doTest("   foo()", "int result = new Test().invoke();",
 
-           "public class Test {\n" +
+           "class Test {\n" +
            "        public int invoke() {\n" +
            "            return foo();\n" +
            "        }\n" +

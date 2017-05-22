@@ -66,5 +66,13 @@ class EditorColorSchemeTest {
       <option name="EDITOR_FONT_NAME" value="${scheme.editorFontName}" />
     </scheme>""".trimIndent())
     assertThat(schemeFile.parent).hasChildren("Foo.icls")
+
+    // test reload
+    val schemeNamesBeforeReload = manager.schemeManager.allSchemes.map { it.name }
+    schemeManagerFactory.process {
+      it.reload()
+    }
+
+    assertThat(manager.schemeManager.allSchemes.map { it.name }).isEqualTo(schemeNamesBeforeReload)
   }
 }

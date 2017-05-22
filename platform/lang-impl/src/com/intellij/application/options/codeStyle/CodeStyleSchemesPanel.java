@@ -17,54 +17,38 @@
 
 package com.intellij.application.options.codeStyle;
 
-import com.intellij.application.options.schemes.AbstractSchemesPanel;
-import com.intellij.application.options.schemes.DefaultSchemeActions;
+import com.intellij.application.options.schemes.AbstractSchemeActions;
+import com.intellij.application.options.schemes.SchemesModel;
+import com.intellij.application.options.schemes.SimpleSchemesPanel;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.ui.ComboBox;
 import com.intellij.psi.codeStyle.CodeStyleScheme;
-import com.intellij.ui.ListCellRendererWrapper;
+import com.intellij.psi.impl.source.codeStyle.CodeStyleSchemeImpl;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CodeStyleSchemesPanel extends AbstractSchemesPanel<CodeStyleScheme> {
+public class CodeStyleSchemesPanel extends SimpleSchemesPanel<CodeStyleScheme> {
   
   private final CodeStyleSchemesModel myModel;
   
   private boolean myIsReset = false;
-  private Font myDefaultComboFont;
-  private Font myBoldComboFont;
 
+  public CodeStyleSchemesPanel(CodeStyleSchemesModel model, int vGap) {
+    super(vGap);
+    myModel = model;
+  }
   public CodeStyleSchemesPanel(CodeStyleSchemesModel model) {
+    super();
     myModel = model;
   }
 
   private void onCombo() {
     CodeStyleScheme selected = getSelectedScheme();
     if (selected != null) {
-      if (myModel.isProjectScheme(selected)) {
-        myModel.setUsePerProjectSettings(true);
-      }
-      else {
-        myModel.selectScheme(selected, this);
-        myModel.setUsePerProjectSettings(false);
-      }
+      myModel.selectScheme(selected, this);
     }
-  }
-
-  @Nullable
-  private CodeStyleScheme getSelectedScheme() {
-    Object selected = getSchemesCombo().getSelectedItem();
-    if (selected instanceof CodeStyleScheme) {
-      return (CodeStyleScheme)selected;
-    }
-    return null;
   }
 
   public void resetSchemesCombo() {
@@ -72,14 +56,8 @@ public class CodeStyleSchemesPanel extends AbstractSchemesPanel<CodeStyleScheme>
     try {
       List<CodeStyleScheme> schemes = new ArrayList<>();
       schemes.addAll(myModel.getAllSortedSchemes());
-      DefaultComboBoxModel model = new DefaultComboBoxModel(schemes.toArray());
-      getSchemesCombo().setModel(model);
-      if (myModel.isUsePerProjectSettings()) {
-        getSchemesCombo().setSelectedItem(myModel.getProjectScheme());
-      }
-      else {
-        getSchemesCombo().setSelectedItem(myModel.getSelectedGlobalScheme());
-      }
+      resetSchemes(schemes);
+      selectScheme(myModel.getSelectedScheme());
     }
     finally {
       myIsReset = false;
@@ -89,76 +67,53 @@ public class CodeStyleSchemesPanel extends AbstractSchemesPanel<CodeStyleScheme>
   public void onSelectedSchemeChanged() {
     myIsReset = true;
     try {
-      if (myModel.isUsePerProjectSettings()) {
-        getSchemesCombo().setSelectedItem(myModel.getProjectScheme());
-      }
-      else {
-        getSchemesCombo().setSelectedItem(myModel.getSelectedGlobalScheme());
-      }
+      selectScheme(myModel.getSelectedScheme());
     }
     finally {
       myIsReset = false;
     }
   }
 
-  public void usePerProjectSettingsOptionChanged() {
-    if (myModel.isProjectScheme(myModel.getSelectedScheme())) {
-      getSchemesCombo().setSelectedItem(myModel.getProjectScheme());
-    }
-    else {
-      getSchemesCombo().setSelectedItem(myModel.getSelectedScheme());
-    }
-  }
-
   @Override
-  protected ComboBox createSchemesCombo() {
-    ComboBox schemesCombo = new ComboBox();
-    myDefaultComboFont = schemesCombo.getFont();
-    myBoldComboFont = myDefaultComboFont.deriveFont(Font.BOLD);
-    schemesCombo.addActionListener(new ActionListener() {
-      @Override
-      public void actionPerformed(@NotNull ActionEvent e) {
-        if (!myIsReset) {
-          ApplicationManager.getApplication().invokeLater(() -> onCombo());
-        }
-      }
-    });
-    schemesCombo.setRenderer(new ListCellRendererWrapper() {
-      @Override
-      public void customize(final JList list, final Object value, final int index, final boolean selected, final boolean hasFocus) {
-        Font font = myDefaultComboFont;
-        if (value instanceof CodeStyleScheme) {
-          CodeStyleScheme scheme = (CodeStyleScheme)value;
-          if (scheme.isDefault() || myModel.isProjectScheme(scheme)) {
-            font = myBoldComboFont;
+  protected AbstractSchemeActions<CodeStyleScheme> createSchemeActions() {
+    return
+      new CodeStyleSchemesActions(this) {
+
+        @Override
+        protected void onSchemeChanged(@Nullable CodeStyleScheme scheme) {
+          if (!myIsReset) {
+            ApplicationManager.getApplication().invokeLater(() -> onCombo());
           }
         }
-        setFont(font);
-      }
-    });
-    return schemesCombo;
+
+        @Override
+        protected void renameScheme(@NotNull CodeStyleScheme scheme, @NotNull String newName) {
+          CodeStyleSchemeImpl newScheme = new CodeStyleSchemeImpl(newName, false, scheme);
+          myModel.addScheme(newScheme, false);
+          myModel.removeScheme(scheme);
+          myModel.selectScheme(newScheme, null);
+        }
+      };
+  }
+
+  @NotNull
+  @Override
+  public SchemesModel<CodeStyleScheme> getModel() {
+    return myModel;
   }
 
   @Override
-  protected DefaultSchemeActions<CodeStyleScheme> createSchemeActions() {
-    return
-      new CodeStyleSchemesActions() {
-        @NotNull
-        @Override
-        protected JComponent getParentComponent() {
-          return getToolbarPanel();
-        }
+  protected boolean supportsProjectSchemes() {
+    return true;
+  }
 
-        @Override
-        protected CodeStyleSchemesModel getSchemesModel() {
-          return myModel;
-        }
+  @Override
+  protected boolean highlightNonDefaultSchemes() {
+    return true;
+  }
 
-        @Nullable
-        @Override
-        protected CodeStyleScheme getCurrentScheme() {
-          return getSelectedScheme();
-        }
-      };
+  @Override
+  public boolean useBoldForNonRemovableSchemes() {
+    return true;
   }
 }

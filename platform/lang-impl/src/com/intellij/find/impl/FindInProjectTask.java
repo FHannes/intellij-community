@@ -37,7 +37,6 @@ import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.roots.*;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.registry.Registry;
@@ -102,8 +101,7 @@ class FindInProjectTask {
     myPsiManager = PsiManager.getInstance(project);
 
     final String moduleName = findModel.getModuleName();
-    myModule = moduleName == null ? null : ApplicationManager.getApplication().runReadAction(
-      (Computable<Module>)() -> ModuleManager.getInstance(project).findModuleByName(moduleName));
+    myModule = moduleName == null ? null : ReadAction.compute(() -> ModuleManager.getInstance(project).findModuleByName(moduleName));
     myProjectFileIndex = ProjectRootManager.getInstance(project).getFileIndex();
     myFileIndex = myModule == null ? myProjectFileIndex : ModuleRootManager.getInstance(myModule).getFileIndex();
 
@@ -127,7 +125,7 @@ class FindInProjectTask {
     try {
       myProgress.setIndeterminate(true);
       myProgress.setText("Scanning indexed files...");
-      Set<VirtualFile> filesForFastWordSearch = ApplicationManager.getApplication().runReadAction((Computable<Set<VirtualFile>>)this::getFilesForFastWordSearch);
+      Set<VirtualFile> filesForFastWordSearch = ReadAction.compute(this::getFilesForFastWordSearch);
       myProgress.setIndeterminate(false);
       if (LOG.isDebugEnabled()) {
         LOG.debug("Searching for " + myFindModel.getStringToFind() + " in " + filesForFastWordSearch.size() + " indexed files");
@@ -319,7 +317,7 @@ class FindInProjectTask {
       }
     }
     else if (myDirectory != null) {
-      final boolean checkExcluded = !ProjectFileIndex.SERVICE.getInstance(myProject).isExcluded(myDirectory);
+      boolean checkExcluded = !ProjectFileIndex.SERVICE.getInstance(myProject).isExcluded(myDirectory) && !Registry.is("find.search.in.excluded.dirs");
       VirtualFileVisitor.Option limit = VirtualFileVisitor.limit(myFindModel.isWithSubdirectories() ? -1 : 1);
       VfsUtilCore.visitChildrenRecursively(myDirectory, new VirtualFileVisitor(limit) {
         @Override
@@ -333,7 +331,7 @@ class FindInProjectTask {
     else {
       boolean success = myFileIndex.iterateContent(iterator);
       if (success && globalCustomScope != null && globalCustomScope.isSearchInLibraries()) {
-        final VirtualFile[] librarySources = ApplicationManager.getApplication().runReadAction((Computable<VirtualFile[]>)() -> {
+        final VirtualFile[] librarySources = ReadAction.compute(() -> {
           OrderEnumerator enumerator = myModule == null ? OrderEnumerator.orderEntries(myProject) : OrderEnumerator.orderEntries(myModule);
           return enumerator.withoutModuleSourceEntries().withoutDepModules().getSourceRoots();
         });

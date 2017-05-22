@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.util.MultiValuesMap
+import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.io.FileUtil
+import org.apache.tools.ant.types.FileSet
+import org.apache.tools.ant.types.resources.FileProvider
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.BuildOptions
 import org.jetbrains.intellij.build.BuildTasks
@@ -31,7 +34,7 @@ import org.jetbrains.jps.util.JpsPathUtil
 
 /**
  * Assembles output of modules to platform JARs (in {@link org.jetbrains.intellij.build.BuildPaths#distAll distAll}/lib directory),
- * bunlded plugins' JARs (in {@link org.jetbrains.intellij.build.BuildPaths#distAll distAll}/plugins directory) and zip archives with
+ * bundled plugins' JARs (in {@link org.jetbrains.intellij.build.BuildPaths#distAll distAll}/plugins directory) and zip archives with
  * non-bundled plugins (in {@link org.jetbrains.intellij.build.BuildPaths#artifacts artifacts}/plugins directory).
  *
  * @author nik
@@ -181,7 +184,8 @@ class DistributionJARsBuilder {
     if (productProperties.generateLibrariesLicensesTable) {
       buildContext.messages.block("Generate table of licenses for used third-party libraries") {
         def generator = new LibraryLicensesListGenerator(buildContext.projectBuilder, buildContext.project, productProperties.allLibraryLicenses)
-        generator.generateLicensesTable("$buildContext.paths.artifacts/${buildContext.applicationInfo.productName}-third-party-libraries.txt", usedModules)
+        def artifactNamePrefix = buildContext.productProperties.getBaseArtifactName(buildContext.applicationInfo, buildContext.buildNumber)
+        generator.generateLicensesTable("$buildContext.paths.artifacts/$artifactNamePrefix-third-party-libraries.txt", usedModules)
       }
     }
 
@@ -207,7 +211,7 @@ class DistributionJARsBuilder {
 
     //todo[nik] move buildSearchableOptions and patchedApplicationInfo methods to this class
     def buildTasks = new BuildTasksImpl(buildContext)
-    buildTasks.buildSearchableOptions(searchableOptionsDir, productLayout.mainModules, productLayout.licenseFilesToBuildSearchableOptions)
+    buildTasks.buildSearchableOptionsIndex(searchableOptionsDir, productLayout.mainModules, productLayout.licenseFilesToBuildSearchableOptions)
     if (!buildContext.options.buildStepsToSkip.contains(BuildOptions.SEARCHABLE_OPTIONS_INDEX_STEP)) {
       layoutBuilder.patchModuleOutput(productLayout.searchableOptionsModule, FileUtil.toSystemIndependentName(searchableOptionsDir.absolutePath))
     }
@@ -222,7 +226,7 @@ class DistributionJARsBuilder {
       layoutBuilder.patchModuleOutput("platform-resources", FileUtil.toSystemIndependentName(patchedKeyMapDir.absolutePath))
     }
 
-    buildByLayout(layoutBuilder, platform, buildContext.paths.distAll, platform.moduleJars)
+    buildByLayout(layoutBuilder, platform, buildContext.paths.distAll, platform.moduleJars, [])
 
     if (buildContext.proprietaryBuildTools.scrambleTool != null) {
       def forbiddenJarNames = buildContext.proprietaryBuildTools.scrambleTool.namesOfJarsRequiredToBeScrambled
@@ -258,7 +262,8 @@ class DistributionJARsBuilder {
           }
           def patchedPluginXmlDir = "$buildContext.paths.temp/patched-plugin-xml/$plugin.mainModule"
           ant.copy(file: pluginXmlPath, todir: "$patchedPluginXmlDir/META-INF")
-          setPluginVersionAndSince("$patchedPluginXmlDir/META-INF/plugin.xml", buildContext.buildNumber,
+          setPluginVersionAndSince("$patchedPluginXmlDir/META-INF/plugin.xml", getPluginVersion(plugin),
+                                   buildContext.buildNumber,
                                    productLayout.prepareCustomPluginRepositoryForPublishedPlugins,
                                    productLayout.pluginModulesWithRestrictedCompatibleBuildRange.contains(plugin.mainModule))
           layoutBuilder.patchModuleOutput(plugin.mainModule, patchedPluginXmlDir)
@@ -270,7 +275,7 @@ class DistributionJARsBuilder {
       def nonBundledPluginsArtifacts = "$buildContext.paths.artifacts/plugins"
       pluginsToPublish.each { plugin ->
         def directory = plugin.directoryName
-        String suffix = productLayout.prepareCustomPluginRepositoryForPublishedPlugins ? "" : "-${buildContext.buildNumber}"
+        String suffix = productLayout.prepareCustomPluginRepositoryForPublishedPlugins ? "" : "-${getPluginVersion(plugin)}"
         ant.zip(destfile: "$nonBundledPluginsArtifacts/$directory${suffix}.zip") {
           zipfileset(dir: "$pluginsToPublishDir/$directory", prefix: directory)
         }
@@ -279,6 +284,10 @@ class DistributionJARsBuilder {
         new PluginRepositoryXmlGenerator(buildContext).generate(pluginsToPublish, nonBundledPluginsArtifacts)
       }
     }
+  }
+
+  private String getPluginVersion(PluginLayout plugin) {
+    return plugin.versionEvaluator.apply(buildContext)
   }
 
   private List<PluginLayout> getPluginsByModules(Collection<String> modules) {
@@ -292,15 +301,48 @@ class DistributionJARsBuilder {
     def enabledModulesSet = buildContext.productProperties.productLayout.enabledPluginModules
     pluginsToInclude.each { plugin ->
       def actualModuleJars = plugin.getActualModules(enabledModulesSet)
-      buildByLayout(layoutBuilder, plugin, "$targetDirectory/$plugin.directoryName", actualModuleJars)
+      checkOutputOfPluginModules(plugin.mainModule, actualModuleJars.values(), plugin.moduleExcludes)
+      List<Pair<File, String>> generatedResources = plugin.resourceGenerators.collectMany {
+        File resourceFile = it.first.generateResources(buildContext)
+        resourceFile != null ? [Pair.create(resourceFile, it.second)] : []
+      }
+      buildByLayout(layoutBuilder, plugin, "$targetDirectory/$plugin.directoryName", actualModuleJars, generatedResources)
     }
   }
 
-  private void buildByLayout(LayoutBuilder layoutBuilder, BaseLayout layout, String targetDirectory, MultiValuesMap<String, String> moduleJars) {
+  private void checkOutputOfPluginModules(String mainPluginModule, Collection<String> moduleNames, MultiValuesMap<String, String> moduleExcludes) {
+    def modulesWithPluginXml = moduleNames.findAll { containsFileInOutput(it, "META-INF/plugin.xml", moduleExcludes.get(it)) }
+    if (modulesWithPluginXml.size() > 1) {
+      buildContext.messages.error("Multiple modules (${modulesWithPluginXml.join(", ")}) from '$mainPluginModule' plugin contain plugin.xml files so the plugin won't work properly")
+    }
+
+    moduleNames.each {
+      if (containsFileInOutput(it, "com/intellij/uiDesigner/core/GridLayoutManager.class", moduleExcludes.get(it))) {
+        buildContext.messages.error("Runtime classes of GUI designer must not be packaged to '$mainPluginModule' plugin, because they are included into a platform JAR. " +
+                                    "Make sure that 'Automatically copy form runtime classes to the output directory' is disabled in Settings | Editor | GUI Designer.")
+      }
+    }
+  }
+
+  private boolean containsFileInOutput(String moduleName, String filePath, Collection<String> excludes) {
+    def moduleOutput = new File(buildContext.projectBuilder.getModuleOutput(buildContext.findRequiredModule(moduleName), false))
+    def fileInOutput = new File(moduleOutput, filePath)
+    return fileInOutput.exists() && (excludes == null || excludes.every {
+      createFileSet(it, moduleOutput).iterator().every { !(it instanceof FileProvider && FileUtil.filesEqual(it.file, fileInOutput))}
+    })
+  }
+
+  /**
+   * @param moduleJars mapping from JAR path relative to 'lib' directory to names of modules
+   * @param additionalResources pairs of resources files and corresponding relative output paths
+   */
+  private void buildByLayout(LayoutBuilder layoutBuilder, BaseLayout layout, String targetDirectory, MultiValuesMap<String, String> moduleJars,
+                             List<Pair<File, String>> additionalResources) {
     def ant = buildContext.ant
     def resourceExcluded = RESOURCES_EXCLUDED
     def resourcesIncluded = RESOURCES_INCLUDED
     def buildContext = buildContext
+    checkModuleExcludes(layout.moduleExcludes)
     layoutBuilder.layout(targetDirectory) {
       dir("lib") {
         moduleJars.entrySet().each {
@@ -319,7 +361,7 @@ class DistributionJARsBuilder {
                 }
                 layout.moduleExcludes.get(moduleName)?.each {
                   //noinspection GrUnresolvedAccess
-                  ant.exclude(name: "$it/**")
+                  ant.exclude(name: it)
                 }
               }
             }
@@ -391,7 +433,42 @@ class DistributionJARsBuilder {
           }
         }
       }
+      additionalResources.each {
+        File resource = it.first
+        dir(it.second) {
+          if (resource.isFile()) {
+            ant.fileset(file: resource.absolutePath)
+          }
+          else {
+            ant.fileset(dir: resource.absolutePath)
+          }
+        }
+      }
     }
+  }
+
+  private void checkModuleExcludes(MultiValuesMap<String, String> moduleExcludes) {
+    moduleExcludes.entrySet().each { entry ->
+      String module = entry.key
+      entry.value.each { pattern ->
+        def moduleOutput = new File(buildContext.projectBuilder.getModuleOutput(buildContext.findRequiredModule(module), false))
+        if (!moduleOutput.exists()) {
+          buildContext.messages.error("There are excludes defined for module '$module', but the module wasn't compiled; " +
+                                      "most probably it means that '$module' isn't include into the product distribution so it makes no sense to define excludes for it.")
+        }
+        if (createFileSet(pattern, moduleOutput).size() == 0) {
+          buildContext.messages.error("Incorrect exludes for module '$module': nothing matches to $pattern in the module output")
+        }
+      }
+    }
+  }
+
+  private FileSet createFileSet(String pattern, File baseDir) {
+    def fileSet = new FileSet()
+    fileSet.setProject(buildContext.ant.antProject)
+    fileSet.setDir(baseDir)
+    fileSet.createInclude().setName(pattern)
+    return fileSet
   }
 
   static String basePath(BuildContext buildContext, String moduleName) {
@@ -403,10 +480,10 @@ class DistributionJARsBuilder {
     new LayoutBuilder(buildContext.ant, buildContext.project, COMPRESS_JARS)
   }
 
-  private void setPluginVersionAndSince(String pluginXmlPath, String buildNumber, boolean setExactNumberInUntilBuild, boolean useRestrictedCompatibleBuildRange) {
+  private void setPluginVersionAndSince(String pluginXmlPath, String version, String buildNumber, boolean setExactNumberInUntilBuild, boolean useRestrictedCompatibleBuildRange) {
     buildContext.ant.replaceregexp(file: pluginXmlPath,
                                    match: "<version>[\\d.]*</version>",
-                                   replace: "<version>${buildNumber}</version>")
+                                   replace: "<version>${version}</version>")
     def sinceBuild
     def untilBuild
     if (!setExactNumberInUntilBuild && buildNumber.matches(/(\d+\.)+\d+/)) {
@@ -431,12 +508,12 @@ class DistributionJARsBuilder {
                                    replace: "<idea-version since-build=\"${sinceBuild}\"")
     buildContext.ant.replaceregexp(file: pluginXmlPath,
                                    match: "<change-notes>\\s*<\\!\\[CDATA\\[\\s*Plugin version: \\\$\\{version\\}",
-                                   replace: "<change-notes>\n<![CDATA[\nPlugin version: ${buildNumber}")
+                                   replace: "<change-notes>\n<![CDATA[\nPlugin version: ${version}")
     def file = new File(pluginXmlPath)
     def text = file.text
     def anchor = text.contains("</id>") ? "</id>" : "</name>"
     if (!text.contains("<version>")) {
-      file.text = text.replace(anchor, "${anchor}\n  <version>${buildNumber}</version>")
+      file.text = text.replace(anchor, "${anchor}\n  <version>${version}</version>")
       text = file.text
     }
     if (!text.contains("<idea-version since-build")) {

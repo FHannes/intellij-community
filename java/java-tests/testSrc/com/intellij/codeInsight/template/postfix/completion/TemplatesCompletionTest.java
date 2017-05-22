@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ public class TemplatesCompletionTest extends CompletionAutoPopupTestCase {
   @Override
   public void setUp() {
     super.setUp();
-    LiveTemplateCompletionContributor.setShowTemplatesInTests(false, getTestRootDisposable());
+    LiveTemplateCompletionContributor.setShowTemplatesInTests(false, myFixture.getTestRootDisposable());
   }
 
   @Override
@@ -51,12 +51,12 @@ public class TemplatesCompletionTest extends CompletionAutoPopupTestCase {
   }
 
   public void testSimpleCompletionList() {
-    LiveTemplateCompletionContributor.setShowTemplatesInTests(true, getTestRootDisposable());
+    LiveTemplateCompletionContributor.setShowTemplatesInTests(true, myFixture.getTestRootDisposable());
     doAutoPopupTest("ins", InstanceofExpressionPostfixTemplate.class);
   }
 
   public void testAutopopupWithEnabledLiveTemplatesInCompletion() {
-    LiveTemplateCompletionContributor.setShowTemplatesInTests(false, getTestRootDisposable());
+    LiveTemplateCompletionContributor.setShowTemplatesInTests(false, myFixture.getTestRootDisposable());
 
     configureByFile();
     type("instanceof");
@@ -124,14 +124,14 @@ public class TemplatesCompletionTest extends CompletionAutoPopupTestCase {
   }
 
   public void testDoNotAutoCompleteCompletionElementIfTemplateUnique() {
-    LiveTemplateCompletionContributor.setShowTemplatesInTests(true, getTestRootDisposable());
+    LiveTemplateCompletionContributor.setShowTemplatesInTests(true, myFixture.getTestRootDisposable());
     configureByFile();
     myFixture.completeBasic();
     checkResultByFile();
   }
 
   public void testDoNotCompleteTemplateInMultiCaretMode() {
-    LiveTemplateCompletionContributor.setShowTemplatesInTests(true, getTestRootDisposable());
+    LiveTemplateCompletionContributor.setShowTemplatesInTests(true, myFixture.getTestRootDisposable());
     configureByFile();
     assertEmpty(myFixture.complete(CompletionType.BASIC));
     checkResultByFile();
@@ -150,11 +150,9 @@ public class TemplatesCompletionTest extends CompletionAutoPopupTestCase {
   }
 
   public void testQuickTypingWithTab() {
-    doQuickTypingTest("par", '\t');
-  }
-
-  public void testQuickTypingWithEnter() {
-    doQuickTypingTest("par", '\n');
+    configureByFile();
+    myFixture.type("par\t");
+    checkResultByFile();
   }
 
   public void testDoNotShowDisabledTemplate() {
@@ -187,7 +185,7 @@ public class TemplatesCompletionTest extends CompletionAutoPopupTestCase {
   }
 
   public void testTabCompletionWithTemplatesInAutopopup() {
-    LiveTemplateCompletionContributor.setShowTemplatesInTests(true, getTestRootDisposable());
+    LiveTemplateCompletionContributor.setShowTemplatesInTests(true, myFixture.getTestRootDisposable());
 
     configureByFile();
     type(".");
@@ -207,12 +205,6 @@ public class TemplatesCompletionTest extends CompletionAutoPopupTestCase {
   @Override
   protected String getBasePath() {
     return JavaTestUtil.getRelativeJavaTestDataPath() + "/codeInsight/template/postfix/completion";
-  }
-
-  private void doQuickTypingTest(String textToType, char c) {
-    configureByFile();
-    myFixture.type(textToType + c);
-    checkResultByFile();
   }
 
   private void doCompleteTest(String textToType, char c) {

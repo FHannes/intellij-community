@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,7 @@
 package com.intellij.openapi.editor.impl;
 
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.application.Application;
-import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.TransactionGuard;
-import com.intellij.openapi.application.TransactionGuardImpl;
+import com.intellij.openapi.application.*;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.diagnostic.Attachment;
 import com.intellij.openapi.diagnostic.ExceptionWithAttachments;
@@ -44,7 +41,6 @@ import com.intellij.util.containers.IntArrayList;
 import com.intellij.util.text.CharArrayUtil;
 import com.intellij.util.text.ImmutableCharSequence;
 import gnu.trove.TIntObjectHashMap;
-import gnu.trove.TObjectProcedure;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -60,11 +56,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.editor.impl.DocumentImpl");
 
-  private final LockFreeCOWSortedArray<DocumentListener> myDocumentListeners = new LockFreeCOWSortedArray<DocumentListener>(PrioritizedDocumentListener.COMPARATOR, DocumentListener.ARRAY_FACTORY);
+  private final LockFreeCOWSortedArray<DocumentListener> myDocumentListeners =
+    new LockFreeCOWSortedArray<>(PrioritizedDocumentListener.COMPARATOR, DocumentListener.ARRAY_FACTORY);
   private final List<DocumentBulkUpdateListener> myBulkDocumentInternalListeners = ContainerUtil.createLockFreeCopyOnWriteList();
-  private final RangeMarkerTree<RangeMarkerEx> myRangeMarkers = new RangeMarkerTree<RangeMarkerEx>(this);
-  private final RangeMarkerTree<RangeMarkerEx> myPersistentRangeMarkers = new RangeMarkerTree<RangeMarkerEx>(this);
-  private final List<RangeMarker> myGuardedBlocks = new ArrayList<RangeMarker>();
+  private final RangeMarkerTree<RangeMarkerEx> myRangeMarkers = new RangeMarkerTree<>(this);
+  private final RangeMarkerTree<RangeMarkerEx> myPersistentRangeMarkers = new RangeMarkerTree<>(this);
+  private final List<RangeMarker> myGuardedBlocks = new ArrayList<>();
   private ReadonlyFragmentModificationHandler myReadonlyFragmentModificationHandler;
 
   @SuppressWarnings("RedundantStringConstructorCall") private final Object myLineSetLock = new String("line set lock");
@@ -169,12 +166,6 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   }
 
   @Override
-  @NotNull
-  public char[] getChars() {
-    return CharArrayUtil.fromSequence(myText);
-  }
-
-  @Override
   public void setStripTrailingSpacesEnabled(boolean isEnabled) {
     isStripTrailingSpacesEnabled = isEnabled;
   }
@@ -199,7 +190,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     if (!isStripTrailingSpacesEnabled) {
       return true;
     }
-    List<StripTrailingSpacesFilter> filters = new ArrayList<StripTrailingSpacesFilter>();
+    List<StripTrailingSpacesFilter> filters = new ArrayList<>();
     for (StripTrailingSpacesFilterFactory filterFactory : StripTrailingSpacesFilterFactory.EXTENSION_POINT.getExtensions()) {
       StripTrailingSpacesFilter filter = filterFactory.createFilter(project, this);
       if (filter == StripTrailingSpacesFilter.NOT_ALLOWED) {
@@ -215,7 +206,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
     boolean markAsNeedsStrippingLater = false;
     CharSequence text = myText;
-    TIntObjectHashMap<List<RangeMarker>> caretMarkers = new TIntObjectHashMap<List<RangeMarker>>(caretOffsets.length);
+    TIntObjectHashMap<List<RangeMarker>> caretMarkers = new TIntObjectHashMap<>(caretOffsets.length);
     try {
       if (skipCaretLines) {
         for (int caretOffset : caretOffsets) {
@@ -225,7 +216,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
           int line = getLineNumber(caretOffset);
           List<RangeMarker> markers = caretMarkers.get(line);
           if (markers == null) {
-            markers = new ArrayList<RangeMarker>();
+            markers = new ArrayList<>();
             caretMarkers.put(line, markers);
           }
           RangeMarker marker = createRangeMarker(caretOffset, caretOffset);
@@ -276,21 +267,18 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
       }
     }
     finally {
-      caretMarkers.forEachValue(new TObjectProcedure<List<RangeMarker>>() {
-        @Override
-        public boolean execute(List<RangeMarker> markerList) {
-          if (markerList != null) {
-            for (RangeMarker marker : markerList) {
-              try {
-                marker.dispose();
-              }
-              catch (Exception e) {
-                LOG.error(e);
-              }
+      caretMarkers.forEachValue(markerList -> {
+        if (markerList != null) {
+          for (RangeMarker marker : markerList) {
+            try {
+              marker.dispose();
+            }
+            catch (Exception e) {
+              LOG.error(e);
             }
           }
-          return true;
         }
+        return true;
       });
     }
     return markAsNeedsStrippingLater;
@@ -329,7 +317,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     return !myIsReadOnly;
   }
 
-  private  RangeMarkerTree<RangeMarkerEx> treeFor(@NotNull RangeMarkerEx rangeMarker) {
+  private RangeMarkerTree<RangeMarkerEx> treeFor(@NotNull RangeMarkerEx rangeMarker) {
     return rangeMarker instanceof PersistentRangeMarker ? myPersistentRangeMarkers : myRangeMarkers;
   }
   @Override
@@ -427,12 +415,6 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
   @Override
   @NotNull
-  public RangeMarker createRangeMarker(int startOffset, int endOffset) {
-    return createRangeMarker(startOffset, endOffset, false);
-  }
-
-  @Override
-  @NotNull
   public RangeMarker createRangeMarker(int startOffset, int endOffset, boolean surviveOnExternalChange) {
     if (!(0 <= startOffset && startOffset <= endOffset && endOffset <= getTextLength())) {
       LOG.error("Incorrect offsets: startOffset=" + startOffset + ", endOffset=" + endOffset + ", text length=" + getTextLength());
@@ -456,11 +438,6 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   public void replaceText(@NotNull CharSequence chars, long newModificationStamp) {
     replaceString(0, getTextLength(), chars, newModificationStamp, true); //TODO: optimization!!!
     clearLineModificationFlags();
-  }
-
-  @Override
-  public int getListenersCount() {
-    return getListeners().length;
   }
 
   @Override
@@ -744,7 +721,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
       FileDocumentManager manager = FileDocumentManager.getInstance();
       VirtualFile file = manager.getFile(this);
       if (file != null && !file.isValid()) {
-        LOG.error("File of this document has been deleted.");
+        LOG.error("File of this document has been deleted: "+file);
       }
     }
     assertInsideCommand();
@@ -817,19 +794,14 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   @NotNull
   @Override
   public String getText() {
-    return ApplicationManager.getApplication().runReadAction(new Computable<String>() {
-      @Override
-      public String compute() {
-        return doGetText();
-      }
-    });
+    return ReadAction.compute(this::doGetText);
   }
 
   @NotNull
   private String doGetText() {
     String s = SoftReference.dereference(myTextString);
     if (s == null) {
-      myTextString = new SoftReference<String>(s = myText.toString());
+      myTextString = new SoftReference<>(s = myText.toString());
     }
     return s;
   }
@@ -837,12 +809,8 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   @NotNull
   @Override
   public String getText(@NotNull final TextRange range) {
-    return ApplicationManager.getApplication().runReadAction(new Computable<String>() {
-      @Override
-      public String compute() {
-        return myText.subSequence(range.getStartOffset(), range.getEndOffset()).toString();
-      }
-    });
+    return ReadAction
+      .compute(() -> myText.subSequence(range.getStartOffset(), range.getEndOffset()).toString());
   }
 
   @Override
@@ -873,12 +841,23 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   @Override
   public void addDocumentListener(@NotNull final DocumentListener listener, @NotNull Disposable parentDisposable) {
     addDocumentListener(listener);
-    Disposer.register(parentDisposable, new Disposable() {
-      @Override
-      public void dispose() {
-        removeDocumentListener(listener);
-      }
-    });
+    Disposer.register(parentDisposable, new DocumentListenerDisposable(myDocumentListeners, listener));
+  }
+
+  // this contortion is for avoiding document leak when the listener is leaked
+  private static class DocumentListenerDisposable implements Disposable {
+    @NotNull private final LockFreeCOWSortedArray<DocumentListener> myList;
+    @NotNull private final DocumentListener myListener;
+
+    DocumentListenerDisposable(@NotNull LockFreeCOWSortedArray<DocumentListener> list, @NotNull DocumentListener listener) {
+      myList = list;
+      myListener = listener;
+    }
+
+    @Override
+    public void dispose() {
+      myList.remove(myListener);
+    }
   }
 
   @Override
@@ -977,12 +956,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
   @Override
   public void setText(@NotNull final CharSequence text) {
-    Runnable runnable = new Runnable() {
-      @Override
-      public void run() {
-        replaceString(0, getTextLength(), text, LocalTimeCounter.currentTime(), true);
-      }
-    };
+    Runnable runnable = () -> replaceString(0, getTextLength(), text, LocalTimeCounter.currentTime(), true);
     if (CommandProcessor.getInstance().isUndoTransparentActionInProgress()) {
       runnable.run();
     }
@@ -991,12 +965,6 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     }
 
     clearLineModificationFlags();
-  }
-
-  @Override
-  @NotNull
-  public RangeMarker createRangeMarker(@NotNull final TextRange textRange) {
-    return createRangeMarker(textRange.getStartOffset(), textRange.getEndOffset());
   }
 
   @Override
@@ -1058,12 +1026,12 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   }
 
   @Override
-  public boolean processRangeMarkers(@NotNull Processor<RangeMarker> processor) {
+  public boolean processRangeMarkers(@NotNull Processor<? super RangeMarker> processor) {
     return processRangeMarkersOverlappingWith(0, getTextLength(), processor);
   }
 
   @Override
-  public boolean processRangeMarkersOverlappingWith(int start, int end, @NotNull Processor<RangeMarker> processor) {
+  public boolean processRangeMarkersOverlappingWith(int start, int end, @NotNull Processor<? super RangeMarker> processor) {
     TextRangeInterval interval = new TextRangeInterval(start, end);
     MarkupIterator<RangeMarkerEx> iterator = IntervalTreeImpl
       .mergingOverlappingIterator(myRangeMarkers, interval, myPersistentRangeMarkers, interval, RangeMarker.BY_START_OFFSET);
@@ -1076,7 +1044,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   }
 
   @NotNull
-  public String dumpState() {
+  String dumpState() {
     @NonNls StringBuilder result = new StringBuilder();
     result.append(", intervals:\n");
     for (int line = 0; line < getLineCount(); line++) {

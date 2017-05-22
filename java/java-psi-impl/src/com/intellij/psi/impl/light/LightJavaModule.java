@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,17 +18,24 @@ package com.intellij.psi.impl.light;
 import com.intellij.lang.java.JavaLanguage;
 import com.intellij.navigation.ItemPresentation;
 import com.intellij.navigation.ItemPresentationProviders;
+import com.intellij.openapi.util.AtomicNotNullLazyValue;
+import com.intellij.openapi.util.NotNullLazyValue;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileVisitor;
 import com.intellij.psi.*;
 import com.intellij.psi.javadoc.PsiDocComment;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.IncorrectOperationException;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,6 +44,7 @@ import static com.intellij.util.ObjectUtils.notNull;
 public class LightJavaModule extends LightElement implements PsiJavaModule {
   private final LightJavaModuleReferenceElement myRefElement;
   private final VirtualFile myJarRoot;
+  private final NotNullLazyValue<List<PsiPackageAccessibilityStatement>> myExports = AtomicNotNullLazyValue.createValue(() -> findExports());
 
   private LightJavaModule(@NotNull PsiManager manager, @NotNull VirtualFile jarRoot) {
     super(manager, JavaLanguage.INSTANCE);
@@ -57,36 +65,86 @@ public class LightJavaModule extends LightElement implements PsiJavaModule {
 
   @NotNull
   @Override
-  public PsiJavaModuleReferenceElement getNameElement() {
-    return myRefElement;
-  }
-
-  @NotNull
-  @Override
-  public String getModuleName() {
-    return myRefElement.getReferenceText();
-  }
-
-  @NotNull
-  @Override
   public Iterable<PsiRequiresStatement> getRequires() {
     return Collections.emptyList();
   }
 
   @NotNull
   @Override
-  public Iterable<PsiExportsStatement> getExports() {
+  public Iterable<PsiPackageAccessibilityStatement> getExports() {
+    return myExports.getValue();
+  }
+
+  private List<PsiPackageAccessibilityStatement> findExports() {
+    List<PsiPackageAccessibilityStatement> exports = ContainerUtil.newArrayList();
+
+    VfsUtilCore.visitChildrenRecursively(myJarRoot, new VirtualFileVisitor() {
+      private JavaDirectoryService service = JavaDirectoryService.getInstance();
+
+      @Override
+      public boolean visitFile(@NotNull VirtualFile file) {
+        if (file.isDirectory() && !myJarRoot.equals(file)) {
+          PsiDirectory directory = myManager.findDirectory(file);
+          if (directory != null) {
+            PsiPackage pkg = service.getPackage(directory);
+            if (pkg != null) {
+              String packageName = pkg.getQualifiedName();
+              if (!packageName.isEmpty() && !PsiUtil.isPackageEmpty(new PsiDirectory[]{directory}, packageName)) {
+                exports.add(new LightPackageAccessibilityStatement(myManager, packageName));
+              }
+            }
+          }
+        }
+        return true;
+      }
+    });
+
+    return exports;
+  }
+
+  @NotNull
+  @Override
+  public Iterable<PsiPackageAccessibilityStatement> getOpens() {
     return Collections.emptyList();
   }
 
+  @NotNull
+  @Override
+  public Iterable<PsiUsesStatement> getUses() {
+    return Collections.emptyList();
+  }
+
+  @NotNull
+  @Override
+  public Iterable<PsiProvidesStatement> getProvides() {
+    return Collections.emptyList();
+  }
+
+  @NotNull
+  @Override
+  public PsiJavaModuleReferenceElement getNameIdentifier() {
+    return myRefElement;
+  }
+
+  @NotNull
   @Override
   public String getName() {
-    return getModuleName();
+    return myRefElement.getReferenceText();
   }
 
   @Override
   public PsiElement setName(@NotNull String name) throws IncorrectOperationException {
     throw new IncorrectOperationException("Cannot modify automatic module '" + getName() + "'");
+  }
+
+  @Override
+  public PsiModifierList getModifierList() {
+    return null;
+  }
+
+  @Override
+  public boolean hasModifierProperty(@NotNull String name) {
+    return false;
   }
 
   @Override
@@ -107,12 +165,12 @@ public class LightJavaModule extends LightElement implements PsiJavaModule {
 
   @Override
   public int hashCode() {
-    return getModuleName().hashCode() * 31 + getManager().hashCode();
+    return getName().hashCode() * 31 + getManager().hashCode();
   }
 
   @Override
   public String toString() {
-    return "PsiJavaModule:" + getModuleName();
+    return "PsiJavaModule:" + getName();
   }
 
   private static class LightJavaModuleReferenceElement extends LightElement implements PsiJavaModuleReferenceElement {
@@ -141,17 +199,57 @@ public class LightJavaModule extends LightElement implements PsiJavaModule {
     }
   }
 
+  private static class LightPackageAccessibilityStatement extends LightElement implements PsiPackageAccessibilityStatement {
+    private final String myPackageName;
+
+    public LightPackageAccessibilityStatement(@NotNull PsiManager manager, @NotNull String packageName) {
+      super(manager, JavaLanguage.INSTANCE);
+      myPackageName = packageName;
+    }
+
+    @NotNull
+    @Override
+    public Role getRole() {
+      return Role.EXPORTS;
+    }
+
+    @Nullable
+    @Override
+    public PsiJavaCodeReferenceElement getPackageReference() {
+      return null;
+    }
+
+    @Nullable
+    @Override
+    public String getPackageName() {
+      return myPackageName;
+    }
+
+    @NotNull
+    @Override
+    public Iterable<PsiJavaModuleReferenceElement> getModuleReferences() {
+      return Collections.emptyList();
+    }
+
+    @NotNull
+    @Override
+    public List<String> getModuleNames() {
+      return Collections.emptyList();
+    }
+
+    @Override
+    public String toString() {
+      return "PsiPackageAccessibilityStatement";
+    }
+  }
+
   @NotNull
   public static LightJavaModule getModule(@NotNull final PsiManager manager, @NotNull final VirtualFile jarRoot) {
     final PsiDirectory directory = manager.findDirectory(jarRoot);
     assert directory != null : jarRoot;
-    return CachedValuesManager.getCachedValue(directory, new CachedValueProvider<LightJavaModule>() {
-      @Nullable
-      @Override
-      public Result<LightJavaModule> compute() {
-        LightJavaModule module = new LightJavaModule(manager, jarRoot);
-        return Result.create(module, directory);
-      }
+    return CachedValuesManager.getCachedValue(directory, () -> {
+      LightJavaModule module = new LightJavaModule(manager, jarRoot);
+      return CachedValueProvider.Result.create(module, directory);
     });
   }
 

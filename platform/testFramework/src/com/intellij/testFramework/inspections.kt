@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import com.intellij.codeInspection.ex.*
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.profile.codeInspection.InspectionProjectProfileManager
 import com.intellij.profile.codeInspection.ProjectInspectionProfileManager
 import com.intellij.testFramework.fixtures.impl.GlobalInspectionContextForTests
 import com.intellij.util.ReflectionUtil
@@ -76,7 +77,7 @@ private fun clearAllToolsIn(profile: InspectionProfileImpl) {
     return
   }
 
-  for (state in profile.getAllTools(null)) {
+  for (state in profile.allTools) {
     val wrapper = state.tool
     if (wrapper.extension != null) {
       // make it not initialized
@@ -112,7 +113,7 @@ fun enableInspectionTool(project: Project, toolWrapper: InspectionToolWrapper<*,
     }
     profile.enableTool(shortName, project)
   }
-  Disposer.register(disposable, Disposable { profile.disableTool(shortName, project) })
+  Disposer.register(disposable, Disposable { profile.setToolEnabled(shortName, false) })
 }
 
 inline fun <T> runInInitMode(runnable: () -> T): T {
@@ -123,5 +124,18 @@ inline fun <T> runInInitMode(runnable: () -> T): T {
   }
   finally {
     InspectionProfileImpl.INIT_INSPECTIONS = old
+  }
+}
+
+fun disableInspections(project: Project, vararg inspections: InspectionProfileEntry) {
+  val profile = InspectionProjectProfileManager.getInstance(project).currentProfile
+  for (inspection in inspections) {
+    profile.setToolEnabled(inspection.shortName, false)
+  }
+}
+
+fun InspectionProfileImpl.disableAllTools() {
+  for (entry in getInspectionTools(null)) {
+    setToolEnabled(entry.shortName, false)
   }
 }

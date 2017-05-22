@@ -40,7 +40,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 import static com.intellij.codeInspection.bytecodeAnalysis.Direction.*;
@@ -138,10 +137,6 @@ public class ProjectBytecodeAnalysis {
       }
       return PsiAnnotation.EMPTY_ARRAY;
     }
-    catch (NoSuchAlgorithmException e) {
-      LOG.error(e);
-      return PsiAnnotation.EMPTY_ARRAY;
-    }
   }
 
   /**
@@ -151,6 +146,7 @@ public class ProjectBytecodeAnalysis {
    * @param methodAnnotations inferred annotations
    * @return Psi annotations
    */
+  @NotNull
   private PsiAnnotation[] toPsi(HKey primaryKey, MethodAnnotations methodAnnotations) {
     boolean notNull = methodAnnotations.notNulls.contains(primaryKey);
     boolean nullable = methodAnnotations.nullables.contains(primaryKey);
@@ -201,6 +197,7 @@ public class ProjectBytecodeAnalysis {
    * @param parameterAnnotations inferred parameter annotations
    * @return Psi annotations
    */
+  @NotNull
   private PsiAnnotation[] toPsi(ParameterAnnotations parameterAnnotations) {
     if (parameterAnnotations.notNull) {
       return new PsiAnnotation[]{
@@ -227,13 +224,8 @@ public class ProjectBytecodeAnalysis {
 
   public PsiAnnotation createContractAnnotation(String contractValue) {
     Map<String, PsiAnnotation> cache = CachedValuesManager.getManager(myProject).getCachedValue(myProject, () -> {
-      Map<String, PsiAnnotation> map = new ConcurrentFactoryMap<String, PsiAnnotation>() {
-        @Nullable
-        @Override
-        protected PsiAnnotation create(String attrs) {
-          return createAnnotationFromText("@org.jetbrains.annotations.Contract(" + attrs + ")");
-        }
-      };
+      Map<String, PsiAnnotation> map =
+        ConcurrentFactoryMap.createConcurrentMap(attrs -> createAnnotationFromText("@org.jetbrains.annotations.Contract(" + attrs + ")"));
       return CachedValueProvider.Result.create(map, ModificationTracker.NEVER_CHANGED);
     });
     return cache.get(contractValue);
@@ -304,7 +296,7 @@ public class ProjectBytecodeAnalysis {
 
     int arity = owner.getParameterList().getParameters().length;
     BytecodeAnalysisConverter.addMethodAnnotations(solutions, result, key, arity);
-    BytecodeAnalysisConverter.addEffectAnnotations(puritySolutions, result, key, arity);
+    BytecodeAnalysisConverter.addEffectAnnotations(puritySolutions, result, key, owner.isConstructor());
 
 
     if (nullableMethod) {

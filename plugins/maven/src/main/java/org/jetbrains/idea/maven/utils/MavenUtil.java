@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2015 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.PathManager;
+import com.intellij.openapi.application.PathManagerExKt;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.editor.Editor;
@@ -220,9 +220,9 @@ public class MavenUtil {
     Notifications.Bus.notify(new Notification(MAVEN_NOTIFICATION_GROUP, title, e.getMessage(), NotificationType.ERROR), project);
   }
 
-  public static File getPluginSystemDir(String folder) {
-    // PathManager.getSystemPath() may return relative path
-    return new File(PathManager.getSystemPath(), "Maven" + "/" + folder).getAbsoluteFile();
+  @NotNull
+  public static java.nio.file.Path getPluginSystemDir(@NotNull String folder) {
+    return PathManagerExKt.getAppSystemDir().resolve("Maven").resolve(folder);
   }
 
   public static File getBaseDir(@NotNull VirtualFile file) {
@@ -424,10 +424,7 @@ public class MavenUtil {
         try {
           task.run(new MavenProgressIndicator(i));
         }
-        catch (MavenProcessCanceledException e) {
-          canceledEx[0] = e;
-        }
-        catch (ProcessCanceledException e) {
+        catch (MavenProcessCanceledException | ProcessCanceledException e) {
           canceledEx[0] = e;
         }
         catch (RuntimeException e) {
@@ -457,10 +454,7 @@ public class MavenUtil {
       try {
         task.run(indicator);
       }
-      catch (MavenProcessCanceledException ignore) {
-        indicator.cancel();
-      }
-      catch (ProcessCanceledException ignore) {
+      catch (MavenProcessCanceledException | ProcessCanceledException ignore) {
         indicator.cancel();
       }
     };
@@ -479,10 +473,7 @@ public class MavenUtil {
           try {
             future.get();
           }
-          catch (InterruptedException e) {
-            MavenLog.LOG.error(e);
-          }
-          catch (ExecutionException e) {
+          catch (InterruptedException | ExecutionException e) {
             MavenLog.LOG.error(e);
           }
         }
@@ -718,14 +709,17 @@ public class MavenUtil {
     }
   }
 
-  public static String expandProperties(String text) {
+  public static String expandProperties(String text, Properties props) {
     if (StringUtil.isEmptyOrSpaces(text)) return text;
-    Properties props = MavenServerUtil.collectSystemProperties();
     for (Map.Entry<Object, Object> each : props.entrySet()) {
       Object val = each.getValue();
       text = text.replace("${" + each.getKey() + "}", val instanceof CharSequence ? (CharSequence)val : val.toString());
     }
     return text;
+  }
+
+  public static String expandProperties(String text) {
+    return expandProperties(text, MavenServerUtil.collectSystemProperties());
   }
 
   @Nullable

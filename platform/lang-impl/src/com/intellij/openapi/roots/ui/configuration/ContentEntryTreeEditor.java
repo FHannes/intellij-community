@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.TreeSpeedSearch;
 import com.intellij.ui.treeStructure.Tree;
@@ -148,9 +149,11 @@ public class ContentEntryTreeEditor {
     final ContentEntry entry = contentEntryEditor.getContentEntry();
     assert entry != null : contentEntryEditor;
     final VirtualFile file = entry.getFile();
-    myDescriptor.setRoots(file);
-    if (file == null) {
-      final String path = VfsUtilCore.urlToPath(entry.getUrl());
+    if (file != null) {
+      myDescriptor.setRoots(file);
+    }
+    else {
+      String path = VfsUtilCore.urlToPath(entry.getUrl());
       myDescriptor.setTitle(FileUtil.toSystemDependentName(path));
     }
 
@@ -200,7 +203,9 @@ public class ContentEntryTreeEditor {
   }
 
   public void requestFocus() {
-    myTree.requestFocus();
+    IdeFocusManager.getGlobalInstance().doWhenFocusSettlesDown(() -> {
+      IdeFocusManager.getGlobalInstance().requestFocus(myTree, true);
+    });
   }
 
   public void update() {

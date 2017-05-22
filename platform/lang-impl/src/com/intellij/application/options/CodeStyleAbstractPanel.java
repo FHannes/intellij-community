@@ -82,7 +82,7 @@ public abstract class CodeStyleAbstractPanel implements Disposable {
 
   private final Alarm myUpdateAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
 
-  private CodeStyleSchemesModel myModel;
+  private @Nullable CodeStyleSchemesModel myModel;
   private boolean mySomethingChanged = false;
   private long myEndHighlightPreviewChangesTimeMillis = -1;
   private boolean myShowsPreviewHighlighters;
@@ -127,13 +127,13 @@ public abstract class CodeStyleAbstractPanel implements Disposable {
     return mySomethingChanged;
   }
 
-  public void setModel(final CodeStyleSchemesModel model) {
+  public void setModel(@Nullable final CodeStyleSchemesModel model) {
     myModel = model;
   }
 
   protected void somethingChanged() {
     if (myModel != null) {
-      myModel.fireCurrentSettingsChanged();
+      myModel.fireBeforeCurrentSettingsChanged();
     }
   }
 
@@ -210,11 +210,7 @@ public abstract class CodeStyleAbstractPanel implements Disposable {
         PsiFile psiFile = createFileFromText(project, myTextToReformat);
         prepareForReformat(psiFile);
 
-        try {
-          apply(mySettings);
-        }
-        catch (ConfigurationException ignore) {
-        }
+        applySettingsToModel();
         CodeStyleSettings clone = mySettings.clone();
         clone.setRightMargin(getDefaultLanguage(), getAdjustedRightMargin());
         CodeStyleSettingsManager.getInstance(project).setTemporarySettings(clone);
@@ -237,6 +233,17 @@ public abstract class CodeStyleAbstractPanel implements Disposable {
         LOG.error(e);
       }
     });
+  }
+
+  private void applySettingsToModel() {
+    try {
+      apply(mySettings);
+      if (myModel != null) {
+        myModel.fireAfterCurrentSettingsChanged();
+      }
+    }
+    catch (ConfigurationException ignore) {
+    }
   }
 
   /**
@@ -441,6 +448,9 @@ public abstract class CodeStyleAbstractPanel implements Disposable {
         UiNotifyConnector.doWhenFirstShown(myEditor.getComponent(), () -> addUpdatePreviewRequest());
       }
     }
+    else {
+      applySettingsToModel();
+    }
   }
 
   private void addUpdatePreviewRequest() {
@@ -546,10 +556,11 @@ public abstract class CodeStyleAbstractPanel implements Disposable {
   }
   
   public final void applyPredefinedSettings(@NotNull PredefinedCodeStyle codeStyle) {
-    CodeStyleSettings settings = CodeStyleSettingsManager.getSettings(ProjectUtil.guessCurrentProject(getPanel())).clone();
-    codeStyle.apply(settings);
-    reset(settings);
-    onSomethingChanged();    
+    codeStyle.apply(mySettings);
+    resetImpl(mySettings);
+    if (myModel != null) {
+      myModel.fireAfterCurrentSettingsChanged();
+    }
   }
 
   /**

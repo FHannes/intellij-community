@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ package com.intellij.openapi.ui.impl;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
-import com.intellij.ide.RemoteDesktopDetector;
+import com.intellij.ide.RemoteDesktopService;
 import com.intellij.ide.impl.TypeSafeDataProviderAdapter;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.openapi.Disposable;
@@ -35,6 +35,7 @@ import com.intellij.openapi.ui.popup.StackingPopupDispatcher;
 import com.intellij.openapi.util.ActionCallback;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.WindowManager;
 import com.intellij.openapi.wm.ex.WindowManagerEx;
@@ -518,7 +519,9 @@ public class GlassPaneDialogWrapperPeer extends DialogWrapperPeer implements Foc
         myTransparentPane.repaint();
 
         if (myPreviouslyFocusedComponent != null) {
-          myPreviouslyFocusedComponent.requestFocus();
+          IdeFocusManager.getGlobalInstance().doWhenFocusSettlesDown(() -> {
+            IdeFocusManager.getGlobalInstance().requestFocus(myPreviouslyFocusedComponent, true);
+          });
           myPreviouslyFocusedComponent = null;
         }
 
@@ -566,7 +569,7 @@ public class GlassPaneDialogWrapperPeer extends DialogWrapperPeer implements Foc
       }
       super.setBounds(x, y, width, height);
 
-      if (RemoteDesktopDetector.isRemoteSession()) {
+      if (RemoteDesktopService.isRemoteSession()) {
         shadow = null;
       }
       else if (shadow == null || shadowWidth != width || shadowHeight != height) {
@@ -578,8 +581,8 @@ public class GlassPaneDialogWrapperPeer extends DialogWrapperPeer implements Foc
 
     @Override
     public void dispose() {
-      setVisible(false);
       remove(getContentPane());
+      setVisible(false);
       DialogWrapper.unregisterKeyboardActions(myWrapperPane);
       myRootPane = null;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ public class JavaSdkUtil {
     File[] jarDirs;
     if (SystemInfo.isMac && !home.getName().startsWith("mockJDK")) {
       File openJdkRtJar = new File(home, "jre/lib/rt.jar");
-      if (openJdkRtJar.exists() && !openJdkRtJar.isDirectory()) {
+      if (openJdkRtJar.isFile()) {
         File libDir = new File(home, "lib");
         File classesDir = openJdkRtJar.getParentFile();
         File libExtDir = new File(openJdkRtJar.getParentFile(), "ext");
@@ -57,9 +57,8 @@ public class JavaSdkUtil {
         jarDirs = new File[]{libEndorsedDir, libDir, classesDir, libExtDir};
       }
     }
-    else if (new File(home, "lib/modules").exists()) {
-      File libDir = new File(home, "lib");
-      jarDirs = new File[]{libDir};
+    else if (new File(home, "lib/jrt-fs.jar").exists()) {
+      jarDirs = ArrayUtil.EMPTY_FILE_ARRAY;
     }
     else {
       File libDir = new File(home, isJre ? "lib" : "jre/lib");

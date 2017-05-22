@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2012 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,10 +21,6 @@ import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.psi.PsiElement;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * User: anna
- * Date: 3/28/12
- */
 public class JavaSdkVersionUtil {
   public static boolean isAtLeast(@NotNull PsiElement element, @NotNull JavaSdkVersion minVersion) {
     JavaSdkVersion version = getJavaSdkVersion(element);
@@ -37,7 +33,7 @@ public class JavaSdkVersionUtil {
       final Sdk sdk = ModuleRootManager.getInstance(module).getSdk();
       if (sdk != null && sdk.getSdkType() instanceof JavaSdk) {
         String version = sdk.getVersionString();
-        return version == null ? null : JdkVersionUtil.getVersion(version);
+        return version == null ? null : JavaSdkVersion.fromVersionString(version);
       }
     }
     return null;

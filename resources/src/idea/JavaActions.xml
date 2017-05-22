@@ -58,10 +58,7 @@
     </group>
 
     <group id="RefactoringMenu1">
-      <action id="ChangeTypeSignature"
-              class="com.intellij.refactoring.typeMigration.actions.ChangeTypeSignatureAction"
-              text="T_ype Migration..."
-              description="Change type of the return type of the method, field, parameter, variable or class type arguments and correct all references"/>
+      <action id="ChangeTypeSignature" class="com.intellij.refactoring.typeMigration.actions.ChangeTypeSignatureAction"/>
       <action id="MakeStatic" class="com.intellij.refactoring.actions.MakeStaticAction"/>
       <action id="ConvertToInstanceMethod" class="com.intellij.refactoring.actions.ConvertToInstanceMethodAction"/>
       <add-to-group group-id="RefactoringMenu" anchor="after" relative-to-action="ChangeSignature"/>
@@ -188,8 +185,14 @@
       <action id="Debugger.ViewAsGroup" class="com.intellij.debugger.actions.ViewAsGroup">
         <add-to-group group-id="XDebugger.ValueGroup" anchor="last"/>
       </action>
-      <action id="Debugger.AdjustArrayRange" class="com.intellij.debugger.actions.AdjustArrayRangeAction">
+      <!--<action id="Debugger.FilterArray" class="com.intellij.debugger.actions.ArrayAction$FilterArrayAction">-->
+        <!--<add-to-group group-id="XDebugger.ValueGroup" anchor="last"/>-->
+      <!--</action>-->
+      <action id="Debugger.AdjustArrayRange" class="com.intellij.debugger.actions.ArrayAction$AdjustArrayRangeAction">
         <add-to-group group-id="XDebugger.ValueGroup" anchor="last"/>
+      </action>
+      <action id="Debugger.ShowRelatedStack" class="com.intellij.debugger.actions.ShowRelatedStackAction"  text="Show related stack...">
+        <add-to-group group-id="XDebugger.ValueGroup" anchor="first"/>
       </action>
       <action id="Debugger.ShowTypes" class="com.intellij.debugger.actions.ShowTypesAction" text="Show types">
         <add-to-group group-id="XDebugger.ValueGroup" anchor="last"/>
@@ -443,5 +446,9 @@
     <action id="FileChooser.GotoJDK" class="com.intellij.openapi.projectRoots.JdkPopupAction" >
       <add-to-group group-id="FileChooserToolbar" anchor="last"/>
     </action>
+    
+    <action class="com.intellij.compiler.backwardRefs.view.TestCompilerRefFindUsagesAction" id="TestCompilerReferenceServiceFindUsages" internal="true"/>
+    <action class="com.intellij.compiler.backwardRefs.view.TestCompilerRefFunctionalExpressionSearchAction" id="TestCompilerReferenceServiceFunctionalExpressionSearch" internal="true"/>
+    <action class="com.intellij.compiler.backwardRefs.view.TestCompilerRefInheritanceAction" id="TestCompilerReferenceServiceInheritance" internal="true"/>
   </actions>
 </idea-plugin>

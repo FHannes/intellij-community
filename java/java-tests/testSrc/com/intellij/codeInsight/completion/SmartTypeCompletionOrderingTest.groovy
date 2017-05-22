@@ -33,7 +33,7 @@ class SmartTypeCompletionOrderingTest extends CompletionSortingTestCase {
   }
 
   void testJComponentAdd() throws Throwable {
-    checkPreferredItems(0, "name", "b", "fooBean239", "foo", "this")
+    checkPreferredItems(0, "name", "b", "fooBean239", "foo")
   }
 
   void testJComponentAddNew() throws Throwable {
@@ -53,13 +53,6 @@ class SmartTypeCompletionOrderingTest extends CompletionSortingTestCase {
     }
     refreshSorting(lookup)
     assertPreferredItems(2, "Component", "String", "Container", "FooBean3", "JComponent")
-
-    int component = lookup.items.findIndexOf { it.lookupString == 'Component' }
-    for (int i = 0; i < StatisticsManager.OBLIVION_THRESHOLD; i++) {
-      imitateItemSelection(lookup, component)
-    }
-    refreshSorting(lookup)
-    assertPreferredItems(1, "String", "Component", "FooBean3")
   }
 
   void testNewListAlwaysFirst() {
@@ -77,7 +70,7 @@ class SmartTypeCompletionOrderingTest extends CompletionSortingTestCase {
     assertPreferredItems(2, "Component", "String", "FooBean3", "JComponent", "Container")
     lookup.currentItem = lookup.items[4] //Container
     myFixture.type('\n\b')
-    CompletionLookupArranger.applyLastCompletionStatisticsUpdate()
+    StatisticsUpdate.applyLastCompletionStatisticsUpdate()
     FileDocumentManager.instance.saveAllDocuments()
     invokeCompletion("/JComponentAddNew.java")
     assertPreferredItems(2, "Component", "String", "FooBean3", "JComponent", "Container")
@@ -330,7 +323,7 @@ class SmartTypeCompletionOrderingTest extends CompletionSortingTestCase {
   }
 
   void testPreferLocalOverThis() {
-    checkPreferredItems 0, 'value', 'this', 'hashCode'
+    checkPreferredItems 0, 'value', 'hashCode', 'this'
   }
 
   void testGetLogger() {
@@ -346,7 +339,7 @@ class SmartTypeCompletionOrderingTest extends CompletionSortingTestCase {
   }
 
   void testPreferLocalWildcardClassOverObject() {
-    checkPreferredItems 0, 'type', 'Object.class'
+    checkPreferredItems 0, 'type', 'forName', 'forName', 'Object.class'
   }
 
   void testPreferStringsInStringConcatenation() {
@@ -366,6 +359,13 @@ class SmartTypeCompletionOrderingTest extends CompletionSortingTestCase {
     myFixture.complete(CompletionType.SMART, 2)
     assertPreferredItems 0, 'MyColor.RED', 'Another.RED'
     assert lookup.items.size() == 2
+  }
+
+  void testPreferGlobalMembersReturningExpectedType() {
+    configureNoCompletion(getTestName(false) + ".java")
+    def items = myFixture.complete(CompletionType.SMART, 2)
+    assert LookupElementPresentation.renderElement(items[0]).itemText == 'Map.builder'
+    assert LookupElementPresentation.renderElement(items[1]).itemText == 'BiMap.builder'
   }
 
   @Override

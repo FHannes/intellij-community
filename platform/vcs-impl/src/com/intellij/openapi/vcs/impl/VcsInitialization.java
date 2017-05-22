@@ -43,7 +43,7 @@ public class VcsInitialization implements Disposable {
   private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.vcs.impl.VcsInitialization");
 
   private final List<Pair<VcsInitObject, Runnable>> myList = new ArrayList<>();
-  private final Object myLock;
+  private final Object myLock = new Object();
   @NotNull private final Project myProject;
 
   // the initialization lifecycle: IDLE -(on startup completion)-> RUNNING -(on all tasks executed or project canceled)-> FINISHED
@@ -55,7 +55,7 @@ public class VcsInitialization implements Disposable {
 
   VcsInitialization(@NotNull final Project project) {
     myProject = project;
-    myLock = new Object();
+    if (project.isDefault()) return;
 
     StartupManager.getInstance(project).registerPostStartupActivity((DumbAwareRunnable)() -> {
       if (project.isDisposed()) return;
@@ -118,6 +118,7 @@ public class VcsInitialization implements Disposable {
   private void cancelBackgroundInitialization() {
     // do not leave VCS initialization run in background when the project is closed
     Future<?> future = myFuture;
+    LOG.debug("cancelBackgroundInitialization() future=" + future +" from "+Thread.currentThread()+" with write access="+ApplicationManager.getApplication().isWriteAccessAllowed());
     if (future != null) {
       future.cancel(false);
       if (ApplicationManager.getApplication().isWriteAccessAllowed()) {
@@ -133,6 +134,7 @@ public class VcsInitialization implements Disposable {
   }
 
   void waitForCompletion() {
+    LOG.debug("waitForCompletion() status=" + myStatus);
     // have to wait for task completion to avoid running it in background for closed project
     long start = System.currentTimeMillis();
     Status status = null;

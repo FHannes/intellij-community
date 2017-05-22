@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -143,6 +143,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     registerPluginActions();
   }
 
+  @Nullable
   static AnAction convertStub(ActionStub stub) {
     Object obj;
     String className = stub.getClassName();
@@ -164,7 +165,8 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     }
 
     if (!(obj instanceof AnAction)) {
-      throw new IllegalStateException("class with name '" + className + "' must be an instance of '" + AnAction.class.getName()+"'; got "+obj);
+      LOG.error("class with name '" + className + "' must be an instance of '" + AnAction.class.getName()+"'; got "+obj);
+      return null;
     }
 
     AnAction anAction = (AnAction)obj;
@@ -225,11 +227,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
       final Class actionClass = Class.forName(className, true, loader);
       setIconFromClass(actionClass, loader, iconPath, presentation, pluginId);
     }
-    catch (ClassNotFoundException e) {
-      LOG.error(e);
-      reportActionError(pluginId, "class with name \"" + className + "\" not found");
-    }
-    catch (NoClassDefFoundError e) {
+    catch (ClassNotFoundException | NoClassDefFoundError e) {
       LOG.error(e);
       reportActionError(pluginId, "class with name \"" + className + "\" not found");
     }
@@ -470,10 +468,12 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   }
 
   @Override
+  @Nullable
   public AnAction getAction(@NotNull String id) {
     return getActionImpl(id, false);
   }
 
+  @Nullable
   private AnAction getActionImpl(String id, boolean canReturnStub) {
     AnAction action;
     synchronized (myLock) {
@@ -483,6 +483,8 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
       }
     }
     AnAction converted = convertStub((ActionStub)action);
+    if (converted == null) return null;
+
     synchronized (myLock) {
       action = myId2Action.get(id);
       if (action instanceof ActionStub) {
@@ -1058,12 +1060,6 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     }
   }
 
-  @Override
-  @NotNull
-  public String getComponentName() {
-    return "ActionManager";
-  }
-
   @NotNull
   @Override
   public Comparator<String> getRegistrationOrderComparator() {
@@ -1336,7 +1332,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
       addActionListener(this);
       setRepeats(true);
       final MessageBusConnection connection = ApplicationManager.getApplication().getMessageBus().connect();
-      connection.subscribe(ApplicationActivationListener.TOPIC, new ApplicationActivationListener.Adapter() {
+      connection.subscribe(ApplicationActivationListener.TOPIC, new ApplicationActivationListener() {
         @Override
         public void applicationActivated(IdeFrame ideFrame) {
           setDelay(TIMER_DELAY);

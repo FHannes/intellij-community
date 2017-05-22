@@ -236,6 +236,30 @@ public class OverloadResolutionTest extends LightDaemonAnalyzerTestCase {
     doTest(false);
   }
 
+  public void testOverriddenVarargWithaArray() throws Exception {
+    doTest();
+  }
+
+  public void testForceCleanupErrorsInConditionalWhenBothBranchesProduceError() throws Exception {
+    doTest();
+  }
+
+  public void testStaticMethodInOuterClassConflictWithToString() throws Exception {
+    doTest();
+  }
+
+  public void testPreserveStaticMethodConflictsWhenMethodsAreNotHidden() throws Exception {
+    doTest(false);
+  }
+
+  public void testDontSkipInapplicableMethodsDuringSameSignatureCheck() throws Exception {
+    doTest(false);
+  }
+
+  public void testInferenceErrorInArgumentWhenWrongOverloadWasChosen() throws Exception {
+    doTest(false);
+  }
+
   private void doTest() {
     doTest(true);
   }

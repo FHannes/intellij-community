@@ -57,6 +57,9 @@ public class BalloonLayoutImpl implements BalloonLayout {
 
   private final Alarm myRelayoutAlarm = new Alarm();
   private final Runnable myRelayoutRunnable = () -> {
+    if (myLayeredPane == null) {
+      return;
+    }
     relayout();
     fireRelayout();
   };
@@ -185,8 +188,9 @@ public class BalloonLayoutImpl implements BalloonLayout {
 
     calculateSize();
     relayout();
-    ((BalloonImpl)balloon).traceDispose(false);
-    balloon.show(myLayeredPane);
+    if (!balloon.isDisposed()) {
+      balloon.show(myLayeredPane);
+    }
     fireRelayout();
   }
 
@@ -251,6 +255,20 @@ public class BalloonLayoutImpl implements BalloonLayout {
       balloon.hide();
       fireRelayout();
     }
+  }
+
+  public void closeAll() {
+    myCloseAll.run();
+  }
+
+  public void closeFirst() {
+    if (!myBalloons.isEmpty()) {
+      remove(myBalloons.get(0), true);
+    }
+  }
+
+  public int getBalloonCount() {
+    return myBalloons.size();
   }
 
   private static int getVisibleCount() {

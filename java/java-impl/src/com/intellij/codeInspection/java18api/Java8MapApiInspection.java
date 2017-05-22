@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,10 +94,9 @@ public class Java8MapApiInspection extends BaseJavaBatchLocalInspectionTool {
             processMerge(condition, existsBranch, noneBranch);
           }
           if(condition.hasVariable()) return;
-          EquivalenceChecker.Decision decision =
-            EquivalenceChecker.getCanonicalPsiEquivalence().statementsAreEquivalentDecision(noneBranch, existsBranch);
+          EquivalenceChecker.Match match = EquivalenceChecker.getCanonicalPsiEquivalence().statementsMatch(noneBranch, existsBranch);
 
-          processGetPut(condition, existsBranch, decision.getRightDiff(), decision.getLeftDiff());
+          processGetPut(condition, existsBranch, match.getRightDiff(), match.getLeftDiff());
         }
       }
 
@@ -143,7 +142,7 @@ public class Java8MapApiInspection extends BaseJavaBatchLocalInspectionTool {
           condition.register(holder, new ReplaceWithSingleMapOperation("putIfAbsent", getCall, putArgs[1], result));
         }
         if (mySuggestMapGetOrDefault && condition.isContainsKey() && ExpressionUtils.isSimpleExpression(noneExpression) &&
-          !(getCall.getType() instanceof PsiCapturedWildcardType)) {
+          condition.isMapValueType(noneExpression.getType())) {
           condition.register(holder, new ReplaceWithSingleMapOperation("getOrDefault", getCall, noneExpression, result));
         }
       }
@@ -157,11 +156,10 @@ public class Java8MapApiInspection extends BaseJavaBatchLocalInspectionTool {
               value = ...
             }
            */
-          if (ExpressionUtils.isSimpleExpression(assignment.getRExpression()) &&
-              condition.isValueReference(assignment.getLExpression()) &&
-              !condition.isValueReference(assignment.getRExpression())) {
-            condition
-              .register(holder, ReplaceWithSingleMapOperation.fromIf("getOrDefault", condition, assignment.getRExpression()));
+          PsiExpression rValue = assignment.getRExpression();
+          if (ExpressionUtils.isSimpleExpression(rValue) && condition.isValueReference(assignment.getLExpression()) &&
+              !condition.isValueReference(rValue) && condition.isMapValueType(rValue.getType())) {
+            condition.register(holder, ReplaceWithSingleMapOperation.fromIf("getOrDefault", condition, rValue));
           }
         } else if (condition.isGetNull()) {
           /*
@@ -407,7 +405,7 @@ public class Java8MapApiInspection extends BaseJavaBatchLocalInspectionTool {
 
       PsiElementFactory factory = JavaPsiFacade.getElementFactory(project);
       CommentTracker ct = new CommentTracker();
-      call.getMethodExpression().handleElementRename(myMethodName);
+      ExpressionUtils.bindCallTo(call, myMethodName);
       PsiExpression replacement;
       if(myMethodName.equals("computeIfAbsent")) {
         PsiExpression key = args[0];
@@ -433,7 +431,7 @@ public class Java8MapApiInspection extends BaseJavaBatchLocalInspectionTool {
         }
         String varName = JavaCodeStyleManager.getInstance(project).suggestUniqueVariableName(nameCandidate, value, true);
         for(PsiReferenceExpression ref : refs) {
-          ref.handleElementRename(varName);
+          ExpressionUtils.bindReferenceTo(ref, varName);
         }
         replacement = factory.createExpressionFromText(varName + " -> " + ct.text(value), value);
       } else if (myMethodName.equals("merge")) {
@@ -465,7 +463,7 @@ public class Java8MapApiInspection extends BaseJavaBatchLocalInspectionTool {
         ct.deleteAndRestoreComments(conditional);
       }
       PsiVariable variable = condition.extractDeclaration();
-      if(variable != null && ReferencesSearch.search(variable).findFirst() == null) {
+      if (variable != null && !PsiTreeUtil.isAncestor(result, variable, true) && ReferencesSearch.search(variable).findFirst() == null) {
         new CommentTracker().deleteAndRestoreComments(variable);
       }
       CodeStyleManager.getInstance(project).reformat(result);
@@ -559,6 +557,13 @@ public class Java8MapApiInspection extends BaseJavaBatchLocalInspectionTool {
     public void register(ProblemsHolder holder, ReplaceWithSingleMapOperation fix) {
       //noinspection DialogTitleCapitalization
       holder.registerProblem(getFullCondition(), QuickFixBundle.message("java.8.map.api.inspection.description", fix.myMethodName), fix);
+    }
+
+    public boolean isMapValueType(@Nullable PsiType type) {
+      if (type == null) return false;
+      PsiType mapExpressionType = myMapExpression.getType();
+      PsiType valueTypeParameter = PsiUtil.substituteTypeParameter(mapExpressionType, CommonClassNames.JAVA_UTIL_MAP, 1, false);
+      return valueTypeParameter != null && valueTypeParameter.isAssignableFrom(type);
     }
   }
 }
