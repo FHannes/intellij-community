@@ -49,6 +49,7 @@ import com.intellij.util.graph.*;
 import com.intellij.util.io.URLUtil;
 import com.intellij.util.messages.MessageBus;
 import gnu.trove.THashMap;
+import gnu.trove.THashSet;
 import gnu.trove.TObjectHashingStrategy;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
@@ -76,7 +77,7 @@ public abstract class ModuleManagerImpl extends ModuleManager implements Project
   @NonNls public static final String COMPONENT_NAME = "ProjectModuleManager";
   private static final String MODULE_GROUP_SEPARATOR = "/";
   private LinkedHashSet<ModulePath> myModulePathsToLoad;
-  private final List<ModulePath> myFailedModulePaths = new SmartList<>();
+  private final Set<ModulePath> myFailedModulePaths = new THashSet<>();
   @NonNls public static final String ELEMENT_MODULES = "modules";
   @NonNls public static final String ELEMENT_MODULE = "module";
   @NonNls private static final String ATTRIBUTE_FILEURL = "fileurl";
@@ -223,7 +224,7 @@ public abstract class ModuleManagerImpl extends ModuleManager implements Project
     progressIndicator.setText("Loading modules...");
     progressIndicator.setText2("");
 
-    List<Module> modulesWithUnknownTypes = new ArrayList<>();
+    List<Module> modulesWithUnknownTypes = new SmartList<>();
     List<ModuleLoadingErrorDescription> errors = Collections.synchronizedList(new ArrayList<>());
     ModuleGroupInterner groupInterner = new ModuleGroupInterner();
 
@@ -898,9 +899,8 @@ public abstract class ModuleManagerImpl extends ModuleManager implements Project
     }
 
     public void projectClosed() {
-      for (Module aCollection : myModules.values()) {
-        ModuleEx module = (ModuleEx)aCollection;
-        module.projectClosed();
+      for (Module module : myModules.values()) {
+        ((ModuleEx)module).projectClosed();
       }
     }
 
@@ -934,10 +934,21 @@ public abstract class ModuleManagerImpl extends ModuleManager implements Project
     ApplicationManager.getApplication().assertWriteAccessAllowed();
     final Collection<Module> oldModules = myModuleModel.myModules.values();
     final Collection<Module> newModules = moduleModel.myModules.values();
-    final List<Module> removedModules = new ArrayList<>(oldModules);
-    removedModules.removeAll(newModules);
-    final List<Module> addedModules = new ArrayList<>(newModules);
-    addedModules.removeAll(oldModules);
+
+    final Collection<Module> addedModules;
+    final Collection<Module> removedModules;
+    if (oldModules.isEmpty()) {
+      // create immutable copy
+      addedModules = new ArrayList<>(newModules);
+      removedModules = Collections.emptyList();
+    }
+    else {
+      addedModules = new THashSet<>(newModules);
+      addedModules.removeAll(oldModules);
+
+      removedModules = new THashSet<>(oldModules);
+      removedModules.removeAll(newModules);
+    }
 
     ProjectRootManagerEx.getInstanceEx(myProject).makeRootsChange(() -> {
       for (Module removedModule : removedModules) {
@@ -945,11 +956,13 @@ public abstract class ModuleManagerImpl extends ModuleManager implements Project
         cleanCachedStuff();
       }
 
-      List<Module> neverAddedModules = new ArrayList<>(moduleModel.myModulesToDispose);
-      neverAddedModules.removeAll(myModuleModel.myModules.values());
-      for (final Module neverAddedModule : neverAddedModules) {
-        neverAddedModule.putUserData(DISPOSED_MODULE_NAME, neverAddedModule.getName());
-        Disposer.dispose(neverAddedModule);
+      if (!moduleModel.myModulesToDispose.isEmpty()) {
+        List<Module> neverAddedModules = new ArrayList<>(moduleModel.myModulesToDispose);
+        neverAddedModules.removeAll(myModuleModel.myModules.values());
+        for (final Module neverAddedModule : neverAddedModules) {
+          neverAddedModule.putUserData(DISPOSED_MODULE_NAME, neverAddedModule.getName());
+          Disposer.dispose(neverAddedModule);
+        }
       }
 
       if (runnable != null) {

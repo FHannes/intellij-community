@@ -156,7 +156,7 @@ public class EduAdaptiveStepicConnector {
                                             @NotNull String lessonName,
                                             @NotNull StepicWrappers.Step block,
                                             int stepId) {
-    final Task task = new Task(lessonName);
+    final Task task = Task.createChoiceTask(lessonName);
     task.setStepId(stepId);
     task.setText(block.text);
 
@@ -432,7 +432,7 @@ public class EduAdaptiveStepicConnector {
     }
 
     if (step.options.test != null) {
-      for (StepicWrappers.TestFileWrapper wrapper : step.options.test) {
+      for (StepicWrappers.FileWrapper wrapper : step.options.test) {
         task.addTestsTexts(wrapper.name, wrapper.text);
       }
     }

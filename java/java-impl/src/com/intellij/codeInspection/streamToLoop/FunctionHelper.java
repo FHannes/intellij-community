@@ -34,6 +34,7 @@ import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -154,22 +155,71 @@ abstract class FunctionHelper {
     if (expression instanceof PsiMethodReferenceExpression) {
       PsiMethodReferenceExpression methodRef = (PsiMethodReferenceExpression)expression;
       if (methodRef.resolve() == null) return null;
+      FunctionHelper fn = tryInlineMethodReference(paramCount, returnType, methodRef);
+      if (fn != null) return fn;
       return new MethodReferenceFunctionHelper(returnType, type, methodRef);
     }
     if (expression instanceof PsiReferenceExpression && ExpressionUtils.isSimpleExpression(expression)) {
       return new SimpleReferenceFunctionHelper(returnType, expression, interfaceMethod.getName());
     }
-    if (expression instanceof PsiMethodCallExpression &&
-        MethodCallUtils
-          .isCallToStaticMethod((PsiMethodCallExpression)expression, CommonClassNames.JAVA_UTIL_FUNCTION_FUNCTION, "identity", 0)) {
-      return paramCount == 1 ? new IdentityFunctionHelper(returnType) : null;
+    if (expression instanceof PsiMethodCallExpression) {
+      PsiMethodCallExpression call = (PsiMethodCallExpression)expression;
+      if (MethodCallUtils.isCallToStaticMethod(call, CommonClassNames.JAVA_UTIL_FUNCTION_FUNCTION, "identity", 0)) {
+        return paramCount == 1 ? new InlinedFunctionHelper(returnType, 1, "{0}") : null;
+      }
+      if (MethodCallUtils.isCallToStaticMethod(call, CommonClassNames.JAVA_UTIL_COMPARATOR, "naturalOrder", 0)) {
+        return paramCount == 2 ? new InlinedFunctionHelper(returnType, 2, "{0}.compareTo({1})") : null;
+      }
+      if (MethodCallUtils.isCallToStaticMethod(call, CommonClassNames.JAVA_UTIL_COMPARATOR, "reverseOrder", 0) ||
+          MethodCallUtils.isCallToStaticMethod(call, CommonClassNames.JAVA_UTIL_COLLECTIONS, "reverseOrder", 0)) {
+        return paramCount == 2 ? new InlinedFunctionHelper(returnType, 2, "{1}.compareTo({0})") : null;
+      }
     }
     return new ComplexExpressionFunctionHelper(returnType, type, interfaceMethod.getName(), expression);
   }
 
+  @Nullable
+  private static FunctionHelper tryInlineMethodReference(int paramCount, PsiType returnType, PsiMethodReferenceExpression methodRef) {
+    PsiElement element = methodRef.resolve();
+    if (element instanceof PsiMethod) {
+      PsiMethod method = (PsiMethod)element;
+      String name = method.getName();
+      PsiClass aClass = method.getContainingClass();
+      if (aClass != null) {
+        String className = aClass.getQualifiedName();
+        if("java.util.Objects".equals(className) && paramCount == 1) {
+          if (name.equals("nonNull")) {
+            return new InlinedFunctionHelper(returnType, 1, "{0}!=null");
+          }
+          if (name.equals("isNull")) {
+            return new InlinedFunctionHelper(returnType, 1, "{0}==null");
+          }
+        }
+        if (paramCount == 2 && name.equals("sum") && (CommonClassNames.JAVA_LANG_INTEGER.equals(className) ||
+                                                      CommonClassNames.JAVA_LANG_LONG.equals(className) ||
+                                                      CommonClassNames.JAVA_LANG_DOUBLE.equals(className))) {
+          return new InlinedFunctionHelper(returnType, 2, "{0}+{1}");
+        }
+        if(CommonClassNames.JAVA_LANG_CLASS.equals(className) && paramCount == 1) {
+          PsiExpression qualifier = methodRef.getQualifierExpression();
+          if(qualifier instanceof PsiClassObjectAccessExpression) {
+            PsiTypeElement type = ((PsiClassObjectAccessExpression)qualifier).getOperand();
+            if(name.equals("isInstance")) {
+              return new InlinedFunctionHelper(returnType, 1, "{0} instanceof "+type.getText());
+            }
+            if(name.equals("cast")) {
+              return new InlinedFunctionHelper(returnType, 1, "("+type.getText()+"){0}");
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   @NotNull
   @Contract(pure = true)
-  static FunctionHelper hashMapSupplier(PsiType type) {
+  static FunctionHelper newObjectSupplier(PsiType type, String instanceClassName) {
     return new FunctionHelper(type) {
       PsiExpression myExpression;
 
@@ -181,7 +231,7 @@ abstract class FunctionHelper {
       @Override
       void transform(StreamToLoopReplacementContext context, String... argumentValues) {
         LOG.assertTrue(argumentValues.length == 0);
-        myExpression = context.createExpression("new java.util.HashMap<>()");
+        myExpression = context.createExpression("new "+instanceClassName+"<>()");
       }
     };
   }
@@ -444,11 +494,15 @@ abstract class FunctionHelper {
     }
   }
 
-  private static class IdentityFunctionHelper extends FunctionHelper {
+  private static class InlinedFunctionHelper extends FunctionHelper {
+    private final int myArgCount;
+    private final String myTemplate;
     private PsiExpression myExpression;
 
-    public IdentityFunctionHelper(PsiType type) {
+    public InlinedFunctionHelper(PsiType type, int argCount, String template) {
       super(type);
+      myArgCount = argCount;
+      myTemplate = template;
     }
 
     @Override
@@ -459,8 +513,8 @@ abstract class FunctionHelper {
 
     @Override
     void transform(StreamToLoopReplacementContext context, String... argumentValues) {
-      LOG.assertTrue(argumentValues.length == 1);
-      myExpression = context.createExpression(argumentValues[0]);
+      LOG.assertTrue(argumentValues.length == myArgCount);
+      myExpression = context.createExpression(MessageFormat.format(myTemplate, (Object[])argumentValues));
     }
   }
 
