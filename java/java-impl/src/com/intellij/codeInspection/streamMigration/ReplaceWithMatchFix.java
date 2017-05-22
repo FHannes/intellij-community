@@ -15,7 +15,6 @@
  */
 package com.intellij.codeInspection.streamMigration;
 
-import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.InitializerUsageStatus;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
@@ -96,8 +95,8 @@ class ReplaceWithMatchFix extends MigrateToStreamFix {
           // for(....) if(...) {flag = true; break;}
           PsiVariable var = (PsiVariable)maybeVar;
           PsiExpression initializer = var.getInitializer();
-          InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
-          if (initializer != null && status != InitializerUsageStatus.UNKNOWN) {
+          ControlFlowUtils.InitializerUsageStatus status = ControlFlowUtils.getInitializerUsageStatus(var, loopStatement);
+          if (initializer != null && status != ControlFlowUtils.InitializerUsageStatus.UNKNOWN) {
             String replacement;
             if (ExpressionUtils.isLiteral(initializer, Boolean.FALSE) &&
                 ExpressionUtils.isLiteral(rValue, Boolean.TRUE)) {

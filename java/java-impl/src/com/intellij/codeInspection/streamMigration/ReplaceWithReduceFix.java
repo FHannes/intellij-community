@@ -2,6 +2,7 @@ package com.intellij.codeInspection.streamMigration;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
+import com.siyeh.ig.psiutils.ControlFlowUtils;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -62,9 +63,9 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
     }
 
     PsiExpression init = accumulator.getInitializer();
-    StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(accumulator, loopStatement);
+    ControlFlowUtils.InitializerUsageStatus status = ControlFlowUtils.getInitializerUsageStatus(accumulator, loopStatement);
 
-    if (status == StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN || init == null) {
+    if (status == ControlFlowUtils.InitializerUsageStatus.UNKNOWN || init == null) {
       StringBuilder builder = generateStream(op);
       if (data.getOperatorData().getFirst().isEmpty() && !data.getOperatorData().getSecond()) {
         builder = prependStreamElement(builder, accumulator.getName());

@@ -15,12 +15,12 @@
  */
 package com.intellij.codeInspection.streamMigration;
 
-import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.InitializerUsageStatus;
 import com.intellij.codeInspection.util.OptionalUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiTypesUtil;
+import com.siyeh.ig.psiutils.ControlFlowUtils;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import org.jetbrains.annotations.NotNull;
 
@@ -79,8 +79,8 @@ class ReplaceWithFindFirstFix extends MigrateToStreamFix {
       PsiExpression value = assignment.getRExpression();
       if (value == null) return null;
       restoreComments(loopStatement, body);
-      InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
-      if (status != InitializerUsageStatus.UNKNOWN) {
+      ControlFlowUtils.InitializerUsageStatus status = ControlFlowUtils.getInitializerUsageStatus(var, loopStatement);
+      if (status != ControlFlowUtils.InitializerUsageStatus.UNKNOWN) {
         PsiExpression initializer = var.getInitializer();
         if (initializer != null) {
           String replacementText = generateOptionalUnwrap(stream, tb, value, initializer, var.getType());

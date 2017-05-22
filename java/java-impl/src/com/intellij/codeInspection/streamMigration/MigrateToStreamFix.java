@@ -19,7 +19,10 @@ import com.intellij.codeInspection.LambdaCanBeMethodReferenceInspection;
 import com.intellij.codeInspection.LocalQuickFix;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.SimplifyStreamApiCallChainsInspection;
-import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.*;
+import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.CollectionStream;
+import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.Operation;
+import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.StreamSource;
+import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.TerminalBlock;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.CodeStyleManager;
@@ -27,6 +30,7 @@ import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.controlFlow.*;
 import com.intellij.psi.impl.PsiDiamondTypeUtil;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.siyeh.ig.psiutils.ControlFlowUtils;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
@@ -74,8 +78,8 @@ abstract class MigrateToStreamFix implements LocalQuickFix {
                                                PsiType expressionType) {
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     restoreComments(loopStatement, loopStatement.getBody());
-    InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
-    if (status != InitializerUsageStatus.UNKNOWN) {
+    ControlFlowUtils.InitializerUsageStatus status = ControlFlowUtils.getInitializerUsageStatus(var, loopStatement);
+    if (status != ControlFlowUtils.InitializerUsageStatus.UNKNOWN) {
       PsiExpression initializer = var.getInitializer();
       if (ExpressionUtils.isZero(initializer)) {
         PsiType type = var.getType();
@@ -90,15 +94,15 @@ abstract class MigrateToStreamFix implements LocalQuickFix {
                                  PsiVariable var,
                                  PsiExpression initializer,
                                  String replacement,
-                                 InitializerUsageStatus status) {
+                                 ControlFlowUtils.InitializerUsageStatus status) {
     Project project = loopStatement.getProject();
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
-    if(status == InitializerUsageStatus.DECLARED_JUST_BEFORE) {
+    if(status == ControlFlowUtils.InitializerUsageStatus.DECLARED_JUST_BEFORE) {
       initializer.replace(elementFactory.createExpressionFromText(replacement, loopStatement));
       removeLoop(loopStatement);
       return var;
     } else {
-      if(status == InitializerUsageStatus.AT_WANTED_PLACE_ONLY) {
+      if(status == ControlFlowUtils.InitializerUsageStatus.AT_WANTED_PLACE_ONLY) {
         initializer.delete();
       }
       return

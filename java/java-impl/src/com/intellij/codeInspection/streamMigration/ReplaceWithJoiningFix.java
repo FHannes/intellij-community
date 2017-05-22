@@ -3,6 +3,7 @@ package com.intellij.codeInspection.streamMigration;
 import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.MapOp;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
+import com.siyeh.ig.psiutils.ControlFlowUtils;
 import com.siyeh.ig.psiutils.TypeUtils;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
@@ -34,8 +35,8 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
                                                            boolean stringConcat) {
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     restoreComments(loopStatement, loopStatement.getBody());
-    StreamApiMigrationInspection.InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
-    if (stringConcat && !status.equals(StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN)) {
+    ControlFlowUtils.InitializerUsageStatus status = ControlFlowUtils.getInitializerUsageStatus(var, loopStatement);
+    if (stringConcat && !status.equals(ControlFlowUtils.InitializerUsageStatus.UNKNOWN)) {
       // Get initializer constructor argument if present
       String sbArg = Optional.ofNullable(var.getInitializer()).map(PsiElement::getText).orElse(null);
       if (sbArg != null && !"\"\"".equals(sbArg)) {
@@ -56,10 +57,10 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
           checkVar.delete();
         }
         // Refresh status after removing switch variable
-        status = StreamApiMigrationInspection.getInitializerUsageStatus(var, loopStatement);
+        status = ControlFlowUtils.getInitializerUsageStatus(var, loopStatement);
       }
       if (stringConcat) {
-        if (!status.equals(StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN)) {
+        if (!status.equals(ControlFlowUtils.InitializerUsageStatus.UNKNOWN)) {
           PsiExpression initializer = var.getInitializer();
           return replaceInitializer(loopStatement, var, initializer, builder.toString(), status);
         } else {

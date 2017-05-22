@@ -15,7 +15,6 @@
  */
 package com.intellij.codeInspection.streamMigration;
 
-import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.InitializerUsageStatus;
 import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.MapOp;
 import com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.TerminalBlock;
 import com.intellij.openapi.diagnostic.Logger;
@@ -28,6 +27,7 @@ import com.intellij.psi.codeStyle.VariableKind;
 import com.intellij.psi.util.InheritanceUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
+import com.siyeh.ig.psiutils.ControlFlowUtils;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -96,13 +96,13 @@ class ReplaceWithCollectFix extends MigrateToStreamFix {
     StringBuilder builder = generateStream(new MapOp(tb.getLastOperation(), itemToAdd, tb.getVariable(), addedType));
 
     if (variable != null) {
-      InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(variable, loopStatement);
-      if(status != InitializerUsageStatus.UNKNOWN) {
+      ControlFlowUtils.InitializerUsageStatus status = ControlFlowUtils.getInitializerUsageStatus(variable, loopStatement);
+      if(status != ControlFlowUtils.InitializerUsageStatus.UNKNOWN) {
         PsiExpression initializer = variable.getInitializer();
         LOG.assertTrue(initializer != null);
         PsiElement toArrayConversion = handleToArray(builder, initializer, loopStatement, call);
         if(toArrayConversion != null) {
-          if(status != InitializerUsageStatus.AT_WANTED_PLACE) {
+          if(status != ControlFlowUtils.InitializerUsageStatus.AT_WANTED_PLACE) {
             variable.delete();
           }
           return toArrayConversion;
@@ -141,8 +141,8 @@ class ReplaceWithCollectFix extends MigrateToStreamFix {
     PsiLocalVariable variable;
     variable = StreamApiMigrationInspection.extractCollectionVariable(qualifierCall.getMethodExpression().getQualifierExpression());
     if (variable == null || !InheritanceUtil.isInheritor(variable.getType(), CommonClassNames.JAVA_UTIL_MAP)) return null;
-    InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(variable, loopStatement);
-    if(status == InitializerUsageStatus.UNKNOWN) return null;
+    ControlFlowUtils.InitializerUsageStatus status = ControlFlowUtils.getInitializerUsageStatus(variable, loopStatement);
+    if(status == ControlFlowUtils.InitializerUsageStatus.UNKNOWN) return null;
     PsiExpression[] computeArgs = qualifierCall.getArgumentList().getExpressions();
     if(!(computeArgs[1] instanceof PsiLambdaExpression)) return null;
     PsiExpression ctor = LambdaUtil.extractSingleExpressionFromBody(((PsiLambdaExpression)computeArgs[1]).getBody());
@@ -191,8 +191,8 @@ class ReplaceWithCollectFix extends MigrateToStreamFix {
     if(args.length < 2) return null;
     String methodName = call.getMethodExpression().getReferenceName();
     if(methodName == null) return null;
-    InitializerUsageStatus status = StreamApiMigrationInspection.getInitializerUsageStatus(variable, loopStatement);
-    if(status == InitializerUsageStatus.UNKNOWN) return null;
+    ControlFlowUtils.InitializerUsageStatus status = ControlFlowUtils.getInitializerUsageStatus(variable, loopStatement);
+    if(status == ControlFlowUtils.InitializerUsageStatus.UNKNOWN) return null;
     Project project = loopStatement.getProject();
     PsiElementFactory factory = JavaPsiFacade.getElementFactory(project);
     PsiExpression merger;

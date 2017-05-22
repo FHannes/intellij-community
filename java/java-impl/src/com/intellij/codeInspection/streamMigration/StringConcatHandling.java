@@ -4,17 +4,14 @@ import com.intellij.psi.*;
 import com.intellij.psi.controlFlow.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
-import com.siyeh.ig.psiutils.CollectionUtils;
-import com.siyeh.ig.psiutils.ExpressionUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
-import com.siyeh.ig.psiutils.VariableAccessUtils;
+import com.siyeh.ig.psiutils.*;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-import static com.intellij.codeInspection.streamMigration.StreamApiMigrationInspection.InitializerUsageStatus.UNKNOWN;
+import static com.siyeh.ig.psiutils.ControlFlowUtils.InitializerUsageStatus.UNKNOWN;
 
 /**
  * @author Frédéric Hannes
@@ -329,7 +326,7 @@ public class StringConcatHandling {
       if (checkVar == null || isFinal(checkVar)) return null;
 
       // The check variable should retain its initial value before reaching the loop
-      if (StreamApiMigrationInspection.getInitializerUsageStatus(checkVar, loop) == UNKNOWN) return null;
+      if (ControlFlowUtils.getInitializerUsageStatus(checkVar, loop) == UNKNOWN) return null;
 
       // The check variable's value may not be used after the loop
       if (isValueReferencedAfter(checkVar, loop)) return null;
