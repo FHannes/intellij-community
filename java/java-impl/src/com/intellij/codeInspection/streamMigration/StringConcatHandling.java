@@ -227,10 +227,14 @@ public class StringConcatHandling {
     Map<Integer, List<ControlFlowUtil.ControlFlowEdge>> edges =
       StreamEx.of(ControlFlowUtil.getEdges(controlFlow, loopStart)).groupingBy(e -> e.myFrom);
 
+    Set<Integer> processed = new HashSet<>();
     Queue<Integer> branches = new LinkedList<>();
     branches.add(loopStart);
     while (!branches.isEmpty()) {
       int branch = branches.poll();
+
+      if (processed.contains(branch)) continue;
+      processed.add(branch);
 
       if (branch < controlFlow.getSize() && branch <= loopEnd) {
         if (isVariableWritten(controlFlow, branch, var)) return true;
@@ -266,10 +270,14 @@ public class StringConcatHandling {
     Map<Integer, List<ControlFlowUtil.ControlFlowEdge>> edges =
       StreamEx.of(ControlFlowUtil.getEdges(controlFlow, loopEnd)).groupingBy(e -> e.myFrom);
 
+    Set<Integer> processed = new HashSet<>();
     Queue<Integer> branches = new LinkedList<>();
     branches.add(loopEnd);
     while (!branches.isEmpty()) {
       int branch = branches.poll();
+
+      if (processed.contains(branch)) continue;
+      processed.add(branch);
 
       if (branch < controlFlow.getSize()) {
         if (isVariableRead(controlFlow, branch, var)) return true;
@@ -296,6 +304,9 @@ public class StringConcatHandling {
 
   @Nullable
   public static PsiVariable getJoinedVariable(PsiLoopStatement loop, StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
+    // At least one stream variable must be present
+    if (variables.isEmpty()) return null;
+
     // Only works for loops with (at least one and) at most two statements [if-statement with body counts as one]
     if (tb.getStatements().length != 0 && tb.getStatements().length > 3) return null;
 
