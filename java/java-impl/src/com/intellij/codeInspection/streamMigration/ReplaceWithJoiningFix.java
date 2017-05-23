@@ -36,7 +36,8 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     restoreComments(loopStatement, loopStatement.getBody());
     ControlFlowUtils.InitializerUsageStatus status = ControlFlowUtils.getInitializerUsageStatus(var, loopStatement);
-    if (stringConcat && !status.equals(ControlFlowUtils.InitializerUsageStatus.UNKNOWN)) {
+    if (stringConcat && !status.equals(ControlFlowUtils.InitializerUsageStatus.UNKNOWN) &&
+        !status.equals(ControlFlowUtils.InitializerUsageStatus.AT_WANTED_PLACE)) {
       // Get initializer constructor argument if present
       String sbArg = Optional.ofNullable(var.getInitializer()).map(PsiElement::getText).orElse(null);
       if (sbArg != null && !"\"\"".equals(sbArg)) {
@@ -60,11 +61,12 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
         status = ControlFlowUtils.getInitializerUsageStatus(var, loopStatement);
       }
       if (stringConcat) {
-        if (!status.equals(ControlFlowUtils.InitializerUsageStatus.UNKNOWN)) {
+        if (!status.equals(ControlFlowUtils.InitializerUsageStatus.UNKNOWN) &&
+            !status.equals(ControlFlowUtils.InitializerUsageStatus.AT_WANTED_PLACE)) {
           PsiExpression initializer = var.getInitializer();
           return replaceInitializer(loopStatement, var, initializer, builder.toString(), status);
         } else {
-          return loopStatement.replace(elementFactory.createStatementFromText(var.getName() + " += " + builder.toString(),
+          return loopStatement.replace(elementFactory.createStatementFromText(var.getName() + " += " + builder.toString() + ";",
                                                                               loopStatement));
         }
       } else {
