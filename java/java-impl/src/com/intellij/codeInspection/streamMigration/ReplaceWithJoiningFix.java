@@ -82,6 +82,8 @@ class ReplaceWithJoiningFix extends MigrateToStreamFix {
                      @NotNull PsiLoopStatement loopStatement,
                      @NotNull PsiStatement body,
                      @NotNull StreamApiMigrationInspection.TerminalBlock tb) {
+    tb = tb.tryPeelLimit(loopStatement);
+
     Optional<PsiVariable> var;
     if (stringConcat) {
       var = StreamEx.of(tb.getStatements())

@@ -552,15 +552,15 @@ public class StreamApiMigrationInspection extends BaseJavaBatchLocalInspectionTo
       } else if (getAccumulatedVariable(tb, nonFinalVariables) != null) {
         registerProblem(statement, "sum", new ReplaceWithSumFix());
       }
+      PsiVariable joinVar;
+      if((joinVar = StringConcatHandling.getJoinedVariable(statement, tbWithLimit, nonFinalVariables)) != null) {
+        registerProblem(statement, "joining",
+                        new ReplaceWithJoiningFix(joinVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)));
+      }
+      if (ReduceHandling.getReduceVar(statement, tbWithLimit, nonFinalVariables) != null) {
+        registerProblem(statement, "reduce", new ReplaceWithReduceFix());
+      }
       if (exitPoints.isEmpty()) {
-        PsiVariable joinVar;
-        if((joinVar = StringConcatHandling.getJoinedVariable(statement, tb, nonFinalVariables)) != null) {
-          registerProblem(statement, "joining",
-                          new ReplaceWithJoiningFix(joinVar.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING)));
-        }
-        if (ReduceHandling.getReduceVar(statement, tb, nonFinalVariables) != null) {
-          registerProblem(statement, "reduce", new ReplaceWithReduceFix());
-        }
         if(!nonFinalVariables.isEmpty()) {
           return;
         }

@@ -46,6 +46,8 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
                      @NotNull PsiLoopStatement loopStatement,
                      @NotNull PsiStatement body,
                      @NotNull StreamApiMigrationInspection.TerminalBlock tb) {
+    tb = tb.tryPeelLimit(loopStatement);
+
     PsiAssignmentExpression stmt = tb.getSingleExpression(PsiAssignmentExpression.class);
     if (stmt == null) return null;
 
