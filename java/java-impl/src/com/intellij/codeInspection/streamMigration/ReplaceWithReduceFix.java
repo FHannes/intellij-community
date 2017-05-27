@@ -76,8 +76,9 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
       String newExpression = accumulator.getName() + " = ";
       String streamExpr = builder.toString();
       if (data.getOperatorData().getFirst().isEmpty()) {
-        streamExpr += ".orElse(" + accumulator.getName() + ");";
+        streamExpr += ".orElse(" + accumulator.getName() + ")";
       }
+
       if (data.getOperatorData().getFirst().isEmpty() && !data.getOperatorData().getSecond()) {
         newExpression += streamExpr;
       } else {
@@ -115,6 +116,7 @@ class ReplaceWithReduceFix extends MigrateToStreamFix {
           newExpression = builder.toString();
         }
       }
+
       return replaceInitializer(loopStatement, accumulator, init, newExpression, status);
     }
   }

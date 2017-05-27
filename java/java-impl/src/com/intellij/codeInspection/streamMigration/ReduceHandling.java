@@ -67,7 +67,7 @@ public class ReduceHandling {
     // boolean
     addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.AND, "true", true);
     addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.OR, "false", true);
-    addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.ANDAND, "true", false);
+    addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.ANDAND, "true", true);
     addAssociativeOperator(PsiType.BOOLEAN, JavaTokenType.OROR, "false", true);
 
     /*// char
@@ -99,8 +99,8 @@ public class ReduceHandling {
     addAssociativeOperator(PsiType.INT, JavaTokenType.XOR, "", false);
 
     // long
-    addAssociativeOperator(PsiType.LONG, JavaTokenType.PLUS, "0", false);
-    addAssociativeOperator(PsiType.LONG, JavaTokenType.ASTERISK, "1", false);
+    addAssociativeOperator(PsiType.LONG, JavaTokenType.PLUS, "0L", false);
+    addAssociativeOperator(PsiType.LONG, JavaTokenType.ASTERISK, "1L", false);
     addAssociativeOperator(PsiType.LONG, JavaTokenType.AND, "", true);
     addAssociativeOperator(PsiType.LONG, JavaTokenType.OR, "0L", true);
     addAssociativeOperator(PsiType.LONG, JavaTokenType.XOR, "", false);
@@ -130,7 +130,7 @@ public class ReduceHandling {
     addAssociativeMember("java.math.BigInteger", "or", "java.math.BigInteger.ZERO", true);
     addAssociativeMember("java.math.BigInteger", "xor", "", false);
     addAssociativeMember("java.time.Duration", "plus", "java.time.Duration.ZERO", false);
-    addAssociativeMember("javax.xml.datatype.Duration", "add", "", false);
+    //addAssociativeMember("javax.xml.datatype.Duration", "add", "", false);
 
     // public static (?:final )?(\w\w*) \w+ ?\( ?(?:final )?\1 \w+ ?, ?(?:final )?\1 \w+ ?\)
     // Static method operations
