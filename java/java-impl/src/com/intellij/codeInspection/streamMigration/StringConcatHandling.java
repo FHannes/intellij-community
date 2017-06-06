@@ -32,13 +32,15 @@ public class StringConcatHandling {
     PsiMethodCallExpression mce = getMethodCall(stmt);
     if (mce != null) {
       PsiVariable var = resolveVariable(mce.getMethodExpression().getQualifierExpression());
-      return var != null && var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER) ? var : null;
+      if (!(var instanceof PsiLocalVariable)) return null;
+      return var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING_BUILDER) ? var : null;
     }
 
     PsiAssignmentExpression ae = getAssignment(stmt);
     if (ae != null) {
       PsiVariable var = StreamApiMigrationInspection.extractAccumulator(ae);
-      return var != null && var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING) ? var : null;
+      if (!(var instanceof PsiLocalVariable)) return null;
+      return var.getType().equalsToText(CommonClassNames.JAVA_LANG_STRING) ? var : null;
     }
 
     return null;

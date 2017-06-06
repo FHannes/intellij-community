@@ -301,7 +301,7 @@ public class ReduceHandling {
   public static ReductionData getReductionAccumulator(PsiAssignmentExpression assignment) {
     if (!(assignment.getLExpression() instanceof PsiReferenceExpression)) return null;
     final PsiVariable accumulator = resolveVariable(assignment.getLExpression());
-    if (accumulator == null) return null;
+    if (!(accumulator instanceof PsiLocalVariable)) return null;
     final PsiType type = accumulator.getType();
 
     PsiExpression expr1, expr2;
@@ -440,7 +440,7 @@ public class ReduceHandling {
   }
 
   @Nullable
-  public static ReduceHandling.ReductionData getReduceVar(PsiLoopStatement loop, StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
+  public static ReduceHandling.ReductionData getReduceVar(StreamApiMigrationInspection.TerminalBlock tb, List<PsiVariable> variables) {
     PsiAssignmentExpression stmt = tb.getSingleExpression(PsiAssignmentExpression.class);
     if (stmt == null) return null;
 
