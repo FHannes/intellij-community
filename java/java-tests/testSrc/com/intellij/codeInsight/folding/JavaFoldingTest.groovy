@@ -17,8 +17,6 @@ package com.intellij.codeInsight.folding
 
 import com.intellij.codeInsight.CodeInsightSettings
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzerSettings
-import com.intellij.codeInsight.folding.impl.CodeFoldingManagerImpl
-import com.intellij.codeInsight.folding.impl.JavaCodeFoldingSettingsImpl
 import com.intellij.codeInsight.folding.impl.JavaFoldingBuilder
 import com.intellij.find.FindManager
 import com.intellij.openapi.actionSystem.IdeActions
@@ -37,7 +35,6 @@ import com.intellij.psi.PsiMethod
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.EditorTestUtil
 import com.intellij.testFramework.LightProjectDescriptor
-import com.intellij.testFramework.fixtures.LightCodeInsightFixtureTestCase
 import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl
 import com.intellij.util.DocumentUtil
 import org.intellij.lang.annotations.Language
@@ -45,36 +42,17 @@ import org.jetbrains.annotations.NotNull
 
 /**
  * @author Denis Zhdanov
- * @since 1/17/11 1:00 PM
+ * @since 17.01.2011
  */
 @SuppressWarnings("ALL") // too many warnings in injections
-public class JavaFoldingTest extends LightCodeInsightFixtureTestCase {
-  def JavaCodeFoldingSettingsImpl myFoldingSettings
-  def JavaCodeFoldingSettingsImpl myFoldingStateToRestore
-
+class JavaFoldingTest extends JavaFoldingTestCase {
   @NotNull
   @Override
   protected LightProjectDescriptor getProjectDescriptor() {
     return JAVA_1_7
   }
 
-  @Override
-  public void setUp() {
-    super.setUp()
-    myFoldingSettings = JavaCodeFoldingSettings.instance as JavaCodeFoldingSettingsImpl
-    myFoldingStateToRestore = new JavaCodeFoldingSettingsImpl()
-    myFoldingStateToRestore.loadState(myFoldingSettings)
-  }
-
-  @Override
-  protected void tearDown() {
-    myFoldingSettings.loadState(myFoldingStateToRestore)
-    super.tearDown()
-  }
-
-  public void testEndOfLineComments() {
-    myFixture.testFolding("$PathManagerEx.testDataPath/codeInsight/folding/${getTestName(false)}.java");
-  }
+  public void testEndOfLineComments() { doTest() }
 
   public void testEditingImports() {
     configure """\
@@ -412,8 +390,11 @@ class Test {
     assertEquals('test1', myFixture.editor.selectionModel.selectedText)
   }
 
-  public void testCustomFolding() {
-    myFixture.testFolding("$PathManagerEx.testDataPath/codeInsight/folding/${getTestName(false)}.java");
+  public void testCustomFolding() { doTest() }
+  public void testEmptyMethod() { doTest() }
+
+  private doTest() {
+    myFixture.testFolding("$PathManagerEx.testDataPath/codeInsight/folding/${getTestName(false)}.java")
   }
 
   public void "test custom folding IDEA-122715 and IDEA-87312"() {
@@ -471,6 +452,63 @@ class Foo {
     def foldingModel = myFixture.editor.foldingModel as FoldingModelImpl
     assertEquals 1, foldRegionsCount
     assertEquals "Some", foldingModel.allFoldRegions[0].placeholderText
+  }
+
+  public void "test custom foldings intersecting with comment foldings"() {
+    @Language("JAVA")
+    def text = """class Foo {
+// 0
+// 1
+// region Some
+// 2
+// 3 next empty line is significant
+
+// non-dangling
+  int t = 1;
+// 4
+// 5
+// endregion
+// 6
+// 7
+}
+"""
+    configure text
+    def foldingModel = myFixture.editor.foldingModel as FoldingModelImpl
+
+    assertFolding "// region"
+    assertFolding "// 0"
+    assertFolding "// 2" // Note: spans only two lines, see next test for details
+    assertFolding "// 4"
+    assertFolding "// 6"
+
+    assertEquals 5, foldRegionsCount
+  }
+
+  public void "test single line comments foldings"() {
+    @Language("JAVA")
+    def text = """class Foo {
+// 0
+// 1
+// 2 next empty line is significant
+
+// 3 non-folded
+// 4 non-folded
+  int t = 1;
+// 5
+// 6
+// 7
+}
+"""
+    configure text
+    def foldingModel = myFixture.editor.foldingModel as FoldingModelImpl
+
+    assertFolding "// 0"
+    assertNoFoldingStartsAt "// 3"
+    assertNoFoldingCovers "// 3"
+    assertNoFoldingCovers "// 4"
+    assertFolding "// 5"
+
+    assertEquals 2, foldRegionsCount
   }
 
   public void "test custom folding collapsed by default"() {
@@ -558,14 +596,6 @@ class Test {
     assertEquals(1, folds.length)
     assertEquals(2, folds[0].startOffset)
     assertEquals(6, folds[0].endOffset)
-  }
-
-  private def configure(String text) {
-    myFixture.configureByText("a.java", text)
-    CodeFoldingManagerImpl.getInstance(getProject()).buildInitialFoldings(myFixture.editor);
-    def foldingModel = myFixture.editor.foldingModel as FoldingModelEx
-    foldingModel.rebuild()
-    myFixture.doHighlighting()
   }
 
   public void "test simple property accessors in one line"() {
@@ -1046,5 +1076,33 @@ class Foo {
 
   private int getExpandedFoldRegionsCount() {
     return myFixture.editor.foldingModel.allFoldRegions.count { it.isExpanded() ? 1 : 0}
+  }
+
+  // Based on methods from GroovyFoldingTest
+  private boolean assertFolding(int offset) {
+    assert offset >= 0
+    myFixture.editor.foldingModel.allFoldRegions.any { it.startOffset == offset }
+  }
+
+  private void assertFolding(String marker) {
+    assert assertFolding(myFixture.file.text.indexOf(marker)), marker
+  }
+
+  private boolean assertNoFoldingCovers(int offset) {
+    assert offset >= 0
+    myFixture.editor.foldingModel.allFoldRegions.every { offset < it.startOffset || it.endOffset <= offset }
+  }
+
+  private void assertNoFoldingCovers(String marker) {
+    assert assertNoFoldingCovers(myFixture.file.text.indexOf(marker)), marker
+  }
+
+  private boolean assertNoFoldingStartsAt(int offset) {
+    assert offset >= 0
+    myFixture.editor.foldingModel.allFoldRegions.every { offset != it.startOffset }
+  }
+
+  private void assertNoFoldingStartsAt(String marker) {
+    assert assertNoFoldingStartsAt(myFixture.file.text.indexOf(marker)), marker
   }
 }

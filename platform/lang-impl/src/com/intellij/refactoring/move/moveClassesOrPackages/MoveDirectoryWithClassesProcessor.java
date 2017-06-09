@@ -14,16 +14,10 @@
  * limitations under the License.
  */
 
-/*
- * User: anna
- * Date: 28-Dec-2009
- */
 package com.intellij.refactoring.move.moveClassesOrPackages;
 
-import com.intellij.CommonBundle;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.psi.PsiDirectory;
@@ -152,13 +146,9 @@ public class MoveDirectoryWithClassesProcessor extends BaseRefactoringProcessor 
       for (PsiFile psiFile : myFilesToMove.keySet()) {
         myFilesToMove.get(psiFile).findOrCreateTargetDirectory();
       }
-    }
-    catch (IncorrectOperationException e) {
-      Messages.showErrorDialog(myProject, e.getMessage(), CommonBundle.getErrorTitle());
-      return;
-    }
-    DumbService.getInstance(myProject).completeJustSubmittedTasks();
-    try {
+
+      DumbService.getInstance(myProject).completeJustSubmittedTasks();
+
       final List<PsiFile> movedFiles = new ArrayList<>();
       final Map<PsiElement, PsiElement> oldToNewElementsMapping = new HashMap<>();
       for (PsiFile psiFile : myFilesToMove.keySet()) {

@@ -24,9 +24,9 @@ import com.intellij.openapi.vcs.VcsDataKeys;
 import com.intellij.openapi.vcs.changes.Change;
 import com.intellij.openapi.vcs.changes.actions.CreatePatchFromChangesAction;
 import com.intellij.vcs.log.CommitId;
+import com.intellij.vcs.log.history.FileHistoryUi;
 import com.intellij.vcs.log.impl.VcsLogUtil;
 import com.intellij.vcs.log.ui.VcsLogInternalDataKeys;
-import com.intellij.vcs.log.ui.history.FileHistoryUi;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -59,6 +59,6 @@ public class CreatePatchFromHistoryAction extends AnAction implements DumbAware 
     ui.getVcsLog().requestSelectedDetails(detailsList -> {
       List<Change> changes = ui.collectChanges(detailsList, false);
       CreatePatchFromChangesAction.createPatch(project, commitMessage, changes);
-    }, null);
+    });
   }
 }

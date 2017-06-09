@@ -22,7 +22,29 @@ import com.intellij.lang.LanguageExtension
 object InlayParameterHintsExtension: LanguageExtension<InlayParameterHintsProvider>("com.intellij.codeInsight.parameterNameHints")
 
 
-data class InlayInfo(val text: String, val offset: Int)
+class InlayInfo(val text: String, val offset: Int, val isShowOnlyIfExistedBefore: Boolean) {
+  
+  constructor(text: String, offset: Int): this(text, offset, false)
+  
+  override fun equals(other: Any?): Boolean {
+    if (this === other) return true
+    if (other?.javaClass != javaClass) return false
+
+    other as InlayInfo
+
+    if (text != other.text) return false
+    if (offset != other.offset) return false
+
+    return true
+  }
+
+  override fun hashCode(): Int {
+    var result = text.hashCode()
+    result = 31 * result + offset
+    return result
+  }
+
+}
 
 
 sealed class HintInfo {
@@ -45,6 +67,9 @@ sealed class HintInfo {
     }
     
     open val optionName = option.name
+
+    fun isOptionEnabled(): Boolean = option.isEnabled()
+
   }
 
 }
@@ -52,6 +77,8 @@ sealed class HintInfo {
 data class Option(val id: String,
                   val name: String,
                   val defaultValue: Boolean) {
+
+  fun isEnabled() = get()
 
   fun get(): Boolean {
     return ParameterNameHintsSettings.getInstance().getOption(id) ?: defaultValue

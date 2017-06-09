@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,6 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.compiler.ClassObject;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.JavaSdkVersion;
-import com.intellij.openapi.projectRoots.JdkVersionUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.refactoring.extractMethodObject.ExtractLightMethodObjectHandler;
 import com.sun.jdi.ClassLoaderReference;
@@ -61,11 +60,6 @@ public abstract class CompilingEvaluator implements ExpressionEvaluator {
   }
 
   @Override
-  public Value getValue() {
-    return null;
-  }
-
-  @Override
   public Modifier getModifier() {
     return null;
   }
@@ -85,7 +79,7 @@ public abstract class CompilingEvaluator implements ExpressionEvaluator {
     autoLoadContext.setClassLoader(classLoader);
 
     String version = ((VirtualMachineProxyImpl)process.getVirtualMachineProxy()).version();
-    Collection<ClassObject> classes = compile(JdkVersionUtil.getVersion(version));
+    Collection<ClassObject> classes = compile(JavaSdkVersion.fromVersionString(version));
 
     defineClasses(classes, autoLoadContext, process, classLoader);
 

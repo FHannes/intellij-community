@@ -326,7 +326,8 @@ public class VirtualFilePointerManagerImpl extends VirtualFilePointerManager imp
     try {
       for (VirtualFilePointerImpl pointer : pointers) {
         if (!myStoredPointers.contains(pointer)) {
-          pointer.throwDisposalError("Virtual pointer hasn't been disposed: "+pointer);
+          pointer.throwDisposalError("Virtual pointer '" + pointer +
+                                     "' hasn't been disposed: "+pointer.getStackTrace());
         }
       }
     }
@@ -419,6 +420,7 @@ public class VirtualFilePointerManagerImpl extends VirtualFilePointerManager imp
 
           List<FilePointerPartNode> nodes = new ArrayList<>();
           addPointersUnder(eventFile, false, "", nodes);
+          toFireEvents.addAll(nodes); // files deleted from eventFile and created in moveEvent.getNewParent()
           for (FilePointerPartNode node : nodes) {
             VirtualFilePointerImpl pointer = node.getAnyPointer();
             VirtualFile file = pointer == null ? null : pointer.getFile();

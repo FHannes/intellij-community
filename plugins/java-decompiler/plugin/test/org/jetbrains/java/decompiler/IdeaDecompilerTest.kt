@@ -123,7 +123,7 @@ class IdeaDecompilerTest : LightCodeInsightFixtureTestCase() {
   fun testPerformance() {
     val decompiler = IdeaDecompiler()
     val file = getTestFile("${PlatformTestUtil.getRtJarPath()}!/javax/swing/JTable.class")
-    PlatformTestUtil.startPerformanceTest("decompiling JTable.class", 10000, { decompiler.getText(file) }).cpuBound().assertTiming()
+    PlatformTestUtil.startPerformanceTest("decompiling JTable.class", 10000, { decompiler.getText(file) }).assertTiming()
   }
 
   fun testStructureView() {
@@ -133,7 +133,7 @@ class IdeaDecompilerTest : LightCodeInsightFixtureTestCase() {
     val editor = FileEditorManager.getInstance(project).openFile(file, false)[0]
     val builder = StructureViewBuilder.PROVIDER.getStructureViewBuilder(StdFileTypes.CLASS, file, project)!!
     val viewComponent = builder.createStructureView(editor, project) as StructureViewComponent
-    Disposer.register(testRootDisposable, viewComponent)
+    Disposer.register(myFixture.testRootDisposable, viewComponent)
     viewComponent.setActionActive(JavaAnonymousClassesNodeProvider.ID, true)
 
     val treeStructure = viewComponent.treeStructure

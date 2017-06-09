@@ -359,7 +359,7 @@ public class XmlTagImpl extends XmlElementImpl implements XmlTag, HintedReferenc
         }
       }
     }
-    return map == null ? Collections.<String, CachedValue<XmlNSDescriptor>>emptyMap() : map;
+    return map == null ? Collections.emptyMap() : map;
   }
 
   private Map<String, CachedValue<XmlNSDescriptor>> initializeSchema(@NotNull final String namespace,
@@ -440,6 +440,7 @@ public class XmlTagImpl extends XmlElementImpl implements XmlTag, HintedReferenc
     }
 
     final XmlFile file = XmlUtil.getContainingFile(this);
+    if (file == null) return null;
     final PsiFile psiFile = ExternalResourceManager.getInstance().getResourceLocation(fileLocation, file, version);
     if (psiFile instanceof XmlFile) {
       return (XmlFile)psiFile;

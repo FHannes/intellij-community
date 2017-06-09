@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2015 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,29 +24,37 @@ import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.TaskInfo;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.popup.JBPopup;
-import com.intellij.openapi.ui.popup.JBPopupFactory;
-import com.intellij.openapi.ui.popup.ListItemDescriptorAdapter;
+import com.intellij.openapi.ui.popup.*;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.wm.IdeFrame;
+import com.intellij.openapi.wm.WindowManager;
+import com.intellij.openapi.wm.ex.StatusBarEx;
+import com.intellij.openapi.wm.ex.WindowManagerEx;
+import com.intellij.reference.SoftReference;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.popup.list.GroupedItemsListRenderer;
 import com.intellij.util.IconUtil;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.InputEvent;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-class StopAction extends DumbAwareAction implements AnAction.TransparentUpdate {
+public class StopAction extends DumbAwareAction implements AnAction.TransparentUpdate {
+  private WeakReference<JBPopup> myActivePopupRef = null;
+
   private static boolean isPlaceGlobal(AnActionEvent e) {
     return ActionPlaces.isMainMenuOrActionSearch(e.getPlace())
            || ActionPlaces.MAIN_TOOLBAR.equals(e.getPlace())
@@ -61,24 +69,22 @@ class StopAction extends DumbAwareAction implements AnAction.TransparentUpdate {
     if (isPlaceGlobal(e)) {
       List<RunContentDescriptor> stoppableDescriptors = getActiveStoppableDescriptors(e.getDataContext());
       List<Pair<TaskInfo, ProgressIndicator>> cancellableProcesses = getCancellableProcesses(e.getProject());
-      int todoSize = stoppableDescriptors.size() + cancellableProcesses.size();
-      if (todoSize > 1) {
+      int stopCount = stoppableDescriptors.size();
+      int cancelCount = cancellableProcesses.size();
+      if (stopCount > 1 || cancelCount > 0) {
+        enable = true;
         presentation.setText(getTemplatePresentation().getText()+"...");
       }
-      else if (todoSize == 1) {
-        if (stoppableDescriptors.size() == 1) {
+      else if (stopCount == 1) {
+        enable = true;
           presentation.setText(ExecutionBundle.message("stop.configuration.action.name",
                                                        StringUtil.escapeMnemonics(stoppableDescriptors.get(0).getDisplayName())));
-        } else {
-          TaskInfo taskInfo = cancellableProcesses.get(0).first;
-          presentation.setText(taskInfo.getCancelText() + " " + taskInfo.getTitle());
-        }
       } else {
-        presentation.setText(getTemplatePresentation().getText());
+        enable = false;
       }
-      enable = todoSize > 0;
-      if (todoSize > 1) {
-        icon = IconUtil.addText(icon, String.valueOf(todoSize));
+      int count = stopCount + cancelCount;
+      if (count > 1) {
+        icon = IconUtil.addText(icon, String.valueOf(count));
       }
     }
     else {
@@ -116,14 +122,11 @@ class StopAction extends DumbAwareAction implements AnAction.TransparentUpdate {
     Project project = e.getProject();
     List<Pair<TaskInfo, ProgressIndicator>> cancellableProcesses = getCancellableProcesses(project);
     List<RunContentDescriptor> stoppableDescriptors = getActiveStoppableDescriptors(dataContext);
+    int stopCount = stoppableDescriptors.size();
+    int cancelCount = cancellableProcesses.size();
     if (isPlaceGlobal(e)) {
-      int todoSize = cancellableProcesses.size() + stoppableDescriptors.size();
-      if (todoSize == 1) {
-        if (!stoppableDescriptors.isEmpty()) {
-          ExecutionManagerImpl.stopProcess(stoppableDescriptors.get(0));
-        } else {
-          cancellableProcesses.get(0).second.cancel();
-        }
+      if (stopCount == 1 && cancelCount == 0) {
+        ExecutionManagerImpl.stopProcess(stoppableDescriptors.get(0));
         return;
       }
 
@@ -133,25 +136,44 @@ class StopAction extends DumbAwareAction implements AnAction.TransparentUpdate {
         return;
       }
 
-      final JBList list = new JBList(handlerItems.first);
+      final JBList<HandlerItem> list = new JBList<>(handlerItems.first);
       if (handlerItems.second != null) list.setSelectedValue(handlerItems.second, true);
+      HandlerItem stopAllItem =
+        new HandlerItem(ExecutionBundle.message("stop.all", KeymapUtil.getFirstKeyboardShortcutText("Stop")), AllIcons.Actions.Suspend,
+                        true) {
+          @Override
+          void stop() {
+            for (HandlerItem item : handlerItems.first) {
+              item.stop();
+            }
+          }
+        };
+      if (stopCount + cancelCount > 1) {
+        ((DefaultListModel<HandlerItem>)list.getModel()).addElement(stopAllItem);
+      }
+      JBPopup activePopup = SoftReference.dereference(myActivePopupRef);
+      if (activePopup != null) {
+          stopAllItem.stop();
+          activePopup.cancel();
+          return;
+      }
 
-      list.setCellRenderer(new GroupedItemsListRenderer(new ListItemDescriptorAdapter() {
+      list.setCellRenderer(new GroupedItemsListRenderer<>(new ListItemDescriptorAdapter<HandlerItem>() {
         @Nullable
         @Override
-        public String getTextFor(Object value) {
-          return value instanceof HandlerItem ? ((HandlerItem)value).displayName : null;
+        public String getTextFor(HandlerItem item) {
+          return item.displayName;
         }
 
         @Nullable
         @Override
-        public Icon getIconFor(Object value) {
-          return value instanceof HandlerItem ? ((HandlerItem)value).icon : null;
+        public Icon getIconFor(HandlerItem item) {
+          return item.icon;
         }
 
         @Override
-        public boolean hasSeparatorAboveOf(Object value) {
-          return value instanceof HandlerItem && ((HandlerItem)value).hasSeparator;
+        public boolean hasSeparatorAboveOf(HandlerItem item) {
+          return item.hasSeparator;
         }
       }));
 
@@ -165,11 +187,19 @@ class StopAction extends DumbAwareAction implements AnAction.TransparentUpdate {
             if (o instanceof HandlerItem) ((HandlerItem)o).stop();
           }
         })
+        .addListener(new JBPopupAdapter() {
+          @Override
+          public void onClosed(LightweightWindowEvent event) {
+            myActivePopupRef = null;
+          }
+        })
         .setRequestFocus(true)
         .createPopup();
+      myActivePopupRef = new WeakReference<>(popup);
       InputEvent inputEvent = e.getInputEvent();
       Component component = inputEvent != null ? inputEvent.getComponent() : null;
-      if (component != null && ActionPlaces.MAIN_TOOLBAR.equals(e.getPlace())) {
+      if (component != null && (ActionPlaces.MAIN_TOOLBAR.equals(e.getPlace())
+                                || ActionPlaces.NAVIGATION_BAR_TOOLBAR.equals(e.getPlace()))) {
         popup.showUnderneathOf(component);
       }
       else if (project == null) {
@@ -186,13 +216,12 @@ class StopAction extends DumbAwareAction implements AnAction.TransparentUpdate {
 
   @NotNull
   private static List<Pair<TaskInfo, ProgressIndicator>>  getCancellableProcesses(@Nullable Project project) {
-    return Collections.emptyList();//Don't confuse users with 'Stop Everything' toolbar button
-    //IdeFrame frame = ((WindowManagerEx)WindowManager.getInstance()).findFrameFor(project);
-    //StatusBarEx statusBar = frame == null ? null : (StatusBarEx)frame.getStatusBar();
-    //if (statusBar == null) return Collections.emptyList();
-    //
-    //return ContainerUtil.findAll(statusBar.getBackgroundProcesses(),
-    //                             pair -> pair.first.isCancellable() && !pair.second.isCanceled());
+    IdeFrame frame = ((WindowManagerEx)WindowManager.getInstance()).findFrameFor(project);
+    StatusBarEx statusBar = frame == null ? null : (StatusBarEx)frame.getStatusBar();
+    if (statusBar == null) return Collections.emptyList();
+
+    return ContainerUtil.findAll(statusBar.getBackgroundProcesses(),
+                                 pair -> pair.first.isCancellable() && !pair.second.isCanceled());
   }
 
   @Nullable
@@ -282,7 +311,7 @@ class StopAction extends DumbAwareAction implements AnAction.TransparentUpdate {
     private HandlerItem(String displayName, Icon icon, boolean hasSeparator) {
       this.displayName = displayName;
       this.icon = icon;
-      this.hasSeparator =  hasSeparator;
+      this.hasSeparator = hasSeparator;
     }
 
     public String toString() {

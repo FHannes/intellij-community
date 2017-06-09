@@ -173,7 +173,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
         });
       }
     });
-    connection.subscribe(ProjectManager.TOPIC, new ProjectManagerAdapter() {
+    connection.subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
       @Override
       public void projectOpened(Project project) {
         if (project == myProject) {
@@ -1642,7 +1642,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   /**
    * Closes deleted files. Closes file which are in the deleted directories.
    */
-  private final class MyVirtualFileListener extends VirtualFileAdapter {
+  private final class MyVirtualFileListener implements VirtualFileListener {
     @Override
     public void beforeFileDeletion(@NotNull VirtualFileEvent e) {
       assertDispatchThread();

@@ -22,7 +22,7 @@ import com.intellij.testFramework.fixtures.LightCodeInsightFixtureTestCase;
 import org.jetbrains.annotations.NotNull;
 
 public class SuspiciousCollectionMethodCallsTest extends LightCodeInsightFixtureTestCase {
-  private final SuspiciousCollectionsMethodCallsInspection myTool = new SuspiciousCollectionsMethodCallsInspection();
+  private SuspiciousCollectionsMethodCallsInspection myTool = new SuspiciousCollectionsMethodCallsInspection();
 
   @Override
   protected String getBasePath() {
@@ -34,6 +34,12 @@ public class SuspiciousCollectionMethodCallsTest extends LightCodeInsightFixture
     myFixture.testHighlighting(getTestName(false) + ".java");
   }
 
+  @Override
+  protected void tearDown() throws Exception {
+    myTool = null;
+    super.tearDown();
+  }
+
   public void testConcurrentHashMap() throws Exception { doTest(); }
   public void testRemoveAllCall() throws Exception { doTest(); }
   public void testSetList() throws Exception { doTest(); }
@@ -43,6 +49,10 @@ public class SuspiciousCollectionMethodCallsTest extends LightCodeInsightFixture
   public void testNewExpressionPassedToMapContains() throws Exception { doTest(); }
   public void testIgnoreConvertible() throws Exception {
     myTool.REPORT_CONVERTIBLE_METHOD_CALLS = false;
+    doTest();
+  }
+
+  public void testNewMapMethods() throws Exception {
     doTest();
   }
 

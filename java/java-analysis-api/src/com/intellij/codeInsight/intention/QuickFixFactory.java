@@ -172,6 +172,8 @@ public abstract class QuickFixFactory {
 
   @NotNull public abstract IntentionAction createInsertSuperFix(@NotNull PsiMethod constructor);
 
+  @NotNull public abstract IntentionAction createInsertThisFix(@NotNull PsiMethod constructor);
+  
   @NotNull public abstract IntentionAction createChangeMethodSignatureFromUsageFix(@NotNull PsiMethod targetMethod,
                                       @NotNull PsiExpression[] expressions,
                                       @NotNull PsiSubstitutor substitutor,
@@ -290,6 +292,9 @@ public abstract class QuickFixFactory {
 
   @NotNull
   public abstract IntentionAction createInsertMethodCallFix(@NotNull PsiMethodCallExpression call, PsiMethod method);
+
+  @NotNull
+  public abstract LocalQuickFixAndIntentionActionOnPsiElement createAccessStaticViaInstanceFix(PsiReferenceExpression methodRef, JavaResolveResult result);
 
   @NotNull
   public abstract IntentionAction createWrapStringWithFileFix(@Nullable PsiType type, @NotNull PsiExpression expression);

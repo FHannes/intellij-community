@@ -37,7 +37,10 @@ import com.intellij.ui.SearchTextFieldWithStoredHistory;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.vcs.log.*;
-import com.intellij.vcs.log.data.*;
+import com.intellij.vcs.log.data.VcsLogBranchFilterImpl;
+import com.intellij.vcs.log.data.VcsLogData;
+import com.intellij.vcs.log.data.VcsLogDateFilterImpl;
+import com.intellij.vcs.log.data.VcsLogStructureFilterImpl;
 import com.intellij.vcs.log.impl.*;
 import com.intellij.vcs.log.impl.VcsLogFilterCollectionImpl.VcsLogFilterCollectionBuilder;
 import com.intellij.vcs.log.ui.VcsLogActionPlaces;
@@ -118,7 +121,7 @@ public class VcsLogClassicFilterUi implements VcsLogFilterUi {
   @NotNull
   public ActionGroup createActionGroup() {
     DefaultActionGroup actionGroup = new DefaultActionGroup();
-    actionGroup.add(new FilterActionComponent(() -> new BranchFilterPopupComponent(myUi, myUiProperties, myBranchFilterModel).initUi()));
+    actionGroup.add(new FilterActionComponent(() -> new BranchFilterPopupComponent(myUiProperties, myBranchFilterModel).initUi()));
     actionGroup.add(new FilterActionComponent(() -> new UserFilterPopupComponent(myUiProperties, myLogData, myUserFilterModel).initUi()));
     actionGroup.add(new FilterActionComponent(() -> new DateFilterPopupComponent(myDateFilterModel).initUi()));
     actionGroup.add(new FilterActionComponent(
@@ -178,18 +181,26 @@ public class VcsLogClassicFilterUi implements VcsLogFilterUi {
       textFilter = new VcsLogTextFilterImpl(text, isRegexAllowed, matchesCase);
       hashFilter = null;
     }
-    return Pair.<VcsLogTextFilter, VcsLogHashFilter>create(textFilter, hashFilter);
+    return Pair.create(textFilter, hashFilter);
   }
 
   @Override
-  public void setFilter(@NotNull VcsLogFilter filter) {
+  public void setFilter(@Nullable VcsLogFilter filter) {
     ApplicationManager.getApplication().assertIsDispatchThread();
-    if (filter instanceof VcsLogBranchFilter) {
+    if (filter == null) {
+      myBranchFilterModel.setFilter(null);
+      myStructureFilterModel.setFilter(null);
+      myDateFilterModel.setFilter(null);
+      myTextFilterModel.setFilter(null);
+      myUserFilterModel.setFilter(null);
+    }
+    else if (filter instanceof VcsLogBranchFilter) {
       myBranchFilterModel.setFilter((VcsLogBranchFilter)filter);
     }
     else if (filter instanceof VcsLogStructureFilter) {
       myStructureFilterModel.setFilter(new VcsLogFileFilter((VcsLogStructureFilter)filter, null));
     }
+
     JComponent toolbar = myUi.getToolbar();
     toolbar.revalidate();
     toolbar.repaint();

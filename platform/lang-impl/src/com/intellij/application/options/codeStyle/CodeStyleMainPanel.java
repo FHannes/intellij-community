@@ -18,11 +18,14 @@ package com.intellij.application.options.codeStyle;
 
 import com.intellij.application.options.CodeStyleAbstractPanel;
 import com.intellij.application.options.TabbedLanguageCodeStylePanel;
+import com.intellij.ide.DataManager;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.lang.Language;
+import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ApplicationBundle;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.ConfigurationException;
+import com.intellij.openapi.options.ex.Settings;
 import com.intellij.psi.codeStyle.CodeStyleScheme;
 import com.intellij.psi.codeStyle.CodeStyleSchemes;
 import com.intellij.ui.components.labels.SwingActionLink;
@@ -103,12 +106,12 @@ public class CodeStyleMainPanel extends JPanel implements TabbedLanguageCodeStyl
 
       @Override
       public void afterCurrentSettingsChanged() {
-         mySchemesPanel.updateOnCurrentSettingsChange();
-      }
-
-      @Override
-      public void usePerProjectSettingsOptionChanged() {
-        mySchemesPanel.usePerProjectSettingsOptionChanged();
+        mySchemesPanel.updateOnCurrentSettingsChange();
+        DataContext context = DataManager.getInstance().getDataContext(mySettingsPanel);
+        Settings settings = Settings.KEY.getData(context);
+        if (settings != null) {
+          settings.revalidate();
+        }
       }
 
       @Override
@@ -122,13 +125,20 @@ public class CodeStyleMainPanel extends JPanel implements TabbedLanguageCodeStyl
     JLabel link = new SwingActionLink(mySetFromAction);
     link.setVerticalAlignment(SwingConstants.BOTTOM);
 
-    JPanel top = new JPanel(new BorderLayout());
+    JPanel top = new JPanel();
+    top.setLayout(new BoxLayout(top, BoxLayout.X_AXIS));
+
     if (mySchemesPanelEnabled) {
-      top.add(BorderLayout.WEST, mySchemesPanel);
-      top.add(BorderLayout.EAST, link);
+      JPanel linkPanel = new JPanel();
+      linkPanel.setLayout(new BoxLayout(linkPanel, BoxLayout.Y_AXIS));
+      linkPanel.add(Box.createVerticalGlue());
+      linkPanel.add(link);
+      top.add(mySchemesPanel);
+      top.add(Box.createRigidArea(new Dimension(10,0)));
+      top.add(linkPanel);
     }
 
-    top.setBorder(JBUI.Borders.empty(10));
+    top.setBorder(JBUI.Borders.empty(5, 10, 0, 10));
     add(top, BorderLayout.NORTH);
     add(mySettingsPanel, BorderLayout.CENTER);
 

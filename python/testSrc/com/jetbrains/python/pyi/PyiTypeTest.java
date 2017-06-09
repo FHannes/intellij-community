@@ -70,7 +70,6 @@ public class PyiTypeTest extends PyTestCase {
     final String fileName = getTestName(false) + ".py";
     myFixture.configureByFile(fileName);
     final PsiElement element = myFixture.getElementAtCaret();
-    assertNotNull("Could not find element at caret in: " + myFixture.getFile());
     assertInstanceOf(element, PyTypedElement.class);
     final PyTypedElement typedElement = (PyTypedElement)element;
     final Project project = element.getProject();
@@ -112,5 +111,15 @@ public class PyiTypeTest extends PyTestCase {
 
   public void testOverloadedReturnType() {
     doTest("str");
+  }
+
+  // PY-22808
+  public void testOverloadedNotMatchedType() {
+    doTest("Union[list, Any]");
+  }
+
+  // PY-22808
+  public void testOverloadedNotMatchedGenericType() {
+    doTest("Union[Dict[str, Any], list]");
   }
 }

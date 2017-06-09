@@ -15,6 +15,7 @@
  */
 package com.jetbrains.env.python.testing;
 
+import com.google.common.collect.Sets;
 import com.intellij.execution.Location;
 import com.intellij.execution.testframework.AbstractTestProxy;
 import com.intellij.execution.testframework.sm.runner.ui.MockPrinter;
@@ -30,7 +31,10 @@ import com.jetbrains.python.psi.PyFunction;
 import com.jetbrains.python.sdkTools.SdkCreationType;
 import org.hamcrest.Matchers;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.junit.Assert;
+
+import java.util.Set;
 
 /**
  * {@link PyProcessWithConsoleTestTask} to be used with python unittest. It saves you from boilerplate
@@ -41,16 +45,29 @@ import org.junit.Assert;
 abstract class PyUnitTestProcessWithConsoleTestTask extends PyProcessWithConsoleTestTask<PyUnitTestProcessRunner> {
   @NotNull
   protected final String myScriptName;
+  private final int myRerunFailedTests;
 
   PyUnitTestProcessWithConsoleTestTask(@NotNull final String relativePathToTestData, @NotNull final String scriptName) {
-    super(relativePathToTestData, SdkCreationType.EMPTY_SDK);
+    this(relativePathToTestData, scriptName, 0);
+  }
+  PyUnitTestProcessWithConsoleTestTask(@NotNull final String relativePathToTestData,
+                                       @NotNull final String scriptName,
+                                       final int rerunFailedTests) {
+    super(relativePathToTestData, SdkCreationType.SDK_PACKAGES_ONLY);
     myScriptName = scriptName;
+    myRerunFailedTests= rerunFailedTests;
+  }
+
+  @Nullable
+  @Override
+  public Set<String> getTagsToCover() {
+    return Sets.newHashSet("python2.6", "python2.7", "python3.5", "python3.6", "jython", "pypy", "IronPython");
   }
 
   @NotNull
   @Override
   protected PyUnitTestProcessRunner createProcessRunner() throws Exception {
-    return new PyUnitTestProcessRunner(myScriptName, 0);
+    return new PyUnitTestProcessRunner(myScriptName, myRerunFailedTests);
   }
 
 
@@ -104,7 +121,7 @@ abstract class PyUnitTestProcessWithConsoleTestTask extends PyProcessWithConsole
 
       final Location<?> methodLocation = method.getLocation(getProject(), GlobalSearchScope.moduleScope(myFixture.getModule()));
 
-      Assert.assertNotNull("Failed to resolve method location", methodLocation);
+      Assert.assertNotNull("Failed to resolve method location " + method, methodLocation);
       final PsiElement methodPsiElement = methodLocation.getPsiElement();
       Assert.assertNotNull("Failed to get PSI for method location", methodPsiElement);
       Assert.assertThat("Wrong test returned", methodPsiElement, Matchers.instanceOf(PyFunction.class));
@@ -131,8 +148,11 @@ abstract class PyUnitTestProcessWithConsoleTestTask extends PyProcessWithConsole
         Assert.assertThat("Function output is broken",
                           MockPrinter.fillPrinter(method).getStdOut().trim(), Matchers.containsString("I am function"));
       }
+      else if (functionName.endsWith("test_first") || functionName.endsWith("test_second")) {
+        // No output expected
+      }
       else {
-        throw new AssertionError("Unknown function" + functionName);
+        throw new AssertionError("Unknown function " + functionName);
       }
     }
   }

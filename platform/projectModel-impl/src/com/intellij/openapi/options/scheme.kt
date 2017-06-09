@@ -39,7 +39,7 @@ abstract class SchemeManagerFactory {
   }
 
   /**
-   * directoryName — like "keymaps".
+   * directoryName - like "keymaps".
    */
   @JvmOverloads
   fun <SCHEME : Scheme, MUTABLE_SCHEME : SCHEME> create(directoryName: String, processor: SchemeProcessor<SCHEME, MUTABLE_SCHEME>, presentableName: String? = null, directoryPath: Path? = null): SchemeManager<SCHEME> {
@@ -52,7 +52,8 @@ abstract class SchemeManagerFactory {
                                                                  roamingType: RoamingType = RoamingType.DEFAULT,
                                                                  isUseOldFileNameSanitize: Boolean = false,
                                                                  streamProvider: StreamProvider? = null,
-                                                                 directoryPath: Path? = null): SchemeManager<SCHEME>
+                                                                 directoryPath: Path? = null,
+                                                                 autoSave: Boolean = true): SchemeManager<SCHEME>
   open fun dispose(schemeManager: SchemeManager<*>) {
   }
 }
@@ -61,7 +62,7 @@ enum class SchemeState {
   UNCHANGED, NON_PERSISTENT, POSSIBLY_CHANGED
 }
 
-abstract class SchemeProcessor<SCHEME : Scheme, in MUTABLE_SCHEME: SCHEME> {
+abstract class SchemeProcessor<SCHEME : Scheme, MUTABLE_SCHEME: SCHEME> {
   open fun isExternalizable(scheme: SCHEME) = scheme is ExternalizableScheme
 
   /**

@@ -228,11 +228,11 @@ public class ConsoleViewImplTest extends LightPlatformTestCase {
         for (int i=0; i<10_000_000; i++) {
           console.print("xxx\n", ConsoleViewContentType.NORMAL_OUTPUT);
           console.print("yyy\n", ConsoleViewContentType.SYSTEM_OUTPUT);
-          UIUtil.dispatchAllInvocationEvents();
+          PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue();
         }
         LightPlatformCodeInsightTestCase.type('\n', console.getEditor(), getProject());
         console.waitAllRequests();
-      }).cpuBound().assertTiming());
+      }).assertTiming());
   }
 
   public void testPerformanceOfMergeableTokens() throws Exception {
@@ -247,7 +247,7 @@ public class ConsoleViewImplTest extends LightPlatformTestCase {
         MarkupModel model = DocumentMarkupModel.forDocument(console.getEditor().getDocument(), getProject(), true);
         RangeHighlighter highlighter = assertOneElement(model.getAllHighlighters());
         assertEquals(new TextRange(0, console.getEditor().getDocument().getTextLength()), TextRange.create(highlighter));
-      }).cpuBound().assertTiming());
+      }).assertTiming());
   }
 
   private static void withCycleConsole(int capacityKB, Consumer<ConsoleViewImpl> runnable) {
@@ -373,5 +373,15 @@ public class ConsoleViewImplTest extends LightPlatformTestCase {
     CommandProcessor.getInstance().executeCommand(getProject(),
                                                   () -> EditorTestUtil.executeAction(editor, true, handler),
                                                   "", null, editor.getDocument());
+  }
+
+  public void testCRPrintCR() throws Exception {
+    for (int i=0;i<25;i++) {
+      myConsole.print("\r"+i, ConsoleViewContentType.NORMAL_OUTPUT);
+      Thread.sleep(100);
+    }
+    myConsole.flushDeferredText();
+    myConsole.waitAllRequests();
+    assertEquals("24", myConsole.getText());
   }
 }

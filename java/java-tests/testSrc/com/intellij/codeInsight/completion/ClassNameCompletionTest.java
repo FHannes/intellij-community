@@ -82,7 +82,7 @@ public class ClassNameCompletionTest extends LightFixtureCompletionTestCase {
 
     String path = "/template";
 
-    TemplateManagerImpl.setTemplateTesting(getProject(), getTestRootDisposable());
+    TemplateManagerImpl.setTemplateTesting(getProject(), myFixture.getTestRootDisposable());
     configureByFile(path + "/before1.java");
     selectItem(myItems[0]);
     TemplateState state = TemplateManagerImpl.getTemplateState(myFixture.getEditor());
@@ -95,6 +95,11 @@ public class ClassNameCompletionTest extends LightFixtureCompletionTestCase {
     selectItem(myItems[0]);
     assert TemplateManagerImpl.getTemplateState(myFixture.getEditor()) == null;
     checkResultByFile(path +"/after2.java");
+
+    configureByFile(path + "/before3.java");
+    selectItem(myItems[0]);
+    assert TemplateManagerImpl.getTemplateState(myFixture.getEditor()) == null;
+    checkResultByFile(path +"/after3.java");
   }
 
   private void createClass(String text) {

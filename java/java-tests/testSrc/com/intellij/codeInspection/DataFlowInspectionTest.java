@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2015 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,6 +55,8 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   public void testCanBeNullDoesntImplyIsNull() throws Throwable { doTest(); }
   public void testAnnReport() throws Throwable { doTest(); }
 
+  public void testSuppressStaticFlags() throws Throwable { doTest(); }
+
   public void testBigMethodNotComplex() throws Throwable { doTest(); }
   public void testBuildRegexpNotComplex() throws Throwable { doTest(); }
   public void testTernaryInWhileNotComplex() throws Throwable { doTest(); }
@@ -95,6 +97,7 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   public void testCheckEnumConstantConstructor() { doTest(); }
   public void testCompareToEnumConstant() throws Throwable { doTest(); }
   public void testEqualsConstant() throws Throwable { doTest(); }
+  public void testInternedStringConstants() { doTest(); }
   public void testDontSaveTypeValue() { doTest(); }
   public void testFinalLoopVariableInstanceof() throws Throwable { doTest(); }
   public void testGreaterIsNotEquals() throws Throwable { doTest(); }
@@ -154,14 +157,18 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
 
   public void testReportConstantReferences() {
     doTestReportConstantReferences();
-    myFixture.launchAction(myFixture.findSingleIntention("Replace with 'null'"));
+    String hint = "Replace with 'null'";
+    checkIntentionResult(hint);
+  }
+
+  private void checkIntentionResult(String hint) {
+    myFixture.launchAction(myFixture.findSingleIntention(hint));
     myFixture.checkResultByFile(getTestName(false) + "_after.java");
   }
 
   public void testReportConstantReferences_OverloadedCall() {
     doTestReportConstantReferences();
-    myFixture.launchAction(myFixture.findSingleIntention("Replace with 'null'"));
-    myFixture.checkResultByFile(getTestName(false) + "_after.java");
+    checkIntentionResult("Replace with 'null'");
   }
 
   public void testReportConstantReferencesAfterFinalFieldAccess() { doTestReportConstantReferences(); }
@@ -187,6 +194,7 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   public void testOtherCallMayChangeFields() { doTest(); }
 
   public void testMethodCallFlushesField() { doTest(); }
+  public void testDoubleNaN() { doTest(); }
   public void testUnknownFloatMayBeNaN() { doTest(); }
   public void testBoxedNaN() { doTest(); }
   public void testFloatEquality() { doTest(); }
@@ -244,6 +252,9 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   public void testContractSeveralClauses() { doTest(); }
   public void testContractVarargs() { doTest(); }
   public void testContractConstructor() { doTest(); }
+  public void testFlushVariableOnStackToNotNullType() { doTest(); }
+
+  public void testCustomContracts() { doTest(); }
 
   public void testBoxingImpliesNotNull() { doTest(); }
   public void testLargeIntegersAreNotEqualWhenBoxed() { doTest(); }
@@ -259,6 +270,7 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   public void testForeachOverWildcards() { doTest(); }
   public void testFinalGetter() { doTest(); }
   public void testGetterResultsNotSame() { doTest(); }
+  public void testIntersectionTypeInstanceof() { doTest(); }
 
   public void testImmutableClassNonGetterMethod() {
     myFixture.addClass("package javax.annotation.concurrent; public @interface Immutable {}");
@@ -273,6 +285,7 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   public void testManySequentialIfsNotComplex() { doTest(); }
   public void testManySequentialInstanceofsNotComplex() { doTest(); }
   public void testLongDisjunctionsNotComplex() { doTest(); }
+  public void testManyDistinctPairsNotComplex() { doTest(); }
   public void testWhileNotComplex() { doTest(); }
   public void testAssertTrueNotComplex() { doTest(); }
   public void testAssertThrowsAssertionError() { doTest(); }
@@ -322,6 +335,8 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   public void testNullableArray() { doTest(); }
 
   public void testAccessingSameArrayElements() { doTest(); }
+  public void testArrayLength() { doTest(); }
+  public void testForEachOverEmptyCollection() { doTest(); }
 
   public void testMethodParametersCanChangeNullability() { doTest(); }
 
@@ -383,8 +398,7 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
 
   public void testTrueOrEqualsSomething() {
     doTest();
-    myFixture.launchAction(myFixture.findSingleIntention("Remove redundant assignment"));
-    myFixture.checkResultByFile(getTestName(false) + "_after.java");
+    checkIntentionResult("Remove redundant assignment");
   }
 
   public void testDontSimplifyAssignment() {
@@ -409,6 +423,30 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   public void testLiteralIfCondition() {
     doTest();
     myFixture.findSingleIntention("Remove 'if' statement");
+  }
+
+  public void testLiteralWhileCondition() {
+    doTest();
+    checkIntentionResult("Remove 'while' statement");
+  }
+
+  public void testLiteralDoWhileCondition() {
+    doTest();
+    checkIntentionResult("Unwrap 'do-while' statement");
+  }
+  public void testLiteralDoWhileConditionWithBreak() {
+    doTest();
+    assertFalse(myFixture.getAvailableIntentions().stream().anyMatch(i -> i.getText().contains("Unwrap 'do-while' statement")));
+  }
+
+  public void testFalseForConditionNoInitialization() {
+    doTest();
+    checkIntentionResult("Remove 'for' statement");
+  }
+
+  public void testFalseForConditionWithInitialization() {
+    doTest();
+    checkIntentionResult("Remove 'for' statement");
   }
 
   //https://youtrack.jetbrains.com/issue/IDEA-162184
@@ -442,9 +480,14 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
 
       @Override
       public boolean isImplicitWrite(PsiElement element) {
+        return false;
+      }
+
+      @Override
+      public boolean isImplicitlyNotNullInitialized(@NotNull PsiElement element) {
         return element instanceof PsiField && ((PsiField)element).getName().startsWith("field");
       }
-    }, getTestRootDisposable());
+    }, myFixture.getTestRootDisposable());
     doTest();
   }
 

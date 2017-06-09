@@ -21,7 +21,7 @@ import com.intellij.psi.ResolveState
 import com.intellij.psi.scope.PsiScopeProcessor
 import org.jetbrains.plugins.groovy.lang.resolve.ResolveUtil.DECLARATION_SCOPE_PASSED
 
-fun PsiElement.getParents(strict: Boolean = false) = treeSequence(if (strict) this.parent else this) { it.parent }
+fun PsiElement.getParents() = treeSequence(this) { it.parent }
 
 /**
  * Creates sequence of pairs of elements corresponding to tree walk up by contexts.
@@ -63,4 +63,15 @@ fun PsiElement.treeWalkUp(processor: PsiScopeProcessor, state: ResolveState = Re
     processor.handleEvent(DECLARATION_SCOPE_PASSED, scope)
   }
   return true
+}
+
+fun PsiElement.skipParentsOfType(vararg types: Class<*>): Pair<PsiElement, PsiElement?>? = skipParentsOfType(true, *types)
+
+fun PsiElement.skipParentsOfType(strict: Boolean, vararg types: Class<*>): Pair<PsiElement, PsiElement?>? {
+  val seq = if (strict) getParents().drop(1) else getParents()
+  for (parents in seq) {
+    if (parents.first.javaClass in types) continue
+    return parents
+  }
+  return null
 }

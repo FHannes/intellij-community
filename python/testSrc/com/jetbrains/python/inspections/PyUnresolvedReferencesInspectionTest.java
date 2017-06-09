@@ -275,11 +275,6 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
     doTest();
   }
 
-  // PY-7708
-  public void testXReadLinesForOpen() {
-    doTest();
-  }
-
   // PY-8063
   public void testAddForListComprehension() {
     doTest();
@@ -534,71 +529,6 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
   public void testPropertyNotListedInSlots() {
     doTest();
   }
-  
-  // PY-2748
-  public void testFormatStringPositional() {
-    doTest();
-  }
-
-  // PY-2748
-  public void testFormatStringKeyword() {
-    doTest();
-  }
-
-  // PY-2748
-  public void testPercentStringPositional() {
-    doTest();
-  }
-
-  // PY-2748
-  public void testPercentStringKeyword() {
-    doTest();
-  }
-
-  // PY-2748
-  public void testFormatStringPackedFunctionCall() {
-    doTest();
-  }
-
-  // PY-2748
-  public void testPercentStringFunctionCall() {
-    doTest();
-  }
-
-  // PY-2748
-  public void testFormatStringPackedReference() {
-    doTest();
-  }
-
-  // PY-2748
-  public void testPercentStringReference() {
-    doTest();
-  }
-
-  // PY-2748
-  public void testFormatStringDictLiteralArgumentWithReferenceExprKeys() {
-    doTest();
-  }
-
-  // PY-2748
-  public void testPercentStringDictLiteralArgumentWithReferenceExprKeys() {
-    doTest();
-  }
-  
-  // PY-2748
-  public void testFormatStringDictLiteralArgumentWithNumericExprKeys() {
-    doTest();
-  }
-  
-  // PY-18769
-  public void testFormatStringInRegularExpressions() {
-    doTest();
-  }
-  
-  // PY-18751
-  public void testFormatStringInMapExpression() {
-    doTest();
-  }
 
   // PY-18751
   public void testStringWithFormatSyntax() {
@@ -607,82 +537,6 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
 
   // PY-18751
   public void testStringWithPercentSyntax() {
-    doTest();
-  }
-
-  // PY-18751
-  public void testPercentStringWithFormatStringReplacementSymbols() {
-    doTest();
-  }
-
-  // PY-18751, PY-18824
-  public void testFormatStringWithPercentStringReplacementSymbols() {
-    doTest();
-  }
-  
-  // PY-18837
-  public void testPercentStringWithDictArgument() {
-    doTest();
-  }
-
-  // PY-18115
-  public void testPercentStringWithDictCallArgument() {
-    doTest();
-  }
-
-  // PY-18115
-  public void testPercentStringWithTupleSlicing() {
-    doTest();
-  }
-
-  // PY-18115
-  public void testPercentStringWithDictElement() {
-    doTest();
-  }
-
-  // PY-18115
-  public void testPercentStringWithEmptyDict() {
-    doTest();
-  }
-
-  // PY-18115
-  public void testPercentStringWithDictCall() {
-    doTest();
-  }
-
-  // PY-18115
-  public void testFormatStringPositionalSubstitutionWithDictArg() {
-    doTest();
-  }
-
-  // PY-18115
-  public void testPercentStringWithCallArgument() {
-    doTest();
-  }
-
-  // PY-18115
-  public void testFormatStringWithEmptyDictArg() {
-    doTest();
-  }
-
-  // PY-18115
-  public void testFormatStringWithDictLiteralExprInsideDictCall() {
-    doTest();
-  }
-  
-  // PY-18115
-  public void testFormatStringWithDictArgWithCallExprKey() {
-    doTest();
-  }
-
-  // PY-18115
-  public void testFormatStringWithPackedAndNonPackedArgs() {
-    doTest();
-  }
-  
-  
-  // PY-18950
-  public void testPercentStringKeywordArgumentWithReferenceKeyDictArgument() {
     doTest();
   }
 
@@ -696,34 +550,10 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
     myFixture.copyDirectoryToProject("typing", "");
     runWithLanguageLevel(LanguageLevel.PYTHON30, this::doTest);
   }
-  
-  // PY-19084
-  public void testPercentStringPositionalListArgument() {
-    doTest();
-  }
 
-  // PY-19084
-  public void testPercentStringPositionalSetArgument() {
-    doTest();
-  }
-
-  // PY-19084
-  public void testPercentStringPositionalDictArgument() {
-    doTest();
-  }
-
-  // PY-19084
-  public void testPercentStringKeywordListArgument() {
-    doTest();
-  }
-
-  // PY-19084
-  public void testPercentStringKeywordSetArgument() {
-    doTest();
-  }
-
-  // PY-19084
-  public void testPercentStringKeywordTupleArgument() {
+  // PY-22620
+  public void testTupleTypeCommentsUseImportsFromTyping() {
+    myFixture.copyDirectoryToProject("typing", "");
     doTest();
   }
 
@@ -741,11 +571,6 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
   public void testSixWithMetaclass() {
     doTest();
   }
-  
-  // PY-21707
-  public void testMultilineFormatString() {
-    doTest();
-  }
 
   // PY-21651
   public void testInstanceAttributeCreatedThroughWithStatement() {
@@ -761,6 +586,21 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
 
     final PsiFile fooPsiFile = PsiManager.getInstance(myFixture.getProject()).findFile(fooVFile);
     assertNotParsed((PyFile)fooPsiFile);
+  }
+
+  // PY-23164
+  public void testInstanceAttributeCreatedInsideWithStatement() {
+    doTest();
+  }
+
+  // PY-22828
+  public void testNoProtectedBuiltinNames() {
+    doTest();
+  }
+
+  // PY-22741, PY-22808
+  public void testListIndexedByUnknownType() {
+    doTest();
   }
 
   @NotNull

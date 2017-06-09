@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,10 +21,10 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.LangDataKeys
 import com.intellij.psi.PsiDirectory
-import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiJavaModule
 import com.intellij.psi.PsiManager
 import com.intellij.testFramework.MapDataContext
+import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.LightJava9ModulesCodeInsightFixtureTestCase
 import com.intellij.testFramework.fixtures.MultiModuleJava9ProjectDescriptor.ModuleDescriptor.MAIN
 
@@ -41,13 +41,17 @@ class CreateModuleInfoActionTest : LightJava9ModulesCodeInsightFixtureTestCase()
         /**
          * Created by ${p["USER"]} on ${p["DATE"]}.
          */
-        module light_idea_test_case {
+        module light.idea.test.case {
         }""".trimIndent(), file.text)
   }
 
   private class TestIdeView(private val dir: PsiDirectory) : IdeView {
-    override fun selectElement(element: PsiElement?) = Unit
     override fun getDirectories() = arrayOf(dir)
     override fun getOrChooseDirectory() = throw UnsupportedOperationException()
+  }
+
+  override fun setUp() {
+    super.setUp()
+    PlatformTestUtil.setLongMeaninglessFileIncludeTemplateTemporarilyFor(project, testRootDisposable)
   }
 }

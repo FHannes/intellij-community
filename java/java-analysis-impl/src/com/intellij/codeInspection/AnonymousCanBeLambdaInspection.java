@@ -46,11 +46,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.util.*;
 import java.util.function.UnaryOperator;
 
-/**
- * User: anna
- */
 public class AnonymousCanBeLambdaInspection extends BaseJavaBatchLocalInspectionTool {
-  public static final Logger LOG = Logger.getInstance("#" + AnonymousCanBeLambdaInspection.class.getName());
+  public static final Logger LOG = Logger.getInstance(AnonymousCanBeLambdaInspection.class);
   
   public boolean reportNotAnnotatedInterfaces = true;
 

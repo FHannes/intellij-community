@@ -18,14 +18,11 @@ package org.jetbrains.references
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.CharsetToolkit
 import com.intellij.util.PathUtil
-import com.intellij.util.indexing.ID
+import com.intellij.util.indexing.IndexId
 import com.intellij.util.indexing.impl.MapIndexStorage
 import com.intellij.util.indexing.impl.MapReduceIndex
 import com.intellij.util.io.PersistentStringEnumerator
-import org.jetbrains.jps.backwardRefs.BackwardReferenceIndexWriter
-import org.jetbrains.jps.backwardRefs.CompilerBackwardReferenceIndex
-import org.jetbrains.jps.backwardRefs.LightRef
-import org.jetbrains.jps.backwardRefs.NameEnumerator
+import org.jetbrains.jps.backwardRefs.*
 import org.jetbrains.jps.backwardRefs.index.CompiledFileData
 import org.jetbrains.jps.backwardRefs.index.CompilerIndices
 import org.jetbrains.jps.builders.JpsBuildTestCase
@@ -78,7 +75,7 @@ abstract class ReferenceIndexTestBase : JpsBuildTestCase() {
     val pd = createProjectDescriptor(BuildLoggingManager(TestProjectBuilderLogger()))
     val manager = pd.dataManager
     val buildDir = manager.dataPaths.dataStorageRoot
-    val index = CompilerBackwardReferenceIndex(buildDir)
+    val index = CompilerBackwardReferenceIndex(buildDir, true)
 
     try {
       val fileEnumerator = index.filePathEnumerator
@@ -107,17 +104,17 @@ abstract class ReferenceIndexTestBase : JpsBuildTestCase() {
       val referencesText = mutableListOf<String>()
       storage(index, CompilerIndices.BACK_USAGES).processKeys { usage ->
         val referents = mutableListOf<String>()
-        val valueIt = index[CompilerIndices.BACK_USAGES].getData(usage).valueIterator
-        while (valueIt.hasNext()) {
-          valueIt.next()
-          val files = valueIt.inputIdsIterator
-          while (files.hasNext()) {
-            referents.add(files.next().asFileName(fileEnumerator))
-          }
-        }
+        val valueIt = index[CompilerIndices.BACK_USAGES].getData(usage)
+
+        var sumOccurrences = 0
+        valueIt.forEach({ fileId, occurrenceCount ->
+                          referents.add(fileId.asFileName(fileEnumerator))
+                          sumOccurrences += occurrenceCount
+                          true
+                        })
         if (!referents.isEmpty()) {
           referents.sort()
-          referencesText.add(usage.asText(nameEnumerator) + " in " + referents.joinToString(separator = " "))
+          referencesText.add(usage.asText(nameEnumerator) + " in " + referents.joinToString(separator = " ") + " occurrences = $sumOccurrences")
         }
         true
       }
@@ -145,6 +142,24 @@ abstract class ReferenceIndexTestBase : JpsBuildTestCase() {
       classDefs.sort()
       result.append(classDefs.joinToString(separator = "\n"))
 
+      result.append("\n\nMembers Signatures:\n")
+      val signs = mutableListOf<String>()
+      storage(index, CompilerIndices.BACK_MEMBER_SIGN).processKeys { sign ->
+        val definedMembers = mutableListOf<String>()
+        val valueIt = index[CompilerIndices.BACK_MEMBER_SIGN].getData(sign).valueIterator
+        while (valueIt.hasNext()) {
+          val nextRefs = valueIt.next()
+          nextRefs.mapTo(definedMembers) { it.asText(nameEnumerator) }
+        }
+        if (!definedMembers.isEmpty()) {
+          definedMembers.sort()
+          signs.add(sign.asText(nameEnumerator) + " <- " + definedMembers.joinToString(separator = " "))
+        }
+        true
+      }
+      signs.sort()
+      result.append(signs.joinToString(separator = "\n"))
+
       return result.toString()
     }
     finally {
@@ -153,7 +168,7 @@ abstract class ReferenceIndexTestBase : JpsBuildTestCase() {
     }
   }
 
-  private fun <K, V> storage(index: CompilerBackwardReferenceIndex, id: ID<K, V>) = (index[id] as MapReduceIndex<K, V, CompiledFileData>).storage as MapIndexStorage<K, V>
+  private fun <K, V> storage(index: CompilerBackwardReferenceIndex, id: IndexId<K, V>) = (index[id] as MapReduceIndex<K, V, CompiledFileData>).storage as MapIndexStorage<K, V>
 
   private fun getTestDataPath() = testDataRootPath + "/" + getTestName(true) + "/"
 
@@ -165,8 +180,22 @@ abstract class ReferenceIndexTestBase : JpsBuildTestCase() {
         is LightRef.JavaLightFieldRef -> "${this.owner.name.asName(nameEnumerator)}.${this.name.asName(nameEnumerator)}"
         is LightRef.JavaLightClassRef -> this.name.asName(nameEnumerator)
         is LightRef.JavaLightFunExprDef -> "fun_expr(id=${this.id})"
+        is LightRef.JavaLightAnonymousClassRef -> "anonymous(id=${this.name})"
         else -> throw UnsupportedOperationException()
       }
+
+  private fun SignatureData.asText(nameEnumerator: NameEnumerator): String {
+    return (if (this.isStatic) "static " else "") + this.rawReturnType.asName(nameEnumerator) + decodeVectorKind(this.iteratorKind)
+  }
+
+  private fun decodeVectorKind(kind: Byte): String {
+    when (kind) {
+      0.toByte() -> return ""
+      1.toByte() -> return "[]"
+      (-1).toByte() -> return " iterator"
+    }
+    throw IllegalArgumentException()
+  }
 
   private fun Int.asFileName(fileNameEnumerator: PersistentStringEnumerator) = FileUtil.getNameWithoutExtension(File(fileNameEnumerator.valueOf(this)).canonicalFile)
 }

@@ -139,11 +139,11 @@ class GroovyStressPerformanceTest extends LightGroovyTestCase {
   }
 
   private void measureHighlighting(String text, int time) {
-    IdeaTestUtil.startPerformanceTest("slow", time, configureAndHighlight(text)).cpuBound().usesAllCPUCores().useLegacyScaling().assertTiming()
+    IdeaTestUtil.startPerformanceTest("slow", time, configureAndHighlight(text)).usesAllCPUCores().useLegacyScaling().assertTiming()
   }
 
   void testDeeplyNestedClosures() {
-    RecursionManager.assertOnRecursionPrevention(testRootDisposable)
+    RecursionManager.assertOnRecursionPrevention(myFixture.testRootDisposable)
     String text = "println 'hi'"
     String defs = ""
     for (i in 1..10) {
@@ -155,7 +155,7 @@ class GroovyStressPerformanceTest extends LightGroovyTestCase {
   }
 
   void testDeeplyNestedClosuresInCompileStatic() {
-    RecursionManager.assertOnRecursionPrevention(testRootDisposable)
+    RecursionManager.assertOnRecursionPrevention(myFixture.testRootDisposable)
 
     String text = "println 'hi'"
     String defs = ""
@@ -170,7 +170,7 @@ class GroovyStressPerformanceTest extends LightGroovyTestCase {
   }
 
   void testDeeplyNestedClosuresInGenericCalls() {
-    RecursionManager.assertOnRecursionPrevention(testRootDisposable)
+    RecursionManager.assertOnRecursionPrevention(myFixture.testRootDisposable)
     String text = "println it"
     for (i in 1..10) {
       text = "foo(it) { $text }"
@@ -181,7 +181,7 @@ class GroovyStressPerformanceTest extends LightGroovyTestCase {
   }
 
   void testDeeplyNestedClosuresInGenericCalls2() {
-    RecursionManager.assertOnRecursionPrevention(testRootDisposable)
+    RecursionManager.assertOnRecursionPrevention(myFixture.testRootDisposable)
     String text = "println it"
     for (i in 1..10) {
       text = "foo(it) { $text }"
@@ -195,13 +195,13 @@ class GroovyStressPerformanceTest extends LightGroovyTestCase {
   }
 
   void "test no recursion prevention when resolving supertype"() {
-    RecursionManager.assertOnRecursionPrevention(testRootDisposable)
+    RecursionManager.assertOnRecursionPrevention(myFixture.testRootDisposable)
     myFixture.addClass("interface Bar {}")
     measureHighlighting("class Foo implements Bar {}", 200)
   }
 
   void "test no recursion prevention when contributing constructors"() {
-    RecursionManager.assertOnRecursionPrevention(testRootDisposable)
+    RecursionManager.assertOnRecursionPrevention(myFixture.testRootDisposable)
     myFixture.addClass("interface Bar {}")
     def text = """
 @groovy.transform.TupleConstructor
@@ -216,7 +216,7 @@ class Foo implements Bar {
   }
 
   void "test using non-reassigned for loop parameters"() {
-    RecursionManager.assertOnRecursionPrevention(testRootDisposable)
+    RecursionManager.assertOnRecursionPrevention(myFixture.testRootDisposable)
     def text = """
 def foo(List<File> list) {
   for (file in list) {
@@ -273,7 +273,7 @@ while (true) {
   f.canoPath<caret>
 }
 '''
-    IdeaTestUtil.startPerformanceTest("slow", 300, configureAndComplete(text)).cpuBound().usesAllCPUCores().useLegacyScaling().assertTiming()
+    IdeaTestUtil.startPerformanceTest("slow", 300, configureAndComplete(text)).usesAllCPUCores().useLegacyScaling().assertTiming()
   }
 
   void testClosureRecursion() {
@@ -490,7 +490,7 @@ ${(1..classMethodCount).collect({"void foo${it}() {}"}).join("\n")}
       for (ref in refs) {
         assert ref.resolve(): ref.text
       }
-    }).cpuBound().attempts(2).assertTiming()
+    }).attempts(2).assertTiming()
   }
 
   @CompileStatic
@@ -527,7 +527,7 @@ public class Doo$i {}
       configure 1
       myFixture.checkHighlighting true, false, false
       configure 2
-    }).attempts(1).cpuBound().assertTiming()
+    }).attempts(1).assertTiming()
   }
 
   void 'test resolve long chains'() {

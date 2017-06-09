@@ -24,7 +24,6 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.Consumer;
-import com.intellij.util.Function;
 import com.intellij.util.NotNullFunction;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
@@ -166,25 +165,19 @@ public class VcsLogRefresherImpl implements VcsLogRefresher {
   @NotNull
   private List<GraphCommit<Integer>> compactCommits(@NotNull List<? extends TimedVcsCommit> commits, @NotNull final VirtualFile root) {
     StopWatch sw = StopWatch.start("compacting commits");
-    List<GraphCommit<Integer>> map = ContainerUtil.map(commits, new Function<TimedVcsCommit, GraphCommit<Integer>>() {
-      @NotNull
-      @Override
-      public GraphCommit<Integer> fun(@NotNull TimedVcsCommit commit) {
-        return compactCommit(commit, root);
-      }
-    });
+    List<GraphCommit<Integer>> map = ContainerUtil.map(commits, commit -> compactCommit(commit, root));
     myStorage.flush();
     sw.report();
     return map;
   }
 
   @NotNull
-  private GraphCommitImpl<Integer> compactCommit(@NotNull TimedVcsCommit commit, @NotNull final VirtualFile root) {
+  private GraphCommit<Integer> compactCommit(@NotNull TimedVcsCommit commit, @NotNull final VirtualFile root) {
     List<Integer> parents = ContainerUtil.map(commit.getParents(),
                                               (NotNullFunction<Hash, Integer>)hash -> myStorage.getCommitIndex(hash, root));
     int index = myStorage.getCommitIndex(commit.getId(), root);
     myIndex.markForIndexing(index, root);
-    return new GraphCommitImpl<>(index, parents, commit.getTimestamp());
+    return GraphCommitImpl.createIntCommit(index, parents, commit.getTimestamp());
   }
 
   private void storeUsersAndDetails(@NotNull List<? extends VcsCommitMetadata> metadatas) {
@@ -368,7 +361,7 @@ public class VcsLogRefresherImpl implements VcsLogRefresher {
   }
 
   private static class RefreshRequest {
-    private static final RefreshRequest RELOAD_ALL = new RefreshRequest(Collections.<VirtualFile>emptyList()) {
+    private static final RefreshRequest RELOAD_ALL = new RefreshRequest(Collections.emptyList()) {
       @Override
       public String toString() {
         return "RELOAD_ALL";

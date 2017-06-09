@@ -226,9 +226,7 @@ public class GenerateMembersUtil {
         final PsiParameter[] parameters = ((PsiMethod)member).getParameterList().getParameters();
         final boolean generateFinals = CodeStyleSettingsManager.getSettings(aClass.getProject()).GENERATE_FINAL_PARAMETERS;
         for (final PsiParameter parameter : parameters) {
-          final PsiModifierList modifierList = parameter.getModifierList();
-          assert modifierList != null;
-          modifierList.setModifierProperty(PsiModifier.FINAL, generateFinals);
+          PsiUtil.setModifierProperty(parameter, PsiModifier.FINAL, generateFinals);
         }
       }
     }
@@ -453,7 +451,11 @@ public class GenerateMembersUtil {
         paramName = generator.generateUniqueName(paramName);
       }
       generator.addExistingName(paramName);
-      result[i] = factory.createParameter(paramName, GenericsUtil.getVariableTypeByExpressionType(substituted), target);
+      PsiType expressionType = GenericsUtil.getVariableTypeByExpressionType(substituted);
+      if (expressionType instanceof PsiArrayType && substituted instanceof PsiEllipsisType) {
+        expressionType = new PsiEllipsisType(((PsiArrayType)expressionType).getComponentType());
+      }
+      result[i] = factory.createParameter(paramName, expressionType, target);
     }
     return result;
   }
@@ -699,7 +701,7 @@ public class GenerateMembersUtil {
     return generatePrototype(field, result);
   }
 
-  @Nullable
+  @NotNull
   private static PsiMethod generatePrototype(@NotNull PsiField field, PsiMethod result) {
     return setVisibility(field, annotateOnOverrideImplement(field.getContainingClass(), result));
   }

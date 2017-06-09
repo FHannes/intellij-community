@@ -32,12 +32,19 @@ import java.security.SecureRandom;
 
 @SuppressWarnings("SpellCheckingInspection")
 public class JavaStubBuilderTest extends LightIdeaTestCase {
-  private final StubBuilder myBuilder = new JavaLightStubBuilder();
+  private StubBuilder myBuilder;
 
   @Override
   public void setUp() throws Exception {
     super.setUp();
     LanguageLevelProjectExtension.getInstance(getProject()).setLanguageLevel(LanguageLevel.HIGHEST);
+    myBuilder = new JavaLightStubBuilder();
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    myBuilder = null;
+    super.tearDown();
   }
 
   public void testEmpty() {
@@ -550,7 +557,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
     String text = FileUtil.loadFile(new File(path));
     PsiJavaFile file = (PsiJavaFile)createLightFile("test.java", text);
     String message = "Source file size: " + text.length();
-    PlatformTestUtil.startPerformanceTest(message, 4000, () -> myBuilder.buildStubTree(file)).cpuBound().assertTiming();
+    PlatformTestUtil.startPerformanceTest(message, 4000, () -> myBuilder.buildStubTree(file)).assertTiming();
   }
 
   private void doTest(String source, String expected) {

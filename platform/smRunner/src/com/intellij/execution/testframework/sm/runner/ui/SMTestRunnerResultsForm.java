@@ -84,7 +84,7 @@ public class SMTestRunnerResultsForm extends TestResultsPanel
   @NonNls private static final String DEFAULT_SM_RUNNER_SPLITTER_PROPERTY = "SMTestRunner.Splitter.Proportion";
 
   public static final Color DARK_YELLOW = JBColor.YELLOW.darker();
-  private static final Logger LOG = Logger.getInstance("#" + SMTestRunnerResultsForm.class.getName());
+  private static final Logger LOG = Logger.getInstance(SMTestRunnerResultsForm.class);
 
   private SMTRunnerTestTreeView myTreeView;
 
@@ -797,7 +797,7 @@ public class SMTestRunnerResultsForm extends TestResultsPanel
       // read action to prevent project (and storage) from being disposed
       ApplicationManager.getApplication().runReadAction(() -> {
         Project project = getProject();
-        if (project.isDisposed()) return;
+        if (project.isDisposed() || myRoot == null) return;
         TestStateStorage storage = TestStateStorage.getInstance(project);
         List<SMTestProxy> tests = myRoot.getAllTests();
         for (SMTestProxy proxy : tests) {

@@ -83,6 +83,21 @@ public class PyStdlibTypeProvider extends PyTypeProviderBase {
   }
 
   @Nullable
+  @Override
+  public PyType getReferenceExpressionType(@NotNull PyReferenceExpression referenceExpression, @NotNull TypeEvalContext context) {
+    if (!referenceExpression.isQualified()) {
+      final String name = referenceExpression.getReferencedName();
+      if (PyNames.NONE.equals(name)) {
+        return PyNoneType.INSTANCE;
+      }
+      else if (PyNames.FALSE.equals(name) || PyNames.TRUE.equals(name)) {
+        return PyBuiltinCache.getInstance(referenceExpression).getBoolType();
+      }
+    }
+    return null;
+  }
+
+  @Nullable
   private static PyType getBaseStringType(@NotNull PsiElement referenceTarget) {
     final PyBuiltinCache builtinCache = PyBuiltinCache.getInstance(referenceTarget);
     if (referenceTarget instanceof PyElement && builtinCache.isBuiltin(referenceTarget) &&
@@ -148,7 +163,7 @@ public class PyStdlibTypeProvider extends PyTypeProviderBase {
     final String qname = function.getQualifiedName();
     if (qname != null) {
       if (OPEN_FUNCTIONS.contains(qname) && callSite instanceof PyCallExpression) {
-        return getOpenFunctionType(qname, PyCallExpressionHelper.mapArguments(callSite, function, context), callSite);
+        return getOpenFunctionType(qname, PyCallExpressionHelper.mapArguments(callSite, function, context).getMappedParameters(), callSite);
       }
       else if ("tuple.__init__".equals(qname) && callSite instanceof PyCallExpression) {
         return getTupleInitializationType((PyCallExpression)callSite, context);

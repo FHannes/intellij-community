@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,12 +40,12 @@ class JavaInlayParameterHintsProvider : InlayParameterHintsProvider {
 
   override fun getParameterHints(element: PsiElement): List<InlayInfo> {
     if (element is PsiCallExpression) {
-      return JavaInlayHintsProvider.createHints(element).toList()
+      return JavaInlayHintsProvider.hints(element).toList()
     }
     return emptyList()
   }
 
-  private fun getMethodInfo(method: PsiMethod): MethodInfo? {
+  fun getMethodInfo(method: PsiMethod): MethodInfo? {
     val containingClass = method.containingClass ?: return null
     val fullMethodName = StringUtil.getQualifiedName(containingClass.qualifiedName, method.name)
 
@@ -88,7 +88,17 @@ class JavaInlayParameterHintsProvider : InlayParameterHintsProvider {
       "*.equal(*)",
 
       "java.lang.Math.*",
-      "org.slf4j.Logger.*"
+      "org.slf4j.Logger.*",
+      
+      "*.singleton(*)",
+      "*.singletonList(*)",
+      
+      "*.Set.of",
+      "*.ImmutableList.of",
+      "*.ImmutableMultiset.of",
+      "*.ImmutableSortedMultiset.of",
+      "*.ImmutableSortedSet.of",
+      "*.Arrays.asList"
   )
   
   val isDoNotShowIfMethodNameContainsParameterName = Option("java.method.name.contains.parameter.name", 

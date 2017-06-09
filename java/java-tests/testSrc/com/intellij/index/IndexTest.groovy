@@ -64,8 +64,11 @@ import com.intellij.testFramework.SkipSlowTestLocally
 import com.intellij.testFramework.exceptionCases.IllegalArgumentExceptionCase
 import com.intellij.testFramework.fixtures.JavaCodeInsightFixtureTestCase
 import com.intellij.util.FileContentUtil
+import com.intellij.util.IncorrectOperationException
 import com.intellij.util.Processor
 import com.intellij.util.indexing.*
+import com.intellij.util.indexing.impl.MapIndexStorage
+import com.intellij.util.indexing.impl.MapReduceIndex
 import com.intellij.util.io.*
 import groovy.transform.CompileStatic
 import org.jetbrains.annotations.NotNull
@@ -86,7 +89,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
   }
 
   void testUpdate() throws StorageException, IOException {
-    StringIndex index = createIndex(getTestName(false), new EnumeratorStringDescriptor())
+    StringIndex index = createIndex(getTestName(false), new EnumeratorStringDescriptor(), false)
 
     try {
       // build index
@@ -133,7 +136,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
   }
 
   void testUpdateWithCustomEqualityPolicy() {
-    def index = createIndex(getTestName(false), new CaseInsensitiveEnumeratorStringDescriptor())
+    def index = createIndex(getTestName(false), new CaseInsensitiveEnumeratorStringDescriptor(), false)
     try {
       index.update("a.java", "x", null)
       assertDataEquals(index.getFilesByWord("x"), "a.java")
@@ -151,12 +154,12 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     }
   }
 
-  private static StringIndex createIndex(String testName, EnumeratorStringDescriptor keyDescriptor) {
+  private static StringIndex createIndex(String testName, EnumeratorStringDescriptor keyDescriptor, boolean readOnly) {
     final File storageFile = FileUtil.createTempFile("index_test", "storage")
     final File metaIndexFile = FileUtil.createTempFile("index_test_inputs", "storage")
     PersistentHashMap<Integer, Collection<String>>  index = createMetaIndex(metaIndexFile)
-    final VfsAwareMapIndexStorage indexStorage = new VfsAwareMapIndexStorage(storageFile, keyDescriptor, new EnumeratorStringDescriptor(), 16 * 1024)
-    return new StringIndex(testName, indexStorage, index)
+    final VfsAwareMapIndexStorage indexStorage = new VfsAwareMapIndexStorage(storageFile, keyDescriptor, new EnumeratorStringDescriptor(), 16 * 1024, readOnly)
+    return new StringIndex(testName, indexStorage, index, !readOnly)
   }
   
   private static PersistentHashMap<Integer, Collection<String>> createMetaIndex(File metaIndexFile) throws IOException {
@@ -503,13 +506,14 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
   }
 
   void "test report using index from other index"() throws IOException {
-    def vfile = myFixture.addClass("class Foo { void bar() {} }").getContainingFile().getVirtualFile()
+    def className = "Foo"
+    def vfile = myFixture.addClass("class $className { void bar() {} }").getContainingFile().getVirtualFile()
     def scope = GlobalSearchScope.allScope(project)
     def foundClass = [false]
     def foundMethod = [false]
 
     try {
-      StubIndex.instance.processElements(JavaStubIndexKeys.CLASS_SHORT_NAMES, "Foo", project, scope,
+      StubIndex.instance.processElements(JavaStubIndexKeys.CLASS_SHORT_NAMES, className, project, scope,
                                          PsiClass.class,
                                          new Processor<PsiClass>() {
                                            @Override
@@ -532,7 +536,36 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     }
 
     assertTrue(foundClass[0])
-    assertTrue(!foundMethod[0])
+    assertTrue(foundMethod[0]) // allow access stub index processing other index
+
+    def foundClassProcessAll = [false]
+    def foundClassStub = [false]
+
+    try {
+      StubIndex.instance.processAllKeys(JavaStubIndexKeys.CLASS_SHORT_NAMES, project,
+                                        new Processor<String>() {
+                                          @Override
+                                          boolean process(String aClass) {
+                                            if (!className.equals(aClass)) return true;
+                                            foundClassProcessAll[0] = true
+                                            StubIndex.instance.processElements(JavaStubIndexKeys.CLASS_SHORT_NAMES, aClass, project, scope,
+                                                                               PsiClass.class,
+                                                                               new Processor<PsiClass>() {
+                                                                                 @Override
+                                                                                 boolean process(PsiClass clazz) {
+                                                                                   foundClassStub[0] = true
+                                                                                   return true
+                                                                                 }
+                                                                               })
+                                            return true
+                                          }
+                                        })
+    } catch (e) {
+      if (!(e instanceof RuntimeException)) throw e
+    }
+
+    assertTrue(foundClassProcessAll[0])
+    assertTrue(!foundClassStub[0])
 
     def foundId = [false]
     def foundStub = [false]
@@ -541,7 +574,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
       FileBasedIndex.instance.
         processValues(IdIndex.NAME, new IdIndexEntry("Foo", true), null, new FileBasedIndex.ValueProcessor<Integer>() {
           @Override
-          boolean process(VirtualFile file, Integer value) {
+          boolean process(@NotNull VirtualFile file, Integer value) {
             foundId[0] = true
             FileBasedIndex.instance.processValues(
               StubUpdatingIndex.INDEX_ID,
@@ -549,7 +582,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
               null,
               new FileBasedIndex.ValueProcessor<SerializedStubTree>() {
                 @Override
-                boolean process(VirtualFile file2, SerializedStubTree value2) {
+                boolean process(@NotNull VirtualFile file2, SerializedStubTree value2) {
                   foundStub[0] = true
                   return true
                 }
@@ -584,7 +617,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     def vfsEventMerger = new VfsEventsMerger()
 
     @Override
-    protected void iterateIndexableFiles(VirtualFile file, ContentIterator iterator) {
+    protected void iterateIndexableFiles(@NotNull VirtualFile file, @NotNull ContentIterator iterator) {
       VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor() {
         @Override
         boolean visitFile(@NotNull VirtualFile visitedFile) {
@@ -594,12 +627,12 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
       })
     }
 
-    protected void doInvalidateIndicesForFile(VirtualFile file, boolean contentChange) {
+    protected void doInvalidateIndicesForFile(@NotNull VirtualFile file, boolean contentChange) {
       vfsEventMerger.recordBeforeFileEvent(((VirtualFileWithId)file).id, file, contentChange)
     }
 
     @Override
-    protected void buildIndicesForFile(VirtualFile file, boolean contentChange) {
+    protected void buildIndicesForFile(@NotNull VirtualFile file, boolean contentChange) {
       vfsEventMerger.recordFileEvent(((VirtualFileWithId)file).id, file, contentChange)
     }
 
@@ -607,7 +640,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
       Ref<String> operation = new Ref<>()
       vfsEventMerger.processChanges(new VfsEventsMerger.VfsEventProcessor() {
         @Override
-        boolean process(VfsEventsMerger.ChangeInfo info) {
+        boolean process(@NotNull VfsEventsMerger.ChangeInfo info) {
           operation.set(info.toString())
           return true
         }
@@ -620,7 +653,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
   void testIndexedFilesListener() throws Throwable {
     def listener = new RecordingVfsListener()
 
-    ApplicationManager.getApplication().getMessageBus().connect(getTestRootDisposable()).subscribe(
+    ApplicationManager.getApplication().getMessageBus().connect(myFixture.getTestRootDisposable()).subscribe(
       VirtualFileManager.VFS_CHANGES,
       listener
     )
@@ -665,6 +698,39 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     assert JavaFileElementType.isInSourceContent(myFixture.tempDirFixture.getFile('another/doo/A.java'))
   }
 
+  void "test requesting nonexisted index fails as expected"() {
+    ID<?, ?> myId = ID.create("my.id")
+    FileBasedIndex.instance.getContainingFiles(myId, "null", GlobalSearchScope.allScope(project))
+    FileBasedIndex.instance.processAllKeys(myId, Processor.TRUE, project)
+  }
+
+  void "test read-only index access"() {
+    StringIndex index = createIndex(getTestName(false), new EnumeratorStringDescriptor(), true)
+
+    try {
+      assertFalse(index.update("qwe/asd", "some_string", null))
+      def rebuildException = index.getRebuildException()
+      assertInstanceOf(rebuildException, StorageException.class)
+      def rebuildCause = rebuildException.getCause()
+      assertInstanceOf(rebuildCause, IncorrectOperationException.class)
+    } finally {
+      index.dispose()
+    }
+  }
+
+  void "test read-only index has read-only storages"() {
+    def index = createIndex(getTestName(false), new EnumeratorStringDescriptor(), true).getIndex()
+
+    try {
+      MapIndexStorage<String, String> storage = assertInstanceOf(index, MapReduceIndex.class).getStorage()
+      def map = storage.getIndexMap()
+      assertTrue(map.getReadOnly())
+      assertTrue(map.getValueStorage().isReadOnly())
+    } finally {
+      index.dispose()
+    }
+  }
+
   @CompileStatic
   void "test Vfs Events Processing Performance"() {
     def filename = 'A.java'
@@ -694,6 +760,6 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
 
       files = FilenameIndex.getFilesByName(project, filename, GlobalSearchScope.moduleScope(myModule))
       assert files?.length == 1
-    }).cpuBound().ioBound().assertTiming()
+    }).assertTiming()
   }
 }

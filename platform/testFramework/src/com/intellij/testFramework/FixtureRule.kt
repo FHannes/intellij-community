@@ -19,7 +19,7 @@ import com.intellij.ide.highlighter.ProjectFileType
 import com.intellij.idea.IdeaTestApplication
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.runWriteAction
+import com.intellij.openapi.application.runUndoTransparentWriteAction
 import com.intellij.openapi.components.ComponentManager
 import com.intellij.openapi.components.impl.stores.IProjectStore
 import com.intellij.openapi.components.stateStore
@@ -107,7 +107,7 @@ class ProjectRule : ApplicationRule() {
 
   override public fun after() {
     if (projectOpened.compareAndSet(true, false)) {
-      sharedProject?.let { runInEdtAndWait { (ProjectManager.getInstance() as ProjectManagerImpl).closeProject(it, false, false, false) } }
+      sharedProject?.let { runInEdtAndWait { (ProjectManager.getInstance() as ProjectManagerImpl).forceCloseProject(it, false) } }
     }
   }
 
@@ -190,7 +190,7 @@ class InitInspectionRule : TestRule {
   override fun apply(base: Statement, description: Description) = statement { runInInitMode { base.evaluate() } }
 }
 
-private inline fun statement(crossinline runnable: () -> Unit) = object : Statement() {
+inline fun statement(crossinline runnable: () -> Unit) = object : Statement() {
   override fun evaluate() {
     runnable()
   }
@@ -243,7 +243,7 @@ fun Project.use(task: (Project) -> Unit) {
     task(this)
   }
   finally {
-    runInEdtAndWait { projectManager.closeProject(this, false, true, false) }
+    runInEdtAndWait { projectManager.forceCloseProject(this, true) }
   }
 }
 
@@ -252,7 +252,7 @@ class DisposeNonLightProjectsRule : ExternalResource() {
     val projectManager = if (ApplicationManager.getApplication().isDisposed) null else ProjectManager.getInstance() as ProjectManagerImpl
     projectManager?.openProjects?.forEachGuaranteed {
       if (!ProjectManagerImpl.isLight(it)) {
-        runInEdtAndWait { projectManager.closeProject(it, false, true, false) }
+        runInEdtAndWait { projectManager.forceCloseProject(it, true) }
       }
     }
   }
@@ -304,7 +304,7 @@ private fun createOrLoadProject(tempDirManager: TemporaryDirectory, task: (Proje
       filePath = tempDirManager.newPath("test${if (directoryBased) "" else ProjectFileType.DOT_DEFAULT_EXTENSION}").systemIndependentPath
     }
     else {
-      filePath = runWriteAction { projectCreator(tempDirManager.newVirtualDirectory()) }
+      filePath = runUndoTransparentWriteAction { projectCreator(tempDirManager.newVirtualDirectory()) }
     }
 
     val project = if (projectCreator == null) createHeavyProject(filePath, true) else ProjectManagerEx.getInstanceEx().loadProject(filePath)!!

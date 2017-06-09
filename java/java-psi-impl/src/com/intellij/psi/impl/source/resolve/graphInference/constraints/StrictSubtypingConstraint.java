@@ -26,9 +26,6 @@ import com.intellij.psi.util.TypeConversionUtil;
 import java.util.HashSet;
 import java.util.List;
 
-/**
- * User: anna
- */
 public class StrictSubtypingConstraint implements ConstraintFormula {
   private PsiType myS;
   private PsiType myT;
@@ -183,6 +180,13 @@ public class StrictSubtypingConstraint implements ConstraintFormula {
         constraints.add(new StrictSubtypingConstraint(conjunct, myS));
       }
       return true;
+    }
+
+    if (myT instanceof PsiCapturedWildcardType) {
+      PsiType lowerBound = ((PsiCapturedWildcardType)myT).getLowerBound();
+      if (lowerBound != PsiType.NULL) {
+        constraints.add(new StrictSubtypingConstraint(lowerBound, myS));
+      }
     }
 
     return true;

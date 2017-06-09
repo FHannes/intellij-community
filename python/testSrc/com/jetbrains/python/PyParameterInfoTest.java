@@ -452,6 +452,14 @@ public class PyParameterInfoTest extends LightMarkedTestCase {
     );
   }
 
+  // PY-23055
+  public void testWithoutTypeButWithNoneDefaultValue() {
+    final int offset = loadTest(1).get("<arg1>").getTextOffset();
+    final String expectedInfo = "b=None";
+
+    feignCtrlP(offset).check(expectedInfo, new String[]{"b=None"});
+  }
+
   // PY-22004
   public void testMultiResolved() {
     myFixture.copyDirectoryToProject("typing", "");
@@ -532,6 +540,68 @@ public class PyParameterInfoTest extends LightMarkedTestCase {
         final List<String[]> highlighted = Arrays.asList(new String[]{"a: int"}, new String[]{"a: str, "});
 
         feignCtrlP(offset).check(texts, highlighted, Arrays.asList(ArrayUtil.EMPTY_STRING_ARRAY, ArrayUtil.EMPTY_STRING_ARRAY));
+      }
+    );
+  }
+
+  // PY-22971
+  public void testTopLevelOverloadsAndImplementation() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON35,
+      () -> {
+        final int offset = loadTest(1).get("<arg1>").getTextOffset();
+
+        final List<String> texts = Arrays.asList("value: None", "value: int", "value: str");
+        final List<String[]> highlighted = Arrays.asList(new String[]{"value: None"}, new String[]{"value: int"}, new String[]{"value: str"});
+
+        feignCtrlP(offset).check(texts, highlighted, Arrays.asList(ArrayUtil.EMPTY_STRING_ARRAY, ArrayUtil.EMPTY_STRING_ARRAY, ArrayUtil.EMPTY_STRING_ARRAY));
+      }
+    );
+  }
+
+  // PY-22971
+  public void testOverloadsAndImplementationInClass() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON35,
+      () -> {
+        final int offset = loadTest(1).get("<arg1>").getTextOffset();
+
+        final List<String> texts = Arrays.asList("self: A, value: None", "self: A, value: int", "self: A, value: str");
+        final List<String[]> highlighted = Arrays.asList(new String[]{"value: None"}, new String[]{"value: int"}, new String[]{"value: str"});
+        final List<String[]> disabled = Arrays.asList(new String[]{"self: A, "}, new String[]{"self: A, "}, new String[]{"self: A, "});
+
+        feignCtrlP(offset).check(texts, highlighted, disabled);
+      }
+    );
+  }
+
+  // PY-22971
+  public void testOverloadsAndImplementationInImportedModule() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON35,
+      () -> {
+        final int offset = loadMultiFileTest(1).get("<arg1>").getTextOffset();
+
+        final List<String> texts = Arrays.asList("value: str", "value: int", "value: None");
+        final List<String[]> highlighted = Arrays.asList(new String[]{"value: str"}, new String[]{"value: int"}, new String[]{"value: None"});
+
+        feignCtrlP(offset).check(texts, highlighted, Arrays.asList(ArrayUtil.EMPTY_STRING_ARRAY, ArrayUtil.EMPTY_STRING_ARRAY, ArrayUtil.EMPTY_STRING_ARRAY));
+      }
+    );
+  }
+
+  // PY-22971
+  public void testOverloadsAndImplementationInImportedClass() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON35,
+      () -> {
+        final int offset = loadMultiFileTest(1).get("<arg1>").getTextOffset();
+
+        final List<String> texts = Arrays.asList("self: A, value: None", "self: A, value: int", "self: A, value: str");
+        final List<String[]> highlighted = Arrays.asList(new String[]{"value: None"}, new String[]{"value: int"}, new String[]{"value: str"});
+        final List<String[]> disabled = Arrays.asList(new String[]{"self: A, "}, new String[]{"self: A, "}, new String[]{"self: A, "});
+
+        feignCtrlP(offset).check(texts, highlighted, disabled);
       }
     );
   }
@@ -650,6 +720,11 @@ public class PyParameterInfoTest extends LightMarkedTestCase {
     @Override
     public void setHighlightedParameter(Object parameter) {
       // nothing, we don't use it
+    }
+
+    @Override
+    public Object getHighlightedParameter() {
+      return null;
     }
 
     @Override

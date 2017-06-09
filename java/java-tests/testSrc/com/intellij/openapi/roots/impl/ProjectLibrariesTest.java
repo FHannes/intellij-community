@@ -46,13 +46,15 @@ public class ProjectLibrariesTest extends IdeaTestCase {
     myRoot = LocalFileSystem.getInstance().findFileByPath(PathManagerEx.getTestDataPath() + "/psi/cls/repo");
     assertNotNull(myRoot);
 
-    myLib = WriteCommandAction.runWriteCommandAction(null, new Computable<Library>() {
-      @Override
-      public Library compute() {
-        return ProjectLibraryTable.getInstance(myProject).createLibrary("LIB");
-      }
-    });
+    myLib = WriteCommandAction.runWriteCommandAction(null,
+                                                     (Computable<Library>)() -> ProjectLibraryTable.getInstance(myProject).createLibrary("LIB"));
     ModuleRootModificationUtil.addDependency(myModule, myLib);
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    myLib = null;
+    super.tearDown();
   }
 
   public void test() {

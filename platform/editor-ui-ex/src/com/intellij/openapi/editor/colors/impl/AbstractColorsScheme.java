@@ -34,8 +34,6 @@ import com.intellij.util.JdomKt;
 import com.intellij.util.PlatformUtils;
 import com.intellij.util.containers.ContainerUtilRt;
 import com.intellij.util.containers.HashMap;
-import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.UIUtil;
 import gnu.trove.THashMap;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
@@ -54,25 +52,23 @@ import static com.intellij.openapi.editor.markup.TextAttributes.USE_INHERITED_MA
 import static com.intellij.openapi.util.Couple.of;
 import static com.intellij.ui.ColorUtil.fromHex;
 
-public abstract class AbstractColorsScheme implements EditorColorsScheme, SerializableScheme {
+@SuppressWarnings("UseJBColor")
+public abstract class AbstractColorsScheme extends EditorFontCacheImpl implements EditorColorsScheme, SerializableScheme {
   private static final int CURR_VERSION = 142;
 
+  // todo: unify with UIUtil.DEF_SYSTEM_FONT_SIZE
   private static final FontSize DEFAULT_FONT_SIZE = FontSize.SMALL;
 
   protected EditorColorsScheme myParentScheme;
 
   protected FontSize myQuickDocFontSize = DEFAULT_FONT_SIZE;
-  protected float myLineSpacing;
 
-  @NotNull private final Map<EditorFontType, Font> myFonts                  = new EnumMap<>(EditorFontType.class);
-  @NotNull private final FontPreferences           myFontPreferences        = new FontPreferences();
-  @NotNull private final FontPreferences           myConsoleFontPreferences = new FontPreferences();
+  @NotNull private FontPreferences                 myFontPreferences
+    = new DelegatingFontPreferences(() -> AppEditorFontOptions.getInstance().getFontPreferences());
+  @NotNull private FontPreferences                 myConsoleFontPreferences = new DelegatingFontPreferences(() -> myFontPreferences);
 
   private final ValueElementReader myValueReader = new TextAttributesReader();
-  private String myFallbackFontName;
   private String mySchemeName;
-
-  private float myConsoleLineSpacing = -1;
 
   private boolean myIsSaveNeeded;
 
@@ -128,7 +124,6 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
 
   protected AbstractColorsScheme(EditorColorsScheme parentScheme) {
     myParentScheme = parentScheme;
-    myFontPreferences.setChangeListener(() -> initFonts());
   }
 
   public AbstractColorsScheme() {
@@ -165,23 +160,24 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
 
   @Override
   public void setFont(EditorFontType key, Font font) {
-    myFonts.put(key, font);
   }
 
   @Override
   public abstract Object clone();
 
   public void copyTo(AbstractColorsScheme newScheme) {
-    myFontPreferences.copyTo(newScheme.myFontPreferences);
-    newScheme.myLineSpacing = myLineSpacing;
     newScheme.myQuickDocFontSize = myQuickDocFontSize;
-    myConsoleFontPreferences.copyTo(newScheme.myConsoleFontPreferences);
-    newScheme.myConsoleLineSpacing = myConsoleLineSpacing;
-
-    final Set<EditorFontType> types = myFonts.keySet();
-    for (EditorFontType type : types) {
-      Font font = myFonts.get(type);
-      newScheme.setFont(type, font);
+    if (myConsoleFontPreferences instanceof DelegatingFontPreferences) {
+      newScheme.setUseEditorFontPreferencesInConsole();
+    }
+    else {
+      newScheme.setConsoleFontPreferences(myConsoleFontPreferences);
+    }
+    if (myFontPreferences instanceof DelegatingFontPreferences) {
+      newScheme.setUseAppFontPreferencesInEditor();
+    }
+    else {
+      newScheme.setFontPreferences(myFontPreferences);
     }
 
     newScheme.myAttributesMap = new THashMap<>(myAttributesMap);
@@ -192,16 +188,27 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
   @Override
   public void setEditorFontName(String fontName) {
     int editorFontSize = getEditorFontSize();
-    myFontPreferences.clear();
-    myFontPreferences.register(fontName, editorFontSize);
+    ensureEditableFontPreferences().clear();
+    ensureEditableFontPreferences().register(fontName, editorFontSize);
     initFonts();
   }
 
   @Override
   public void setEditorFontSize(int fontSize) {
     fontSize = EditorFontsConstants.checkAndFixEditorFontSize(fontSize);
-    myFontPreferences.register(getEditorFontName(), fontSize);
+    ensureEditableFontPreferences().register(myFontPreferences.getFontFamily(), fontSize);
     initFonts();
+  }
+
+  @Override
+  public void setUseAppFontPreferencesInEditor() {
+    myFontPreferences = new DelegatingFontPreferences(()-> AppEditorFontOptions.getInstance().getFontPreferences());
+    initFonts();
+  }
+
+  @Override
+  public boolean isUseAppFontPreferencesInEditor() {
+    return myFontPreferences instanceof DelegatingFontPreferences;
   }
 
   @Override
@@ -214,17 +221,13 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
 
   @Override
   public void setLineSpacing(float lineSpacing) {
-    myLineSpacing = EditorFontsConstants.checkAndFixEditorLineSpacing(lineSpacing);
+    ensureEditableFontPreferences().setLineSpacing(lineSpacing);
   }
 
+  @NotNull
   @Override
   public Font getFont(EditorFontType key) {
-    UISettings uiSettings = UISettings.getInstance();
-    if (uiSettings.getPresentationMode()) {
-      final Font font = myFonts.get(key);
-      return new Font(font.getName(), font.getStyle(), uiSettings.getPresentationModeFontSize());
-    }
-    return myFonts.get(key);
+    return myFontPreferences instanceof DelegatingFontPreferences ? EditorFontCache.getInstance().getFont(key) : super.getFont(key);
   }
 
   @Override
@@ -240,21 +243,18 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
 
   @Override
   public void setFontPreferences(@NotNull FontPreferences preferences) {
-    preferences.copyTo(myFontPreferences);
+    preferences.copyTo(ensureEditableFontPreferences());
     initFonts();
   }
 
   @Override
   public String getEditorFontName() {
-    if (myFallbackFontName != null) {
-      return myFallbackFontName;
-    }
-    return myFontPreferences.getFontFamily();
+    return getFont(EditorFontType.PLAIN).getFamily();
   }
 
   @Override
   public int getEditorFontSize() {
-    return myFontPreferences.getSize(getEditorFontName());
+    return myFontPreferences.getSize(myFontPreferences.getFontFamily());
   }
 
   @NotNull
@@ -265,40 +265,16 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
 
   @Override
   public float getLineSpacing() {
-    float spacing = myLineSpacing;
-    return spacing <= 0 ? 1.0f : spacing;
+    return myFontPreferences.getLineSpacing();
   }
 
   protected void initFonts() {
-    String editorFontName = getEditorFontName();
-    int editorFontSize = getEditorFontSize();
+    reset();
+  }
 
-    myFallbackFontName = FontPreferences.getFallbackName(editorFontName, editorFontSize, myParentScheme);
-    if (myFallbackFontName != null) {
-      editorFontName = myFallbackFontName;
-    }
-    Font plainFont = new Font(editorFontName, Font.PLAIN, editorFontSize);
-    Font boldFont = new Font(editorFontName, Font.BOLD, editorFontSize);
-    Font italicFont = new Font(editorFontName, Font.ITALIC, editorFontSize);
-    Font boldItalicFont = new Font(editorFontName, Font.BOLD | Font.ITALIC, editorFontSize);
-
-    myFonts.put(EditorFontType.PLAIN, plainFont);
-    myFonts.put(EditorFontType.BOLD, boldFont);
-    myFonts.put(EditorFontType.ITALIC, italicFont);
-    myFonts.put(EditorFontType.BOLD_ITALIC, boldItalicFont);
-
-    String consoleFontName = getConsoleFontName();
-    int consoleFontSize = getConsoleFontSize();
-
-    Font consolePlainFont = new Font(consoleFontName, Font.PLAIN, consoleFontSize);
-    Font consoleBoldFont = new Font(consoleFontName, Font.BOLD, consoleFontSize);
-    Font consoleItalicFont = new Font(consoleFontName, Font.ITALIC, consoleFontSize);
-    Font consoleBoldItalicFont = new Font(consoleFontName, Font.BOLD | Font.ITALIC, consoleFontSize);
-
-    myFonts.put(EditorFontType.CONSOLE_PLAIN, consolePlainFont);
-    myFonts.put(EditorFontType.CONSOLE_BOLD, consoleBoldFont);
-    myFonts.put(EditorFontType.CONSOLE_ITALIC, consoleItalicFont);
-    myFonts.put(EditorFontType.CONSOLE_BOLD_ITALIC, consoleBoldItalicFont);
+  @Override
+  protected EditorColorsScheme getFontCacheScheme() {
+    return this;
   }
 
   public String toString() {
@@ -355,10 +331,10 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
           readSettings(childNode, isDefault, fontScale);
           break;
         case EDITOR_FONT:
-          readFontSettings(childNode, myFontPreferences, isDefault, fontScale.get());
+          myFontPreferences = readFontSettings(childNode, isDefault, fontScale.get(), myFontPreferences.getLineSpacing());
           break;
         case CONSOLE_FONT:
-          readFontSettings(childNode, myConsoleFontPreferences, isDefault, fontScale.get());
+          myConsoleFontPreferences = readFontSettings(childNode, isDefault, fontScale.get(), myConsoleFontPreferences.getLineSpacing());
           break;
         case COLORS_ELEMENT:
           readColors(childNode);
@@ -423,10 +399,11 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
         }
         continue;
       }
-
       TextAttributes attr = myValueReader.read(TextAttributes.class, valueElement);
-      myAttributesMap.put(key, attr);
-      migrateErrorStripeColorFrom14(key, attr);
+      if (attr != null) {
+        myAttributesMap.put(key, attr);
+        migrateErrorStripeColorFrom14(key, attr);
+      }
     }
   }
 
@@ -474,7 +451,7 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
       }
       case LINE_SPACING: {
         Float value = myValueReader.read(Float.class, childNode);
-        if (value != null) myLineSpacing = value;
+        if (value != null) setLineSpacing(value);
         break;
       }
       case EDITOR_FONT_SIZE: {
@@ -509,33 +486,36 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
       }
       case EDITOR_LIGATURES: {
         Boolean value = myValueReader.read(Boolean.class, childNode);
-        if (value != null) myFontPreferences.setUseLigatures(value);
+        if (value != null) ensureEditableFontPreferences().setUseLigatures(value);
         break;
       }
       case CONSOLE_LIGATURES: {
         Boolean value = myValueReader.read(Boolean.class, childNode);
-        if (value != null) myConsoleFontPreferences.setUseLigatures(value);
+        if (value != null) {
+          ensureEditableConsoleFontPreferences().setUseLigatures(value);
+        }
         break;
       }
     }
   }
 
   private int readFontSize(Element element, boolean isDefault, Float fontScale) {
-    Float size = (float)myValueReader.read(Integer.class, element);
-    if (size == null) {
+    if (isDefault) {
+      return UISettings.getDefFontSize();
+    }
+    Integer intSize = myValueReader.read(Integer.class, element);
+    if (intSize == null) {
       return -1;
     }
-    if (!isDefault) {
-      size = (fontScale != null) ? size / fontScale : DEFAULT_FONT_SIZE.getSize();
-    }
-    return (int)JBUI.scale(size);
+    return UISettings.restoreFontSize(intSize, fontScale);
   }
 
-  private void readFontSettings(@NotNull Element element,
-                                @NotNull FontPreferences preferences,
-                                boolean isDefaultScheme,
-                                @Nullable Float fontScale)
-  {
+  private FontPreferencesImpl readFontSettings(@NotNull Element element,
+                                               boolean isDefaultScheme,
+                                               @Nullable Float fontScale,
+                                               float lineSpacing) {
+    FontPreferencesImpl preferences = new FontPreferencesImpl();
+    preferences.setChangeListener(() -> initFonts());
     List children = element.getChildren(OPTION_ELEMENT);
     String fontFamily = null;
     int size = -1;
@@ -554,13 +534,15 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
     else if (fontFamily != null) {
       preferences.addFontFamily(fontFamily);
     }
+    preferences.setLineSpacing(lineSpacing);
+    return preferences;
   }
 
   public void writeExternal(Element parentNode) {
     parentNode.setAttribute(NAME_ATTR, getName());
     parentNode.setAttribute(VERSION_ATTR, Integer.toString(myVersion));
 
-    /**
+    /*
      * FONT_SCALE is used to correctly identify the font size in both the JRE-managed HiDPI mode and
      * the IDE-managed HiDPI mode: {@link UIUtil#isJreHiDPIEnabled()}. Also, it helps to distinguish
      * the "hidpi-aware" scheme version from the previous one. Namely, the absence of the FONT_SCALE
@@ -569,7 +551,9 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
      * will be able to restore the font size according to its scale and the IDE HiDPI mode. The default
      * FONT_SCALE value should also be written by that reason.
      */
-    JdomKt.addOptionTag(parentNode, FONT_SCALE, String.valueOf(JBUI.scale(1f))); // must precede font options
+    if (!(myFontPreferences instanceof DelegatingFontPreferences) || !(myConsoleFontPreferences instanceof DelegatingFontPreferences)) {
+      JdomKt.addOptionTag(parentNode, FONT_SCALE, String.valueOf(UISettings.getDefFontScale())); // must precede font options
+    }
 
     if (myParentScheme != null && myParentScheme != EmptyColorScheme.INSTANCE) {
       parentNode.setAttribute(PARENT_SCHEME_ATTR, myParentScheme.getName());
@@ -579,7 +563,7 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
       parentNode.addContent(metaInfoToElement());
     }
 
-    if (getLineSpacing() != 1) {
+    if (getLineSpacing() != FontPreferences.DEFAULT_LINE_SPACING) {
       JdomKt.addOptionTag(parentNode, LINE_SPACING, String.valueOf(getLineSpacing()));
     }
 
@@ -587,15 +571,18 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
     // to specify fonts sequence (see getFontPreferences()), there are big chances that many clients still will use a single font.
     // That's why we want to use old format when zero or one font is selected and 'extended' format otherwise.
     boolean useOldFontFormat = myFontPreferences.getEffectiveFontFamilies().size() <= 1;
-    if (useOldFontFormat) {
-      JdomKt.addOptionTag(parentNode, EDITOR_FONT_SIZE, String.valueOf(getEditorFontSize()));
+    if (!(myFontPreferences instanceof DelegatingFontPreferences)) {
+      if (useOldFontFormat) {
+        JdomKt.addOptionTag(parentNode, EDITOR_FONT_SIZE, String.valueOf(getEditorFontSize()));
+        JdomKt.addOptionTag(parentNode, EDITOR_FONT_NAME, myFontPreferences.getFontFamily());
+      }
+      else {
+        writeFontPreferences(EDITOR_FONT, parentNode, myFontPreferences);
+      }
+      writeLigaturesPreferences(parentNode, myFontPreferences, EDITOR_LIGATURES);
     }
-    else {
-      writeFontPreferences(EDITOR_FONT, parentNode, myFontPreferences);
-    }
-    writeLigaturesPreferences(parentNode, myFontPreferences, EDITOR_LIGATURES);
     
-    if (!myFontPreferences.equals(myConsoleFontPreferences)) {
+    if (!(myConsoleFontPreferences instanceof DelegatingFontPreferences)) {
       if (myConsoleFontPreferences.getEffectiveFontFamilies().size() <= 1) {
         JdomKt.addOptionTag(parentNode, CONSOLE_FONT_NAME, getConsoleFontName());
 
@@ -607,18 +594,13 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
         writeFontPreferences(CONSOLE_FONT, parentNode, myConsoleFontPreferences);
       }
       writeLigaturesPreferences(parentNode, myConsoleFontPreferences, CONSOLE_LIGATURES);
-    }
-
-    if (getConsoleLineSpacing() != getLineSpacing()) {
-      JdomKt.addOptionTag(parentNode, CONSOLE_LINE_SPACING, Float.toString(getConsoleLineSpacing()));
+      if (getConsoleLineSpacing() != FontPreferences.DEFAULT_LINE_SPACING) {
+        JdomKt.addOptionTag(parentNode, CONSOLE_LINE_SPACING, Float.toString(getConsoleLineSpacing()));
+      }
     }
 
     if (DEFAULT_FONT_SIZE != getQuickDocFontSize()) {
       JdomKt.addOptionTag(parentNode, EDITOR_QUICK_JAVADOC_FONT_SIZE, getQuickDocFontSize().toString());
-    }
-
-    if (useOldFontFormat) {
-      JdomKt.addOptionTag(parentNode, EDITOR_FONT_NAME, getEditorFontName());
     }
 
     Element colorElements = new Element(COLORS_ELEMENT);
@@ -761,15 +743,36 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
     return true;
   }
 
+  private ModifiableFontPreferences ensureEditableFontPreferences() {
+    if (!(myFontPreferences instanceof ModifiableFontPreferences)) {
+      ModifiableFontPreferences editablePrefs = new FontPreferencesImpl();
+      myFontPreferences.copyTo(editablePrefs);
+      myFontPreferences = editablePrefs;
+      ((FontPreferencesImpl)myFontPreferences).setChangeListener(() -> initFonts());
+    }
+    return (ModifiableFontPreferences)myFontPreferences;
+  }
+
   @NotNull
   @Override
   public FontPreferences getConsoleFontPreferences() {
     return myConsoleFontPreferences;
   }
+  
+  @Override
+  public void setUseEditorFontPreferencesInConsole() {
+    myConsoleFontPreferences = new DelegatingFontPreferences(() -> myFontPreferences);
+    initFonts();
+  }
+
+  @Override
+  public boolean isUseEditorFontPreferencesInConsole() {
+    return myConsoleFontPreferences instanceof DelegatingFontPreferences;
+  }
 
   @Override
   public void setConsoleFontPreferences(@NotNull FontPreferences preferences) {
-    preferences.copyTo(myConsoleFontPreferences);
+    preferences.copyTo(ensureEditableConsoleFontPreferences());
     initFonts();
   }
 
@@ -778,11 +781,21 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
     return myConsoleFontPreferences.getFontFamily();
   }
 
+  private ModifiableFontPreferences ensureEditableConsoleFontPreferences() {
+    if (!(myConsoleFontPreferences instanceof ModifiableFontPreferences)) {
+      ModifiableFontPreferences editablePrefs = new FontPreferencesImpl();
+      myConsoleFontPreferences.copyTo(editablePrefs);
+      myConsoleFontPreferences = editablePrefs;
+    }
+    return (ModifiableFontPreferences)myConsoleFontPreferences;
+  }
+
   @Override
   public void setConsoleFontName(String fontName) {
+    ModifiableFontPreferences consolePreferences = ensureEditableConsoleFontPreferences();
     int consoleFontSize = getConsoleFontSize();
-    myConsoleFontPreferences.clear();
-    myConsoleFontPreferences.register(fontName, consoleFontSize);
+    consolePreferences.clear();
+    consolePreferences.register(fontName, consoleFontSize);
   }
 
   @Override
@@ -797,23 +810,20 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
 
   @Override
   public void setConsoleFontSize(int fontSize) {
+    ModifiableFontPreferences consoleFontPreferences = ensureEditableConsoleFontPreferences();
     fontSize = EditorFontsConstants.checkAndFixEditorFontSize(fontSize);
-    myConsoleFontPreferences.register(getConsoleFontName(), fontSize);
+    consoleFontPreferences.register(getConsoleFontName(), fontSize);
     initFonts();
   }
 
   @Override
   public float getConsoleLineSpacing() {
-    float consoleLineSpacing = myConsoleLineSpacing;
-    if (consoleLineSpacing == -1) {
-      return getLineSpacing();
-    }
-    return consoleLineSpacing;
+    return myConsoleFontPreferences.getLineSpacing();
   }
 
   @Override
   public void setConsoleLineSpacing(float lineSpacing) {
-    myConsoleLineSpacing = lineSpacing;
+    ensureEditableConsoleFontPreferences().setLineSpacing(lineSpacing);
   }
 
   protected TextAttributes getFallbackAttributes(@NotNull TextAttributesKey fallbackKey) {
@@ -884,6 +894,10 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
     return null;
   }
 
+  public EditorColorsScheme getParentScheme() {
+    return myParentScheme;
+  }
+
   @NotNull
   @Override
   public Element writeScheme() {
@@ -896,7 +910,7 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
     if (!(other instanceof AbstractColorsScheme)) return false;
     AbstractColorsScheme otherScheme = (AbstractColorsScheme)other;
     
-    // parent is used only for default schemes (e.g. Darcula — bundled in all ide (opposite to IDE-specific, like Cobalt))
+    // parent is used only for default schemes (e.g. Darcula bundled in all ide (opposite to IDE-specific, like Cobalt))
     if (getBaseDefaultScheme(this) != getBaseDefaultScheme(otherScheme)) {
       return false;
     }
@@ -916,14 +930,17 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
       }
     }
 
-    return getLineSpacing() == otherScheme.getLineSpacing() &&
-           getConsoleLineSpacing() == otherScheme.getConsoleLineSpacing() &&
-           myFontPreferences.equals(otherScheme.getFontPreferences()) &&
-           myConsoleFontPreferences.equals(otherScheme.getConsoleFontPreferences()) &&
+    return areDelegatingOrEqual(myFontPreferences, otherScheme.getFontPreferences()) &&
+           areDelegatingOrEqual(myConsoleFontPreferences, otherScheme.getConsoleFontPreferences()) &&
            attributesEqual(otherScheme) &&
-           colorsEqual(otherScheme) &&
-           myFontPreferences.equals(otherScheme.myFontPreferences);
+           colorsEqual(otherScheme);
   }
+
+  protected static boolean areDelegatingOrEqual(@NotNull FontPreferences preferences1, @NotNull FontPreferences preferences2) {
+      boolean isDelegating1 = preferences1 instanceof DelegatingFontPreferences;
+      boolean isDelegating2 = preferences2 instanceof DelegatingFontPreferences;
+      return isDelegating1 || isDelegating2 ? isDelegating1 && isDelegating2 : preferences1.equals(preferences2);
+    }
 
   protected boolean attributesEqual(AbstractColorsScheme otherScheme) {
     return myAttributesMap.equals(otherScheme.myAttributesMap);
@@ -947,7 +964,7 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
   
   private static class TemporaryParent extends EditorColorsSchemeImpl {
 
-    private static Logger LOG = Logger.getInstance("#" + TemporaryParent.class.getName());
+    private static Logger LOG = Logger.getInstance(TemporaryParent.class);
     
     private String myParentName;
     private boolean isErrorReported;
@@ -986,7 +1003,7 @@ public abstract class AbstractColorsScheme implements EditorColorsScheme, Serial
     assert newParent instanceof ReadOnlyColorsScheme : "New parent scheme must be read-only";
     myParentScheme = newParent;
   }
-  
+
   void resolveParent(@NotNull Function<String,EditorColorsScheme> nameResolver) {
     if (myParentScheme instanceof TemporaryParent) {
       String parentName = ((TemporaryParent)myParentScheme).getParentName();

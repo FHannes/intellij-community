@@ -38,6 +38,7 @@ import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.ProperTextRange;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
@@ -534,7 +535,7 @@ public class FindManagerTest extends DaemonAnalyzerTestCase {
     CommandProcessor.getInstance().executeCommand(getProject(), () -> {
       for (Usage usage : usages) {
         try {
-          ReplaceInProjectManager.getInstance(getProject()).replaceUsage(usage, findModel, Collections.<Usage>emptySet(), false);
+          ReplaceInProjectManager.getInstance(getProject()).replaceUsage(usage, findModel, Collections.emptySet(), false);
         }
         catch (FindManager.MalformedReplacementStringException e) {
           throw new RuntimeException(e);
@@ -595,10 +596,10 @@ public class FindManagerTest extends DaemonAnalyzerTestCase {
       ThrowableRunnable test = () -> assertSize(lineCount, findUsages(findModel));
 
       findModel.setCustomScope(GlobalSearchScope.fileScope(psiFile));
-      PlatformTestUtil.startPerformanceTest("slow", 400, test).attempts(2).cpuBound().usesAllCPUCores().useLegacyScaling().assertTiming();
+      PlatformTestUtil.startPerformanceTest("slow", 400, test).attempts(2).usesAllCPUCores().useLegacyScaling().assertTiming();
 
       findModel.setCustomScope(new LocalSearchScope(psiFile));
-      PlatformTestUtil.startPerformanceTest("slow", 400, test).attempts(2).cpuBound().usesAllCPUCores().useLegacyScaling().assertTiming();
+      PlatformTestUtil.startPerformanceTest("slow", 400, test).attempts(2).usesAllCPUCores().useLegacyScaling().assertTiming();
     }
     finally {
       fixture.tearDown();
@@ -710,6 +711,11 @@ public class FindManagerTest extends DaemonAnalyzerTestCase {
     findModel.setWholeWordsOnly(true);
     findModel.setProjectScope(false);
     findModel.setDirectoryName(excluded.getPath());
+    assertSize(2, findUsages(findModel));
+
+    findModel.setDirectoryName(root.getPath());
+    assertSize(0, findUsages(findModel));
+    Registry.get("find.search.in.excluded.dirs").setValue(true, getTestRootDisposable());
     assertSize(2, findUsages(findModel));
   }
 
@@ -919,6 +925,19 @@ public class FindManagerTest extends DaemonAnalyzerTestCase {
 
     FindResult findResult = myFindManager.findString(text, 0, findModel, null);
     assertTrue(!findResult.isStringFound());
+  }
+
+  public void testFindRegexpThatMatchesWholeFile() throws Exception {
+    FindModel findModel = FindManagerTestUtils.configureFindModel("[^~]+\\Z");
+    findModel.setRegularExpressions(true);
+
+    createFile("a.java", "some text");
+
+    findModel.setRegularExpressions(true);
+    List<UsageInfo> usages = findUsages(findModel);
+    assertSize(1, usages);
+
+    assertTrue(usages.get(0).isValid());
   }
 
   public void testRegExpMatchReplacement() throws InterruptedException, FindManager.MalformedReplacementStringException {

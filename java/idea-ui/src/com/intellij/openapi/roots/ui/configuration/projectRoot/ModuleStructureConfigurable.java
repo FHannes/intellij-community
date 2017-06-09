@@ -23,6 +23,7 @@ import com.intellij.facet.impl.ui.actions.AddFacetToModuleAction;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.highlighter.ModuleFileType;
+import com.intellij.ide.impl.FlattenModulesToggleAction;
 import com.intellij.ide.projectView.impl.ModuleGroup;
 import com.intellij.ide.projectView.impl.ModuleGroupingTreeHelper;
 import com.intellij.ide.util.projectWizard.ModuleBuilder;
@@ -74,10 +75,6 @@ import java.awt.*;
 import java.util.*;
 import java.util.List;
 
-/**
- * User: anna
- * Date: 02-Jun-2006
- */
 public class ModuleStructureConfigurable extends BaseStructureConfigurable implements Place.Navigator {
   private static final Comparator<MyNode> NODE_COMPARATOR = (o1, o2) -> {
     final NamedConfigurable configurable1 = o1.getConfigurable();
@@ -152,7 +149,10 @@ public class ModuleStructureConfigurable extends BaseStructureConfigurable imple
     final ArrayList<AnAction> result = super.createActions(fromPopup);
     if (fromPopup) {
       result.add(Separator.getInstance());
-      result.add(new FlattenModulesAction());
+      result.add(new FlattenModulesToggleAction(myProject, () -> true, () -> myFlattenModules, (value) -> {
+        myFlattenModules = value;
+        regroupModules();
+      }));
       result.add(new HideGroupsAction());
       addCollapseExpandActions(result);
     }
@@ -758,31 +758,6 @@ public class ModuleStructureConfigurable extends BaseStructureConfigurable imple
       }
 
       return null;
-    }
-  }
-
-  private class FlattenModulesAction extends ToggleAction implements DumbAware {
-    public FlattenModulesAction() {
-      super(ProjectBundle.message("project.roots.flatten.modules.action.text"),
-            ProjectBundle.message("project.roots.flatten.modules.action.description"), AllIcons.ObjectBrowser.FlattenModules);
-    }
-
-    @Override
-    public void update(@NotNull AnActionEvent e) {
-      super.update(e);
-      e.getPresentation().setEnabledAndVisible(
-        ModuleGrouperKt.isQualifiedModuleNamesEnabled() && !myContext.getModulesConfigurator().getModuleModel().hasModuleGroups());
-    }
-
-    @Override
-    public boolean isSelected(AnActionEvent e) {
-      return myFlattenModules;
-    }
-
-    @Override
-    public void setSelected(AnActionEvent e, boolean state) {
-      myFlattenModules = state;
-      regroupModules();
     }
   }
 

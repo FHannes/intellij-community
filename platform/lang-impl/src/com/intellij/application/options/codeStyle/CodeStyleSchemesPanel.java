@@ -18,8 +18,8 @@
 package com.intellij.application.options.codeStyle;
 
 import com.intellij.application.options.schemes.AbstractSchemeActions;
-import com.intellij.application.options.schemes.SimpleSchemesPanel;
 import com.intellij.application.options.schemes.SchemesModel;
+import com.intellij.application.options.schemes.SimpleSchemesPanel;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.psi.codeStyle.CodeStyleScheme;
 import com.intellij.psi.impl.source.codeStyle.CodeStyleSchemeImpl;
@@ -35,20 +35,19 @@ public class CodeStyleSchemesPanel extends SimpleSchemesPanel<CodeStyleScheme> {
   
   private boolean myIsReset = false;
 
+  public CodeStyleSchemesPanel(CodeStyleSchemesModel model, int vGap) {
+    super(vGap);
+    myModel = model;
+  }
   public CodeStyleSchemesPanel(CodeStyleSchemesModel model) {
+    super();
     myModel = model;
   }
 
   private void onCombo() {
     CodeStyleScheme selected = getSelectedScheme();
     if (selected != null) {
-      if (myModel.isProjectScheme(selected)) {
-        myModel.setUsePerProjectSettings(true);
-      }
-      else {
-        myModel.selectScheme(selected, this);
-        myModel.setUsePerProjectSettings(false);
-      }
+      myModel.selectScheme(selected, this);
     }
   }
 
@@ -58,12 +57,7 @@ public class CodeStyleSchemesPanel extends SimpleSchemesPanel<CodeStyleScheme> {
       List<CodeStyleScheme> schemes = new ArrayList<>();
       schemes.addAll(myModel.getAllSortedSchemes());
       resetSchemes(schemes);
-      if (myModel.isUsePerProjectSettings()) {
-        selectScheme(myModel.getProjectScheme());
-      }
-      else {
-        selectScheme(myModel.getSelectedGlobalScheme());
-      }
+      selectScheme(myModel.getSelectedScheme());
     }
     finally {
       myIsReset = false;
@@ -73,27 +67,12 @@ public class CodeStyleSchemesPanel extends SimpleSchemesPanel<CodeStyleScheme> {
   public void onSelectedSchemeChanged() {
     myIsReset = true;
     try {
-      if (myModel.isUsePerProjectSettings()) {
-        selectScheme(myModel.getProjectScheme());
-      }
-      else {
-        selectScheme(myModel.getSelectedGlobalScheme());
-      }
+      selectScheme(myModel.getSelectedScheme());
     }
     finally {
       myIsReset = false;
     }
   }
-
-  public void usePerProjectSettingsOptionChanged() {
-    if (myModel.isProjectScheme(myModel.getSelectedScheme())) {
-      selectScheme(myModel.getProjectScheme());
-    }
-    else {
-      selectScheme(myModel.getSelectedScheme());
-    }
-  }
-  
 
   @Override
   protected AbstractSchemeActions<CodeStyleScheme> createSchemeActions() {
@@ -130,6 +109,11 @@ public class CodeStyleSchemesPanel extends SimpleSchemesPanel<CodeStyleScheme> {
 
   @Override
   protected boolean highlightNonDefaultSchemes() {
+    return true;
+  }
+
+  @Override
+  public boolean useBoldForNonRemovableSchemes() {
     return true;
   }
 }

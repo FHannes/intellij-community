@@ -64,9 +64,13 @@ public class JUnitUtil {
 
   public static final String AFTER_CLASS_ANNOTATION_NAME = "org.junit.AfterClass";
   public static final String BEFORE_CLASS_ANNOTATION_NAME = "org.junit.BeforeClass";
+  public static final Collection<String> TEST5_CONFIG_METHODS = Collections.unmodifiableList(Arrays.asList(BEFORE_EACH_ANNOTATION_NAME,
+                                                                                                           AFTER_EACH_ANNOTATION_NAME));
 
   public static final String BEFORE_ALL_ANNOTATION_NAME = "org.junit.jupiter.api.BeforeAll";
   public static final String AFTER_ALL_ANNOTATION_NAME = "org.junit.jupiter.api.AfterAll";
+  public static final Collection<String> TEST5_STATIC_CONFIG_METHODS = Collections.unmodifiableList(Arrays.asList(BEFORE_ALL_ANNOTATION_NAME,
+                                                                                                                  AFTER_ALL_ANNOTATION_NAME));
 
   private static final Collection<String> TEST_ANNOTATIONS = Collections.unmodifiableList(Arrays.asList(TEST_ANNOTATION,
                                                                                                         TEST5_ANNOTATION,
@@ -74,6 +78,8 @@ public class JUnitUtil {
   public static final Collection<String> TEST5_ANNOTATIONS = Collections.unmodifiableList(Arrays.asList(TEST5_ANNOTATION,
                                                                                                         TEST5_FACTORY_ANNOTATION,
                                                                                                         CUSTOM_TESTABLE_ANNOTATION));
+  public static final Collection<String> TEST5_JUPITER_ANNOTATIONS = Collections.unmodifiableList(Arrays.asList(TEST5_ANNOTATION,
+                                                                                                        TEST5_FACTORY_ANNOTATION));
 
   private static final List<String> INSTANCE_CONFIGS = Arrays.asList(BEFORE_ANNOTATION_NAME, AFTER_ANNOTATION_NAME);
   private static final List<String> INSTANCE_5_CONFIGS = Arrays.asList(BEFORE_EACH_ANNOTATION_NAME, AFTER_EACH_ANNOTATION_NAME);
@@ -203,10 +209,11 @@ public class JUnitUtil {
     return isJUnit4TestClass(psiClass, true);
   }
 
-  private static boolean isJUnit4TestClass(final PsiClass psiClass, boolean checkAbstract) {
+  public static boolean isJUnit4TestClass(final PsiClass psiClass, boolean checkAbstract) {
     final PsiModifierList modifierList = psiClass.getModifierList();
     if (modifierList == null) return false;
-    if (AnnotationUtil.isAnnotated(psiClass, RUN_WITH, true)) return true;
+    final PsiClass topLevelClass = PsiTreeUtil.getTopmostParentOfType(modifierList, PsiClass.class);
+    if (topLevelClass != null && AnnotationUtil.isAnnotated(topLevelClass, RUN_WITH, true)) return true;
 
     if (!PsiClassUtil.isRunnableClass(psiClass, true, checkAbstract)) return false;
 
@@ -218,7 +225,7 @@ public class JUnitUtil {
     return false;
   }
 
-  public static boolean isJUnit5TestClass(final PsiClass psiClass, boolean checkAbstract) {
+  public static boolean isJUnit5TestClass(@NotNull final PsiClass psiClass, boolean checkAbstract) {
     final PsiModifierList modifierList = psiClass.getModifierList();
     if (modifierList == null) return false;
 
@@ -252,8 +259,13 @@ public class JUnitUtil {
   }
 
   public static boolean isJUnit5(GlobalSearchScope scope, Project project) {
-    PsiPackage aPackage = JavaPsiFacade.getInstance(project).findPackage(TEST5_PACKAGE_FQN);
-    return aPackage != null && aPackage.getDirectories(scope).length > 0;
+    JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
+    Condition<String> foundCondition = aPackageName -> {
+      PsiPackage aPackage = facade.findPackage(aPackageName);
+      return aPackage != null && aPackage.getDirectories(scope).length > 0;
+    };
+
+    return foundCondition.value(TEST5_PACKAGE_FQN);
   }
   
   public static boolean isTestAnnotated(final PsiMethod method) {
@@ -428,7 +440,7 @@ public class JUnitUtil {
     PsiElement element = location.getPsiElement();
     if (element instanceof PsiClassOwner) {
       PsiClass[] classes = ((PsiClassOwner)element).getClasses();
-      if (classes.length == 1) return classes[0];
+      if (classes.length == 1 && isTestClass(classes[0], false, true)) return classes[0];
     }
     return null;
   }

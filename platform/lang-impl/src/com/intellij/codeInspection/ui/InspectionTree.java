@@ -14,12 +14,6 @@
  * limitations under the License.
  */
 
-/*
- * Created by IntelliJ IDEA.
- * User: max
- * Date: Nov 4, 2001
- * Time: 5:19:35 PM
- */
 package com.intellij.codeInspection.ui;
 
 import com.intellij.codeInspection.CommonProblemDescriptor;
@@ -213,14 +207,17 @@ public class InspectionTree extends Tree {
     }
   }
 
+  @NotNull
   public CommonProblemDescriptor[] getAllValidSelectedDescriptors() {
     return getSelectedDescriptors(false, null, true, false);
   }
 
+  @NotNull
   public CommonProblemDescriptor[] getSelectedDescriptors() {
     return getSelectedDescriptors(false, null, false, false);
   }
 
+  @NotNull
   public CommonProblemDescriptor[] getSelectedDescriptors(boolean sortedByPosition,
                                                           @Nullable Set<VirtualFile> readOnlyFilesSink,
                                                           boolean allowResolved,
@@ -355,7 +352,7 @@ public class InspectionTree extends Tree {
   }
 
   public void queueUpdate() {
-    ((InspectionRootNode) getRoot()).getUpdater().update(null, true);
+    ((InspectionRootNode) getRoot()).getUpdater().update(true);
   }
 
   public void restoreExpansionAndSelection(boolean treeNodesMightChange) {

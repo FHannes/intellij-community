@@ -55,12 +55,9 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-/**
- * User: anna
- */
 public class JavaFxPsiUtil {
 
-  private static final Logger LOG = Logger.getInstance("#" + JavaFxPsiUtil.class.getName());
+  private static final Logger LOG = Logger.getInstance(JavaFxPsiUtil.class);
 
   public static XmlProcessingInstruction createSingleImportInstruction(String qualifiedName, Project project) {
     final String importText = "<?import " + qualifiedName + "?>";

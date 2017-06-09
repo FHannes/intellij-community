@@ -50,7 +50,6 @@ class FilePointerPartNode {
 
   int pointersUnder;   // number of alive pointers in this node plus all nodes beneath
   private static final VirtualFileManager ourFileManager = VirtualFileManager.getInstance();
-  private static final ManagingFS ourManagingFS = ManagingFS.getInstance();
 
   FilePointerPartNode(@NotNull String part, FilePointerPartNode parent, Pair<VirtualFile,String> fileAndUrl) {
     this.part = part;
@@ -254,7 +253,7 @@ class FilePointerPartNode {
     final long lastUpdated = myLastUpdated;
     final Pair<VirtualFile, String> fileAndUrl = myFileAndUrl;
     if (fileAndUrl == null) return null;
-    final long fsModCount = ourManagingFS.getStructureModificationCount();
+    final long fsModCount = ManagingFS.getInstance().getStructureModificationCount();
     if (lastUpdated == fsModCount) return fileAndUrl;
     VirtualFile file = fileAndUrl.first;
     String url = fileAndUrl.second;
@@ -310,7 +309,7 @@ class FilePointerPartNode {
     while (start1 < len1 && start2 < len2) {
       char c1 = s1.charAt(start1);
       char c2 = s2.charAt(start2);
-      if (!StringUtil.charsEqual(c1, c2, ignoreCase)) {
+      if (!StringUtil.charsMatch(c1, c2, ignoreCase)) {
         return start1;
       }
       start1++;

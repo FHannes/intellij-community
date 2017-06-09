@@ -846,20 +846,21 @@ public class PyUtil {
     });
   }
 
-  public static <T, P> T getParameterizedCachedValue(@NotNull PsiElement element, @NotNull P param, @NotNull NotNullFunction<P, T> f) {
-    final Map<P, T> cache = CachedValuesManager.getCachedValue(element, new CachedValueProvider<Map<P, T>>() {
-      @Nullable
-      @Override
-      public Result<Map<P, T>> compute() {
-        return Result.create(Maps.newHashMap(), PsiModificationTracker.MODIFICATION_COUNT);
-      }
+  public static <T, P> T getParameterizedCachedValue(@NotNull PsiElement element, @Nullable P param, @NotNull NullableFunction<P, T> f) {
+    final CachedValuesManager manager = CachedValuesManager.getManager(element.getProject());
+    final Map<Optional<P>, Optional<T>> cache = CachedValuesManager.getCachedValue(element, manager.getKeyForClass(f.getClass()), () -> {
+      // concurrent hash map is a null-hostile collection
+      return CachedValueProvider.Result.create(Maps.newConcurrentMap(), PsiModificationTracker.MODIFICATION_COUNT);
     });
-    T result = cache.get(param);
-    if (result == null) {
-      result = f.fun(param);
-      cache.put(param, result);
+    // Don't use ConcurrentHashMap#computeIfAbsent(), it blocks if the function tries to update the cache recursively for the same key 
+    // during computation. We can accept here that some values will be computed several times due to non-atomic updates.
+    final Optional<P> wrappedParam = Optional.ofNullable(param);
+    Optional<T> value = cache.get(wrappedParam);
+    if (value == null) {
+      value = Optional.ofNullable(f.fun(param));
+      cache.put(wrappedParam, value);
     }
-    return result;
+    return value.orElse(null);
   }
 
   /**
@@ -907,6 +908,37 @@ public class PyUtil {
   public static PsiComment getCommentOnHeaderLine(@NotNull PyStatementListContainer container) {
     final PyStatementList statementList = container.getStatementList();
     return as(PyPsiUtils.getPrevNonWhitespaceSibling(statementList), PsiComment.class);
+  }
+
+  public static boolean isPy2ReservedWord(@NotNull PyReferenceExpression node) {
+    if (LanguageLevel.forElement(node).isOlderThan(LanguageLevel.PYTHON30)) {
+      if (!node.isQualified()) {
+        final String name = node.getName();
+        if (PyNames.NONE.equals(name) || PyNames.FALSE.equals(name) || PyNames.TRUE.equals(name)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Retrieve the document from {@link PsiDocumentManager} using the anchor PSI element and pass it to the consumer function
+   * first releasing it from pending PSI modifications it with {@link PsiDocumentManager#doPostponedOperationsAndUnblockDocument(Document)}
+   * and then committing in try/finally block, so that subsequent operations over the PSI can be performed.
+   */
+  public static void updateDocumentUnblockedAndCommitted(@NotNull PsiElement anchor, @NotNull Consumer<Document> consumer) {
+    final PsiDocumentManager manager = PsiDocumentManager.getInstance(anchor.getProject());
+    final Document document = manager.getDocument(anchor.getContainingFile());
+    if (document != null) {
+      manager.doPostponedOperationsAndUnblockDocument(document);
+      try {
+        consumer.consume(document);
+      }
+      finally {
+        manager.commitDocument(document);
+      }
+    }
   }
 
   public static class KnownDecoratorProviderHolder {
@@ -1527,64 +1559,6 @@ public class PyUtil {
       }
     }
     return element;
-  }
-
-  @NotNull
-  public static List<List<PyParameter>> getOverloadedParametersSet(@NotNull PyCallable callable, @NotNull TypeEvalContext context) {
-    final List<List<PyParameter>> parametersSet = getOverloadedParametersSet(context.getType(callable), context);
-    return parametersSet != null ? parametersSet : Collections.singletonList(Arrays.asList(callable.getParameterList().getParameters()));
-  }
-
-  @Nullable
-  private static List<PyParameter> getParametersOfCallableType(@NotNull PyCallableType type, @NotNull TypeEvalContext context) {
-    final List<PyCallableParameter> callableTypeParameters = type.getParameters(context);
-    if (callableTypeParameters != null) {
-      boolean allParametersDefined = true;
-      final List<PyParameter> parameters = new ArrayList<>();
-      for (PyCallableParameter callableParameter : callableTypeParameters) {
-        final PyParameter parameter = callableParameter.getParameter();
-        if (parameter == null) {
-          allParametersDefined = false;
-          break;
-        }
-        parameters.add(parameter);
-      }
-      if (allParametersDefined) {
-        return parameters;
-      }
-    }
-    return null;
-  }
-
-  @Nullable
-  private static List<List<PyParameter>> getOverloadedParametersSet(@Nullable PyType type, @NotNull TypeEvalContext context) {
-    if (type instanceof PyUnionType) {
-      type = ((PyUnionType)type).excludeNull(context);
-    }
-
-    if (type instanceof PyCallableType) {
-      final List<PyParameter> results = getParametersOfCallableType((PyCallableType)type, context);
-      if (results != null) {
-        return Collections.singletonList(results);
-      }
-    }
-    else if (type instanceof PyUnionType) {
-      final List<List<PyParameter>> results = new ArrayList<>();
-      final Collection<PyType> members = ((PyUnionType)type).getMembers();
-      for (PyType member : members) {
-        if (member instanceof PyCallableType) {
-          final List<PyParameter> parameters = getParametersOfCallableType((PyCallableType)member, context);
-          if (parameters != null) {
-            results.add(parameters);
-          }
-        }
-      }
-      if (!results.isEmpty()) {
-        return results;
-      }
-    }
-
-    return null;
   }
 
   @NotNull

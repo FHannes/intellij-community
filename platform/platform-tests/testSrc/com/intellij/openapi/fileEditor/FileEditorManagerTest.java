@@ -34,7 +34,6 @@ import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
-import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 
@@ -65,7 +64,7 @@ public class FileEditorManagerTest extends FileEditorManagerTestCase {
   }
 
   public void testOpenRecentEditorTab() throws Exception {
-    PlatformTestUtil.registerExtension(FileEditorProvider.EP_FILE_EDITOR_PROVIDER, new MyFileEditorProvider(), getTestRootDisposable());
+    PlatformTestUtil.registerExtension(FileEditorProvider.EP_FILE_EDITOR_PROVIDER, new MyFileEditorProvider(), myFixture.getTestRootDisposable());
 
     openFiles("  <component name=\"FileEditorManager\">\n" +
         "    <leaf>\n" +
@@ -87,7 +86,7 @@ public class FileEditorManagerTest extends FileEditorManagerTestCase {
   }
 
   public void testTrackSelectedEditor() throws Exception {
-    PlatformTestUtil.registerExtension(FileEditorProvider.EP_FILE_EDITOR_PROVIDER, new MyFileEditorProvider(), getTestRootDisposable());
+    PlatformTestUtil.registerExtension(FileEditorProvider.EP_FILE_EDITOR_PROVIDER, new MyFileEditorProvider(), myFixture.getTestRootDisposable());
     VirtualFile file = getFile("/src/1.txt");
     assertNotNull(file);
     FileEditor[] editors = myManager.openFile(file, true);
@@ -155,8 +154,8 @@ public class FileEditorManagerTest extends FileEditorManagerTestCase {
   }
 
   public void testOpenInDumbMode() throws Exception {
-    PlatformTestUtil.registerExtension(FileEditorProvider.EP_FILE_EDITOR_PROVIDER, new MyFileEditorProvider(), getTestRootDisposable());
-    PlatformTestUtil.registerExtension(FileEditorProvider.EP_FILE_EDITOR_PROVIDER, new DumbAwareProvider(), getTestRootDisposable());
+    PlatformTestUtil.registerExtension(FileEditorProvider.EP_FILE_EDITOR_PROVIDER, new MyFileEditorProvider(), myFixture.getTestRootDisposable());
+    PlatformTestUtil.registerExtension(FileEditorProvider.EP_FILE_EDITOR_PROVIDER, new DumbAwareProvider(), myFixture.getTestRootDisposable());
     try {
       DumbServiceImpl.getInstance(getProject()).setDumb(true);
       VirtualFile file = getFile("/src/foo.bar");
@@ -216,7 +215,7 @@ public class FileEditorManagerTest extends FileEditorManagerTestCase {
 
   @Override
   protected String getTestDataPath() {
-    return PlatformTestUtil.getCommunityPath().replace(File.separatorChar, '/') + "/platform/platform-tests/testData/fileEditorManager";
+    return PlatformTestUtil.getPlatformTestDataPath() + "fileEditorManager";
   }
 
   static class MyFileEditorProvider implements FileEditorProvider {

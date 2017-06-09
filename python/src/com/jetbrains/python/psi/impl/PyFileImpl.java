@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
+import com.intellij.psi.scope.DelegatingScopeProcessor;
 import com.intellij.psi.scope.PsiScopeProcessor;
 import com.intellij.psi.stubs.StubElement;
 import com.intellij.psi.util.PsiModificationTracker;
@@ -85,7 +86,7 @@ public class PyFileImpl extends PsiFileBase implements PyFile, PyExpression {
           final PsiNamedElement namedElement = (PsiNamedElement)element;
           final String name = namedElement.getName();
           if (!myNamedElements.containsKey(name)) {
-            myNamedElements.put(name, Lists.<PsiNamedElement>newArrayList());
+            myNamedElements.put(name, Lists.newArrayList());
           }
           final List<PsiNamedElement> elements = myNamedElements.get(name);
           elements.add(namedElement);
@@ -179,6 +180,7 @@ public class PyFileImpl extends PsiFileBase implements PyFile, PyExpression {
             }
           }
         }
+
         return resultList;
       }
 
@@ -209,6 +211,7 @@ public class PyFileImpl extends PsiFileBase implements PyFile, PyExpression {
     return PythonFileType.INSTANCE;
   }
 
+  @Override
   public String toString() {
     return "PyFile:" + getName();
   }
@@ -298,24 +301,14 @@ public class PyFileImpl extends PsiFileBase implements PyFile, PyExpression {
                                      @NotNull PsiElement place) {
     final List<String> dunderAll = getDunderAll();
     final List<String> remainingDunderAll = dunderAll == null ? null : new ArrayList<>(dunderAll);
-    PsiScopeProcessor wrapper = new PsiScopeProcessor() {
+    PsiScopeProcessor wrapper = new DelegatingScopeProcessor(processor) {
       @Override
       public boolean execute(@NotNull PsiElement element, @NotNull ResolveState state) {
-        if (!processor.execute(element, state)) return false;
+        if (!super.execute(element, state)) return false;
         if (remainingDunderAll != null && element instanceof PyElement) {
           remainingDunderAll.remove(((PyElement)element).getName());
         }
         return true;
-      }
-
-      @Override
-      public <T> T getHint(@NotNull Key<T> hintKey) {
-        return processor.getHint(hintKey);
-      }
-
-      @Override
-      public void handleEvent(@NotNull Event event, @Nullable Object associated) {
-        processor.handleEvent(event, associated);
       }
     };
 
@@ -453,6 +446,7 @@ public class PyFileImpl extends PsiFileBase implements PyFile, PyExpression {
     return cache;
   }
 
+  @Override
   @Nullable
   public PsiElement getElementNamed(final String name) {
     final List<RatedResolveResult> results = multiResolveName(name);
@@ -467,6 +461,7 @@ public class PyFileImpl extends PsiFileBase implements PyFile, PyExpression {
     return null;
   }
 
+  @Override
   @NotNull
   public Iterable<PyElement> iterateNames() {
     final List<PyElement> result = new ArrayList<>();

@@ -32,6 +32,7 @@ import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.component.ModuleComponentSelector
 import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.artifacts.component.ProjectComponentSelector
+import org.gradle.api.artifacts.dsl.DependencyHandler
 import org.gradle.api.artifacts.result.*
 import org.gradle.api.plugins.WarPlugin
 import org.gradle.api.specs.Specs
@@ -57,8 +58,11 @@ import java.util.regex.Pattern
  */
 class DependencyResolverImpl implements DependencyResolver {
 
-  private static isArtifactResolutionQuerySupported = GradleVersion.current() >= GradleVersion.version("2.0")
-  private static isDependencySubstitutionsSupported = GradleVersion.current() > GradleVersion.version("2.5")
+  private static is4OrBetter = GradleVersion.current().baseVersion >= GradleVersion.version("4.0")
+  private static isDependencySubstitutionsSupported = is4OrBetter ||
+                                                      (GradleVersion.current() > GradleVersion.version("2.5"))
+  private static isArtifactResolutionQuerySupported = isDependencySubstitutionsSupported ||
+                                                      (GradleVersion.current() >= GradleVersion.version("2.0"))
 
   @NotNull
   private final Project myProject
@@ -133,8 +137,11 @@ class DependencyResolverImpl implements DependencyResolver {
 
         Multimap<ModuleVersionIdentifier, ResolvedArtifact> artifactMap = ArrayListMultimap.create()
         resolvedArtifacts.each { artifactMap.put(it.moduleVersion.id, it) }
+
+        def isBuildScriptConfiguration = myProject.buildscript.configurations.find { it == configuration } != null
         //noinspection GroovyAssignabilityCheck
-        Set<ComponentArtifactsResult> componentResults = myProject.dependencies.createArtifactResolutionQuery()
+        def dependencyHandler = isBuildScriptConfiguration ? myProject.buildscript.dependencies : myProject.dependencies
+        Set<ComponentArtifactsResult> componentResults = dependencyHandler.createArtifactResolutionQuery()
           .forComponents(resolvedArtifacts
                            .findAll { !isProjectDependencyArtifact(it) }
                            .collect { toComponentIdentifier(it.moduleVersion.id) })
@@ -151,7 +158,7 @@ class DependencyResolverImpl implements DependencyResolver {
           if(!processedConfigurations.add(conf)) return map
           conf.incoming.dependencies.findAll { it instanceof ProjectDependency }.each { it ->
             map.put(toComponentIdentifier(it.group, it.name, it.version), it as ProjectDependency)
-            projectDeps((it as ProjectDependency).projectConfiguration, map)
+            projectDeps(getTargetConfiguration(it as ProjectDependency), map)
           }
           map
         }
@@ -721,15 +728,17 @@ class DependencyResolverImpl implements DependencyResolver {
       try {
         if (it instanceof ProjectDependency) {
           def project = it.getDependencyProject()
+          Configuration targetConfiguration = getTargetConfiguration(it)
+
           final projectDependency = new DefaultExternalProjectDependency(
             name: project.name,
             group: project.group,
             version: project.version,
             scope: scope,
             projectPath: project.path,
-            configurationName: it.projectConfiguration.name
+            configurationName: targetConfiguration.name
           )
-          projectDependency.projectDependencyArtifacts = it.projectConfiguration.allArtifacts.files.files
+          projectDependency.projectDependencyArtifacts = targetConfiguration.allArtifacts.files.files
           result.add(projectDependency)
         }
         else if (it instanceof Dependency) {
@@ -772,6 +781,11 @@ class DependencyResolverImpl implements DependencyResolver {
     return result
   }
 
+  private static Configuration getTargetConfiguration(ProjectDependency projectDependency) {
+    return !is4OrBetter ? projectDependency.projectConfiguration :
+           projectDependency.dependencyProject.configurations.getByName(projectDependency.targetConfiguration ?: 'default')
+  }
+
   class DependencyResultsTransformer {
     Collection<DependencyResult> handledDependencyResults
     Multimap<ModuleVersionIdentifier, ResolvedArtifact> artifactMap
@@ -809,15 +823,22 @@ class DependencyResolverImpl implements DependencyResolver {
             def group = componentResult.moduleVersion.group
             def version = componentResult.moduleVersion.version
             def selectionReason = componentResult.selectionReason.description
+            def resolveFromArtifacts = componentSelector instanceof ModuleComponentSelector
             if (componentSelector instanceof ProjectComponentSelector) {
               def projectDependencies = configurationProjectDependencies.get(componentIdentifier)
               Collection<Configuration> dependencyConfigurations
               if(projectDependencies.isEmpty()) {
                 def dependencyProject = myProject.findProject(componentSelector.projectPath)
-                def dependencyProjectConfiguration = dependencyProject.getConfigurations().getByName(Dependency.DEFAULT_CONFIGURATION)
-                dependencyConfigurations = [dependencyProjectConfiguration]
+                if(dependencyProject) {
+                  def dependencyProjectConfiguration = dependencyProject.getConfigurations().getByName(Dependency.DEFAULT_CONFIGURATION)
+                  dependencyConfigurations = [dependencyProjectConfiguration]
+                } else {
+                  dependencyConfigurations = []
+                  resolveFromArtifacts = true
+                  selectionReason = "composite build substitution"
+                }
               } else {
-                dependencyConfigurations = projectDependencies.collect {it.projectConfiguration}
+                dependencyConfigurations = projectDependencies.collect { getTargetConfiguration(it) }
               }
 
               dependencyConfigurations.each {
@@ -913,7 +934,7 @@ class DependencyResolverImpl implements DependencyResolver {
                 }
               }
             }
-            if (componentSelector instanceof ModuleComponentSelector) {
+            if (resolveFromArtifacts) {
               def artifacts = artifactMap.get(componentResult.moduleVersion)
               def artifact = artifacts?.find { true }
 

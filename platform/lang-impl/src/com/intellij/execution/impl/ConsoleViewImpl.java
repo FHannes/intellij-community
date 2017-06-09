@@ -92,6 +92,8 @@ import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
 
+import static com.intellij.openapi.keymap.KeymapUtil.getActiveKeymapShortcuts;
+
 public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableConsoleView, DataProvider, OccurenceNavigator {
   @NonNls private static final String CONSOLE_VIEW_POPUP_MENU = "ConsoleView.PopupMenu";
   private static final Logger LOG = Logger.getInstance("#com.intellij.execution.impl.ConsoleViewImpl");
@@ -512,17 +514,23 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
   }
 
   @TestOnly
-  void waitAllRequests() {
+  public void waitAllRequests() {
     ApplicationManager.getApplication().assertIsDispatchThread();
-    Future<?> future = ApplicationManager.getApplication().executeOnPooledThread(() -> {
-      try {
-        myFlushAlarm.waitForAllExecuted(10, TimeUnit.SECONDS);
-        myFlushUserInputAlarm.waitForAllExecuted(10, TimeUnit.SECONDS);
-        myFlushAlarm.waitForAllExecuted(10, TimeUnit.SECONDS);
-        myFlushUserInputAlarm.waitForAllExecuted(10, TimeUnit.SECONDS);
-      }
-      catch (InterruptedException | ExecutionException | TimeoutException e) {
-        throw new RuntimeException(e);
+    Future<?> future = ApplicationManager.getApplication().executeOnPooledThread((Runnable)() -> {
+      while (true) {
+        try {
+          myFlushAlarm.waitForAllExecuted(10, TimeUnit.SECONDS);
+          myFlushUserInputAlarm.waitForAllExecuted(10, TimeUnit.SECONDS);
+          myFlushAlarm.waitForAllExecuted(10, TimeUnit.SECONDS);
+          myFlushUserInputAlarm.waitForAllExecuted(10, TimeUnit.SECONDS);
+          return;
+        }
+        catch (CancellationException e) {
+          //try again
+        }
+        catch (InterruptedException | ExecutionException | TimeoutException e) {
+          throw new RuntimeException(e);
+        }
       }
     });
     try {
@@ -685,7 +693,7 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
         int startIndex = startsWithCR ? 1 : 0;
         for (int i = startIndex; i < deferredTokens.size(); i++) {
           TokenBuffer.TokenInfo deferredToken = deferredTokens.get(i);
-          addedText.append(deferredToken.getText());
+          addedText.append(deferredToken.getText()); // can just append texts because \r inside these tokens were already taken care of
         }
         if (startsWithCR) {
           // remove last line if any
@@ -772,6 +780,8 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
          () -> DocumentUtil.executeInBulk(document, true,
          ()->document.deleteString(0, documentTextLength)), null, DocCommandGroupId.noneGroupId(document));
     }
+    MarkupModel model = DocumentMarkupModel.forDocument(myEditor.getDocument(), getProject(), true);
+    model.removeAllHighlighters(); // remove all empty highlighters leftovers if any
   }
 
   private boolean isStickingToEnd() {
@@ -878,7 +888,7 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
   }
 
   private void registerConsoleEditorActions() {
-    Shortcut[] shortcuts = KeymapManager.getInstance().getActiveKeymap().getShortcuts(IdeActions.ACTION_GOTO_DECLARATION);
+    Shortcut[] shortcuts = getActiveKeymapShortcuts(IdeActions.ACTION_GOTO_DECLARATION).getShortcuts();
     CustomShortcutSet shortcutSet = new CustomShortcutSet(ArrayUtil.mergeArrays(shortcuts, CommonShortcuts.ENTER.getShortcuts()));
     new HyperlinkNavigationAction().registerCustomShortcutSet(shortcutSet, myEditor.getContentComponent());
 

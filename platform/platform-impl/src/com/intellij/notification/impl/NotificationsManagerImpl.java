@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import com.intellij.openapi.application.ex.ApplicationEx;
 import com.intellij.openapi.project.DumbAwareRunnable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.project.ProjectManagerAdapter;
+import com.intellij.openapi.project.ProjectManagerListener;
 import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.ui.DialogWrapperDialog;
 import com.intellij.openapi.ui.MessageType;
@@ -56,6 +56,7 @@ import com.intellij.util.ArrayUtil;
 import com.intellij.util.FontUtil;
 import com.intellij.util.Function;
 import com.intellij.util.IconUtil;
+import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.AbstractLayoutManager;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
@@ -71,7 +72,8 @@ import javax.swing.plaf.ButtonUI;
 import javax.swing.plaf.ColorUIResource;
 import javax.swing.plaf.UIResource;
 import javax.swing.text.*;
-import javax.swing.text.html.*;
+import javax.swing.text.html.HTML;
+import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.ParagraphView;
 import java.awt.*;
 import java.awt.event.*;
@@ -89,8 +91,9 @@ public class NotificationsManagerImpl extends NotificationsManager {
   public static final Color BORDER_COLOR = new JBColor(Gray._178.withAlpha(205), new Color(86, 90, 92, 205));
 
   public NotificationsManagerImpl() {
-    ApplicationManager.getApplication().getMessageBus().connect().subscribe(Notifications.TOPIC, new MyNotificationListener(null));
-    ApplicationManager.getApplication().getMessageBus().connect().subscribe(ProjectManager.TOPIC, new ProjectManagerAdapter() {
+    MessageBusConnection connection = ApplicationManager.getApplication().getMessageBus().connect();
+    connection.subscribe(Notifications.TOPIC, new MyNotificationListener(null));
+    connection.subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
       @Override
       public void projectClosed(Project project) {
         for (Notification notification : getNotificationsOfType(Notification.class, project)) {
@@ -139,12 +142,7 @@ public class NotificationsManagerImpl extends NotificationsManager {
     }
 
     if (NotificationsConfigurationImpl.getInstanceImpl().SHOW_BALLOONS) {
-      final Runnable runnable = new DumbAwareRunnable() {
-        @Override
-        public void run() {
-          showNotification(notification, project);
-        }
-      };
+      final Runnable runnable = (DumbAwareRunnable)() -> showNotification(notification, project);
       if (project == null) {
         UIUtil.invokeLaterIfNeeded(runnable);
       }
@@ -271,9 +269,11 @@ public class NotificationsManagerImpl extends NotificationsManager {
         return null;
       }
 
-      ((BalloonImpl)balloon).traceDispose(true);
-
       layout.add(balloon, layoutDataRef.get());
+      if (balloon.isDisposed()) {
+        return null;
+      }
+
       if (layoutDataRef.get() != null) {
         layoutDataRef.get().project = project;
       }
@@ -362,9 +362,7 @@ public class NotificationsManagerImpl extends NotificationsManager {
         }
       }
     };
-    text.setEditorKit(new HTMLEditorKit() {
-      final HTMLEditorKit kit = UIUtil.getHTMLEditorKit();
-
+    text.setEditorKit(new UIUtil.JBHtmlEditorKit() {
       final HTMLFactory factory = new HTMLFactory() {
         public View create(Element e) {
           View view = super.create(e);
@@ -386,11 +384,6 @@ public class NotificationsManagerImpl extends NotificationsManager {
           return view;
         }
       };
-
-      @Override
-      public StyleSheet getStyleSheet() {
-        return kit.getStyleSheet();
-      }
 
       @Override
       public ViewFactory getViewFactory() {
@@ -1077,8 +1070,10 @@ public class NotificationsManagerImpl extends NotificationsManager {
   }
 
   private static void showPopup(@NotNull LinkLabel link, @NotNull DefaultActionGroup group) {
-    ActionPopupMenu menu = ActionManager.getInstance().createActionPopupMenu(ActionPlaces.UNKNOWN, group);
-    menu.getComponent().show(link, JBUI.scale(-10), link.getHeight() + JBUI.scale(2));
+    if (link.isShowing()) {
+      ActionPopupMenu menu = ActionManager.getInstance().createActionPopupMenu(ActionPlaces.UNKNOWN, group);
+      menu.getComponent().show(link, JBUI.scale(-10), link.getHeight() + JBUI.scale(2));
+    }
   }
 
   private static class MyNotificationListener extends NotificationsAdapter {

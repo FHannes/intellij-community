@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 package com.intellij.openapi.vfs.impl.local;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.intellij.ide.GeneralSettings;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
@@ -39,10 +40,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 
 /**
  * @author Dmitry Avdeev
@@ -74,14 +72,13 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
 
   @Override
   public VirtualFile findFileByIoFile(@NotNull File file) {
-    String path = FileUtil.toSystemIndependentName(file.getAbsolutePath());
-    return findFileByPath(path);
+    return findFileByPath(FileUtil.toSystemIndependentName(file.getAbsolutePath()));
   }
 
   @NotNull
   protected static File convertToIOFile(@NotNull final VirtualFile file) {
     String path = file.getPath();
-    if (StringUtil.endsWithChar(path, ':') && path.length() == 2 && (SystemInfo.isWindows || SystemInfo.isOS2)) {
+    if (StringUtil.endsWithChar(path, ':') && path.length() == 2 && SystemInfo.isWindows) {
       path += "/"; // Make 'c:' resolve to a root directory for drive c:, not the current directory on that drive
     }
 
@@ -643,6 +640,24 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
     }
   }
 
+  private static final List<String> ourRootPaths = new ArrayList<>();
+
+  {
+    List<String> persistentFsRoots = StringUtil.split(System.getProperty("idea.persistentfs.roots", ""), File.pathSeparator);
+    sortRootsLongestFirst(persistentFsRoots);
+    for(String persistentFsRoot:persistentFsRoots) ourRootPaths.add(persistentFsRoot);
+  }
+
+  private static void sortRootsLongestFirst(List<String> persistentFsRoots) {
+    Collections.sort(persistentFsRoots, (o1, o2) -> o2.length() - o1.length());
+  }
+
+  @VisibleForTesting
+  public void registerCustomRootPath(@NotNull String path) {
+    ourRootPaths.add(path);
+    sortRootsLongestFirst(ourRootPaths);
+  }
+
   @NotNull
   @Override
   protected String extractRootPath(@NotNull final String path) {
@@ -653,6 +668,10 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
       catch (IOException e) {
         throw new RuntimeException(e);
       }
+    }
+
+    for(String customRootPath:ourRootPaths) {
+      if (path.startsWith(customRootPath)) return customRootPath;
     }
 
     if (SystemInfo.isWindows) {

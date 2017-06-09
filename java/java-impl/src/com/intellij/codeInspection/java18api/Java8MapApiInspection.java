@@ -94,10 +94,9 @@ public class Java8MapApiInspection extends BaseJavaBatchLocalInspectionTool {
             processMerge(condition, existsBranch, noneBranch);
           }
           if(condition.hasVariable()) return;
-          EquivalenceChecker.Decision decision =
-            EquivalenceChecker.getCanonicalPsiEquivalence().statementsAreEquivalentDecision(noneBranch, existsBranch);
+          EquivalenceChecker.Match match = EquivalenceChecker.getCanonicalPsiEquivalence().statementsMatch(noneBranch, existsBranch);
 
-          processGetPut(condition, existsBranch, decision.getRightDiff(), decision.getLeftDiff());
+          processGetPut(condition, existsBranch, match.getRightDiff(), match.getLeftDiff());
         }
       }
 
@@ -560,7 +559,8 @@ public class Java8MapApiInspection extends BaseJavaBatchLocalInspectionTool {
       holder.registerProblem(getFullCondition(), QuickFixBundle.message("java.8.map.api.inspection.description", fix.myMethodName), fix);
     }
 
-    public boolean isMapValueType(PsiType type) {
+    public boolean isMapValueType(@Nullable PsiType type) {
+      if (type == null) return false;
       PsiType mapExpressionType = myMapExpression.getType();
       PsiType valueTypeParameter = PsiUtil.substituteTypeParameter(mapExpressionType, CommonClassNames.JAVA_UTIL_MAP, 1, false);
       return valueTypeParameter != null && valueTypeParameter.isAssignableFrom(type);

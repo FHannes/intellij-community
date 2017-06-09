@@ -16,7 +16,7 @@
 
 package com.intellij.execution.junit;
 
-import com.intellij.codeInsight.AnnotationUtil;
+import com.intellij.codeInsight.MetaAnnotationUtil;
 import com.intellij.diagnostic.logging.LogConfigurationPanel;
 import com.intellij.execution.*;
 import com.intellij.execution.actions.RunConfigurationProducer;
@@ -42,8 +42,7 @@ import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
-import com.intellij.psi.util.PsiFormatUtil;
-import com.intellij.psi.util.PsiFormatUtilBase;
+import com.intellij.psi.util.ClassUtil;
 import com.intellij.refactoring.listeners.RefactoringElementListener;
 import com.intellij.rt.execution.junit.RepeatCount;
 import org.jdom.Element;
@@ -302,6 +301,23 @@ public class JUnitConfiguration extends JavaTestConfigurationBase {
     setMainClass(testClass);
     myData.TEST_OBJECT = TEST_CLASS;
     setGeneratedName();
+  }
+
+  @Override
+  public boolean isConfiguredByElement(PsiElement element) {
+    final PsiClass testClass = JUnitUtil.getTestClass(element);
+    final PsiMethod testMethod = JUnitUtil.getTestMethod(element, false);
+    final PsiPackage testPackage;
+    if (element instanceof PsiPackage) {
+      testPackage = (PsiPackage)element;
+    } else if (element instanceof PsiDirectory){
+      testPackage = JavaDirectoryService.getInstance().getPackage(((PsiDirectory)element));
+    } else {
+      testPackage = null;
+    }
+    PsiDirectory testDir = element instanceof PsiDirectory ? (PsiDirectory)element : null;
+
+    return getTestObject().isConfiguredByElement(this, testClass, testMethod, testPackage, testDir);
   }
 
   public void beFromSourcePosition(PsiLocation<PsiMethod> sourceLocation) {
@@ -608,11 +624,37 @@ public class JUnitConfiguration extends JavaTestConfigurationBase {
     }
 
     public static String getMethodPresentation(PsiMethod method) {
-      return method.getParameterList().getParametersCount() > 0 && AnnotationUtil.isAnnotated(method, JUnitUtil.TEST5_ANNOTATIONS)
-             ? PsiFormatUtil.formatMethod(method, PsiSubstitutor.EMPTY,
-                                          PsiFormatUtilBase.SHOW_NAME | PsiFormatUtilBase.SHOW_PARAMETERS,
-                                          PsiFormatUtilBase.SHOW_TYPE | PsiFormatUtilBase.SHOW_FQ_CLASS_NAMES)
-             : method.getName();
+      if (method.getParameterList().getParametersCount() > 0 && MetaAnnotationUtil.isMetaAnnotated(method, JUnitUtil.TEST5_ANNOTATIONS)) {
+        return method.getName() + "(" + StringUtil.join(method.getParameterList().getParameters(), 
+                                                        param -> param.getType().accept(createSignatureVisitor()),
+                                                        ",") + ")";
+      }
+      else {
+        return method.getName();
+      }
+    }
+
+    private static PsiTypeVisitor<String> createSignatureVisitor() {
+      return new PsiTypeVisitor<String>() {
+        @Override
+        public String visitPrimitiveType(PsiPrimitiveType primitiveType) {
+          return primitiveType.getCanonicalText();
+        }
+
+        @Override
+        public String visitClassType(PsiClassType classType) {
+          PsiClass aClass = classType.resolve();
+          if (aClass == null) {
+            return "";
+          }
+          return "L" + ClassUtil.getJVMClassName(aClass) + ";";
+        }
+
+        @Override
+        public String visitArrayType(PsiArrayType arrayType) {
+          return "[" + arrayType.getComponentType().accept(this);
+        }
+      };
     }
 
     public String getGeneratedName(final JavaRunConfigurationModule configurationModule) {
@@ -639,7 +681,7 @@ public class JUnitConfiguration extends JavaTestConfigurationBase {
         String fqName = myPattern.iterator().next();
         String firstName =
           fqName.contains("*") ? fqName
-                               : StringUtil.getShortName(fqName.contains(",") ? StringUtil.getPackageName(fqName, ',') : fqName);
+                               : StringUtil.getShortName(fqName.contains("(") ? StringUtil.getPackageName(fqName, '(') : fqName);
         return firstName + (size > 1 ? " and " + (size - 1) + " more" : "");
       }
       if (TEST_CATEGORY.equals(TEST_OBJECT)) {

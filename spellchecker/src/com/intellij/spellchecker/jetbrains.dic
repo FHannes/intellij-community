@@ -5,6 +5,7 @@ agentmain
 aggregator
 ajax
 akka
+alignas
 alloc
 anyschema
 aopalliance
@@ -19,6 +20,7 @@ arquillian
 asensitive
 aspectj
 async
+asyncable
 atomikos
 attr
 attlist
@@ -32,6 +34,7 @@ autoincrement
 autorelease
 autorotate
 backend
+backref
 backtrace
 barcode
 basedir
@@ -46,6 +49,7 @@ blog
 blogger
 blogging
 bool
+boxable
 breakpoint
 breakpoints
 btree
@@ -111,6 +115,7 @@ controlfile
 couchbase
 coursecreator
 covariant
+cplusplus
 cron
 ctrl
 customizer
@@ -147,6 +152,8 @@ devkit
 dirs
 distinctrow
 django
+dllexport
+dllimport
 dockerfile
 dojo
 draggable
@@ -166,10 +173,12 @@ eval
 evex
 exif
 expr
+extendable
 externalizer
 facebook
 facelet
 facelets
+fastcall
 fallthrough
 favicon
 filename
@@ -208,6 +217,7 @@ giud
 gists
 globals
 google
+grapheme
 gruntfile
 gruntfiles
 gulpfile
@@ -254,7 +264,9 @@ injectable
 inline
 innodb
 inout
+instancetype
 instantiable
+instantiatable
 insteadof
 intellij
 interpolator
@@ -296,6 +308,7 @@ keymap
 keymaps
 keystore
 kotlin
+kryo
 labeler
 labelers
 lcov
@@ -321,6 +334,7 @@ logout
 longblob
 longtext
 lookahead
+lookbehind
 lookup
 lossy
 lucene
@@ -329,6 +343,7 @@ lvalues
 macrodef
 makefile
 makefiles
+malloc
 maxdatafiles
 maxextents
 maximizable
@@ -342,6 +357,8 @@ maxvalue
 mediumblob
 mediumint
 mediumtext
+metacharacter
+metacharacters
 metadata
 metas
 metaspace
@@ -388,10 +405,15 @@ noaudit
 nocache
 nocompress
 nocopy
+noclone
+nocommon
 nocreate
 nocycle
+noduplicate
+noexcept
 nodegroup
 nohistory
+noinline
 noinspection
 noinspections
 nologging
@@ -400,16 +422,21 @@ nomaxvalue
 nominvalue
 nomonitoring
 nonatomic
+nonfragile
 noninfingement
 nonnull
 nonschema
+nonstatic
 noorder
 noparallel
 norely
 noresetlogs
+noreturn
 noreverse
 norowdependencies
 nosort
+nothrow
+notificator
 notnull
 novalidate
 nowait
@@ -428,6 +455,7 @@ online
 openid
 openjdk
 openssl
+optnone
 outfile
 overrider
 overriders
@@ -473,6 +501,9 @@ precompile
 precompiled
 precompiler
 precompilers
+preconfigure
+preconfigured
+preconfigures
 prefetch
 premain
 prepend
@@ -487,8 +518,10 @@ progressbar
 proto
 proven
 proxool
+ptrdiff
 pycharm
 queryable
+radiobutton
 readme
 readonly
 readwrite
@@ -514,6 +547,7 @@ reified
 reifies
 reify
 reifying
+reimport
 reindex
 reindexing
 renderer
@@ -534,6 +568,7 @@ rlike
 rollup
 rowdependencies
 rtree
+rtti
 rubymine
 runtime
 rvalue
@@ -554,6 +589,7 @@ servererror
 servlet
 servlets
 severities
+sfinae
 sftp
 shader
 sigabrt
@@ -610,6 +646,7 @@ stacktrace
 startup
 stateful
 stdarg
+stdcall
 stderr
 stdlib
 stdout
@@ -632,6 +669,7 @@ subpackage
 subpackages
 subpartition
 subpartitions
+subscripting
 subst
 substring
 substrings
@@ -656,6 +694,7 @@ tablespace
 taglib
 teamcity
 temptable
+thiscall
 throwable
 thymeleaf
 thymes
@@ -684,6 +723,7 @@ ubuntu
 unary
 unboxing
 unbuffered
+uncheck
 uncomment
 uncommented
 uncommenting
@@ -719,6 +759,7 @@ varchar
 varcharacter
 variadic
 varray
+vectorcall
 verdana
 versa
 vertices
@@ -726,6 +767,7 @@ viewlet
 viewport
 viewports
 vtlvariable
+wakeup
 watchlist
 wchar
 webjar

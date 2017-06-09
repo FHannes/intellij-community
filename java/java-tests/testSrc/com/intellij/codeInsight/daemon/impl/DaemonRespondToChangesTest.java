@@ -15,21 +15,20 @@
  */
 package com.intellij.codeInsight.daemon.impl;
 
+import com.intellij.application.options.editor.CodeFoldingConfigurable;
 import com.intellij.codeHighlighting.*;
 import com.intellij.codeInsight.EditorInfo;
 import com.intellij.codeInsight.completion.CompletionContributor;
 import com.intellij.codeInsight.daemon.*;
-import com.intellij.codeInsight.daemon.impl.quickfix.DeleteCatchFix;
 import com.intellij.codeInsight.daemon.quickFix.LightQuickFixTestCase;
 import com.intellij.codeInsight.folding.CodeFoldingManager;
+import com.intellij.codeInsight.folding.JavaCodeFoldingSettings;
 import com.intellij.codeInsight.hint.EditorHintListener;
 import com.intellij.codeInsight.intention.AbstractIntentionAction;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInsight.intention.IntentionManager;
 import com.intellij.codeInsight.intention.impl.IntentionHintComponent;
-import com.intellij.codeInspection.InspectionProfile;
-import com.intellij.codeInspection.LocalInspectionTool;
-import com.intellij.codeInspection.ProblemsHolder;
+import com.intellij.codeInspection.*;
 import com.intellij.codeInspection.accessStaticViaInstance.AccessStaticViaInstance;
 import com.intellij.codeInspection.deadCode.UnusedDeclarationInspection;
 import com.intellij.codeInspection.deadCode.UnusedDeclarationInspectionBase;
@@ -162,7 +161,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
       Project project = getProject();
       if (project != null) {
         doPostponedFormatting(project);
-        ((ProjectManagerImpl)ProjectManagerEx.getInstanceEx()).closeProject(project, false, false, false);
+        ((ProjectManagerImpl)ProjectManagerEx.getInstanceEx()).forceCloseProject(project, false);
       }
     }
     finally {
@@ -977,8 +976,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
       new GotoNextErrorHandler(true).invoke(getProject(), getEditor(), getFile());
 
       List<IntentionAction> fixes = LightQuickFixTestCase.getAvailableActions(getEditor(), getFile());
-      IntentionAction fix = assertContainsOneOf(fixes, DeleteCatchFix.class);
-      assertEquals("Delete catch for 'java.io.IOException'", fix.getText());
+      IntentionAction fix = assertContainsOneOf(fixes, "Delete catch for 'java.io.IOException'");
 
       final IntentionAction finalFix = fix;
       WriteCommandAction.runWriteCommandAction(getProject(), () -> finalFix.invoke(getProject(), getEditor(), getFile()));
@@ -988,8 +986,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
 
       new GotoNextErrorHandler(true).invoke(getProject(), getEditor(), getFile());
       fixes = LightQuickFixTestCase.getAvailableActions(getEditor(), getFile());
-      fix = assertContainsOneOf(fixes, DeleteCatchFix.class);
-      assertEquals("Delete catch for 'java.io.IOException'", fix.getText());
+      fix = assertContainsOneOf(fixes, "Delete catch for 'java.io.IOException'");
 
       final IntentionAction finalFix1 = fix;
       WriteCommandAction.runWriteCommandAction(getProject(), () -> finalFix1.invoke(getProject(), getEditor(), getFile()));
@@ -999,8 +996,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
 
       new GotoNextErrorHandler(true).invoke(getProject(), getEditor(), getFile());
       fixes = LightQuickFixTestCase.getAvailableActions(getEditor(), getFile());
-      fix = assertContainsOneOf(fixes, DeleteCatchFix.class);
-      assertEquals("Delete catch for 'java.io.IOException'", fix.getText());
+      fix = assertContainsOneOf(fixes, "Delete catch for 'java.io.IOException'");
 
       final IntentionAction finalFix2 = fix;
       WriteCommandAction.runWriteCommandAction(getProject(), () -> finalFix2.invoke(getProject(), getEditor(), getFile()));
@@ -1013,19 +1009,19 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
     }
   }
 
-  private static <T> T assertContainsOneOf(@NotNull Collection<T> collection, @NotNull Class<?> aClass) {
-    T result = null;
-    for (T t : collection) {
-      if (aClass.isInstance(t)) {
+  private static IntentionAction assertContainsOneOf(@NotNull Collection<IntentionAction> collection, @NotNull String text) {
+    IntentionAction result = null;
+    for (IntentionAction action : collection) {
+      if (text.equals(action.getText())) {
         if (result != null) {
-          fail("multiple " + aClass.getName() + " objects present in collection " + collection);
+          fail("multiple " + " objects present in collection " + collection);
         }
         else {
-          result = t;
+          result = action;
         }
       }
     }
-    assertNotNull(aClass.getName() + " object not found in collection " + collection, result);
+    assertNotNull(" object not found in collection " + collection, result);
     return result;
   }
 
@@ -1330,8 +1326,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
     CodeInsightTestFixtureImpl.invokeIntention(descriptor.getAction(), getFile(), getEditor(), "");
 
     highlightErrors();
-    actions = ShowIntentionsPass.getAvailableFixes(getEditor(), getFile(), -1);
-    assertEmpty(actions);
+    assertEmpty(ShowIntentionsPass.getAvailableFixes(getEditor(), getFile(), -1));
   }
 
 
@@ -1688,6 +1683,8 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
     long e = System.currentTimeMillis();
     //System.out.println("Hi elapsed: "+(e-s));
 
+    //List<String> dumps = new ArrayList<>();
+
     final DaemonCodeAnalyzerImpl codeAnalyzer = (DaemonCodeAnalyzerImpl)DaemonCodeAnalyzer.getInstance(getProject());
     int N = Math.max(5, Timings.adjustAccordingToMySpeed(80, false));
     System.out.println("N = " + N);
@@ -1702,12 +1699,21 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
           // wait to engage all highlighting threads
           return;
         }
+        // uncomment to debug what's causing pauses
+        /*
+        AtomicBoolean finished = new AtomicBoolean();
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(() -> {
+          if (!finished.get()) {
+            dumps.add(ThreadDumper.dumpThreadsToString());
+          }
+        }, 10, TimeUnit.MILLISECONDS);
+        */
         type(' ');
         long end = System.currentTimeMillis();
+        //finished.set(true);
         long interruptTime = end - now;
         interruptTimes[finalI] = interruptTime;
         assertTrue(codeAnalyzer.getUpdateProgress().isCanceled());
-        System.out.println(interruptTime);
         throw new ProcessCanceledException();
       };
       try {
@@ -1727,12 +1733,20 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
       //highlightErrors();
     }
 
+    System.out.println("Interrupt times: " + Arrays.toString(interruptTimes));
+
+    /*
+    for (String dump : dumps) {
+      System.out.println("\n\n-----------------------------\n\n" + dump);
+    }
+    */
+
     long mean = ArrayUtil.averageAmongMedians(interruptTimes, 3);
     long avg = Arrays.stream(interruptTimes).sum() / interruptTimes.length;
     long max = Arrays.stream(interruptTimes).max().getAsLong();
     long min = Arrays.stream(interruptTimes).min().getAsLong();
     System.out.println("Average among the N/3 median times: " + mean + "ms; max: "+max+"; min:"+min+"; avg: "+avg);
-    assertTrue(mean < 10);
+    assertTrue(String.valueOf(mean), mean < 10);
   }
 
   @NotNull
@@ -2146,7 +2160,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
 
   private volatile boolean runHeavyProcessing;
   public void testDaemonDisablesItselfDuringHeavyProcessing() throws Exception {
-    executeWithReparseDelay(() -> {
+    executeWithoutReparseDelay(() -> {
       runHeavyProcessing = false;
       try {
         final Set<Editor> applied = Collections.synchronizedSet(new THashSet<>());
@@ -2368,7 +2382,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
     makeEditorWindowVisible(new Point(0, 0), myEditor);
     doHighlighting();
     myDaemonCodeAnalyzer.restart();
-    executeWithReparseDelay(() -> {
+    executeWithoutReparseDelay(() -> {
       for (int i = 0; i < 1000; i++) {
         caretRight();
         UIUtil.dispatchAllInvocationEvents();
@@ -2385,7 +2399,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
     });
   }
 
-  private static void executeWithReparseDelay(@NotNull Runnable task) {
+  private static void executeWithoutReparseDelay(@NotNull Runnable task) {
     DaemonCodeAnalyzerSettings settings = DaemonCodeAnalyzerSettings.getInstance();
     int oldDelay = settings.AUTOREPARSE_DELAY;
     settings.AUTOREPARSE_DELAY = 0;
@@ -2429,8 +2443,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
   }
   
   public void testCodeFoldingPassRestartsOnRegionUnfolding() throws Exception {
-    DaemonCodeAnalyzerSettings settings = DaemonCodeAnalyzerSettings.getInstance();
-    executeWithReparseDelay(() -> {
+    executeWithoutReparseDelay(() -> {
       configureByText(StdFileTypes.JAVA, "class Foo {\n" +
                                          "    void m() {\n" +
                                          "\n" +
@@ -2440,7 +2453,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
       waitForDaemon();
       EditorTestUtil.executeAction(myEditor, IdeActions.ACTION_COLLAPSE_ALL_REGIONS);
       waitForDaemon();
-      checkFoldingState("[FoldRegion +(25:33), placeholder='{...}']");
+      checkFoldingState("[FoldRegion +(25:33), placeholder='{}']");
 
       new WriteCommandAction<Void>(myProject) {
         @Override
@@ -2449,7 +2462,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
         }
       }.execute();
       waitForDaemon();
-      checkFoldingState("[FoldRegion -(0:37), placeholder='/.../', FoldRegion +(27:35), placeholder='{...}']");
+      checkFoldingState("[FoldRegion -(0:37), placeholder='/.../', FoldRegion +(27:35), placeholder='{}']");
 
       EditorTestUtil.executeAction(myEditor, IdeActions.ACTION_EXPAND_ALL_REGIONS);
       waitForDaemon();
@@ -2457,6 +2470,30 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
     });
   }
 
+  public void testChangingSettingsHasImmediateEffectOnOpenedEditor() throws Exception {
+    executeWithoutReparseDelay(() -> {
+      configureByText(StdFileTypes.JAVA, "class C { \n" +
+                                         "  void m() {\n" +
+                                         "  } \n" +
+                                         "}");
+      CodeFoldingManager.getInstance(getProject()).buildInitialFoldings(myEditor);
+      waitForDaemon();
+      checkFoldingState("[FoldRegion -(22:27), placeholder='{}']");
+
+      JavaCodeFoldingSettings settings = JavaCodeFoldingSettings.getInstance();
+      boolean savedValue = settings.isCollapseMethods();
+      try {
+        settings.setCollapseMethods(true);
+        CodeFoldingConfigurable.applyCodeFoldingSettingsChanges();
+        waitForDaemon();
+        checkFoldingState("[FoldRegion +(22:27), placeholder='{}']");
+      }
+      finally {
+        settings.setCollapseMethods(savedValue);
+      }
+    });
+  }
+  
   private void checkFoldingState(String expected) {
     assertEquals(expected, Arrays.toString(myEditor.getFoldingModel().getAllFoldRegions()));
   }
@@ -2586,6 +2623,91 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
             }
           }
         });
+      }
+    }
+  }
+
+  public void testDumbQuickFixIsNoLongerVisibleAfterApplied() {
+    MyInspection tool = new MyInspection();
+    enableInspectionTool(tool);
+    disposeOnTearDown(() -> disableInspectionTool(tool.getShortName()));
+
+    @Language("JAVA")
+    String text = "class X { void f() { if (this == null) {} else return; } }";
+    configureByText(JavaFileType.INSTANCE, text);
+    WriteCommandAction.runWriteCommandAction(getProject(), () -> myEditor.getDocument().setText(text));
+    getEditor().getCaretModel().moveToOffset(getFile().getText().indexOf("if (") + 1);
+    assertEmpty(doHighlighting(HighlightSeverity.ERROR));
+    List<IntentionAction> fixes = findStupidFixes();
+    IntentionAction fix = assertOneElement(fixes);
+    fix.invoke(getProject(), getEditor(), getFile());
+
+    fixes = findStupidFixes();
+    assertEmpty(fixes);
+
+    assertEmpty(doHighlighting(HighlightSeverity.ERROR));
+    fixes = findStupidFixes();
+    assertEmpty(fixes);
+  }
+
+  private List<IntentionAction> findStupidFixes() {
+    return CodeInsightTestFixtureImpl.getAvailableIntentions(getEditor(), getFile())
+      .stream().filter(f->f.getFamilyName().equals(new MyInspection.StupidQuickFixWhichDoesntCheckItsOwnApplicability().getFamilyName()))
+      .collect(Collectors.toList());
+  }
+
+  private static class MyInspection extends LocalInspectionTool {
+    @Nls
+    @NotNull
+    @Override
+    public String getGroupDisplayName() {
+      return "danuna";
+    }
+
+    @Nls
+    @NotNull
+    @Override
+    public String getDisplayName() {
+      return getGroupDisplayName();
+    }
+
+    @NotNull
+    @Override
+    public String getShortName() {
+      return getGroupDisplayName();
+    }
+
+    @NotNull
+    @Override
+    public PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly) {
+      return new JavaElementVisitor() {
+        @Override
+        public void visitIfStatement(PsiIfStatement statement) {
+          if (statement.getElseBranch() != null) {
+            PsiKeyword keyw = (PsiKeyword)statement.getChildren()[0];
+            holder.registerProblem(keyw, "dododo", new StupidQuickFixWhichDoesntCheckItsOwnApplicability());
+          }
+        }
+      };
+    }
+    private static class StupidQuickFixWhichDoesntCheckItsOwnApplicability implements LocalQuickFix {
+      @Nls
+      @NotNull
+      @Override
+      public String getName() {
+        return "danu";
+      }
+
+      @Nls
+      @NotNull
+      @Override
+      public String getFamilyName() {
+        return getName();
+      }
+
+      @Override
+      public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
+        WriteCommandAction.runWriteCommandAction(project, () -> ((PsiIfStatement)descriptor.getPsiElement().getParent()).getElseBranch().delete());
       }
     }
   }

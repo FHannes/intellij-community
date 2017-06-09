@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootEvent;
 import com.intellij.openapi.roots.ModuleRootListener;
 import com.intellij.openapi.util.UserDataHolderBase;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.*;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
@@ -39,7 +40,6 @@ import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.util.PsiModificationTracker;
-import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.messages.MessageBusConnection;
@@ -212,57 +212,69 @@ public class DirtyScopeHolder extends UserDataHolderBase {
   }
 
   void installVFSListener() {
-    VirtualFileManager.getInstance().addVirtualFileListener(new VirtualFileAdapter() {
+    VirtualFileManager.getInstance().addVirtualFileListener(new VirtualFileListener() {
       @Override
       public void fileCreated(@NotNull VirtualFileEvent event) {
-        processChange(event.getFile());
+        fileChanged(event.getFile());
       }
 
       @Override
       public void fileCopied(@NotNull VirtualFileCopyEvent event) {
-        processChange(event.getFile());
+        fileChanged(event.getFile());
       }
 
       @Override
       public void fileMoved(@NotNull VirtualFileMoveEvent event) {
-        processChange(event.getFile());
+        fileChanged(event.getFile());
       }
 
       @Override
       public void beforePropertyChange(@NotNull VirtualFilePropertyEvent event) {
+        if (VirtualFile.PROP_NAME.equals(event.getPropertyName()) && event.getFile().isDirectory() && event.getFile().isInLocalFileSystem()) {
+          final String path = event.getFile().getPath();
+          for (Module module : ModuleManager.getInstance(myService.getProject()).getModules()) {
+            if (FileUtil.isAncestor(path, module.getModuleFilePath(), true)) {
+              addToDirtyModules(module);
+            }
+          }
+        }
+      }
+
+      @Override
+      public void propertyChanged(@NotNull VirtualFilePropertyEvent event) {
         if (VirtualFile.PROP_NAME.equals(event.getPropertyName()) || VirtualFile.PROP_SYMLINK_TARGET.equals(event.getPropertyName())) {
-          processChange(event.getFile());
+          fileChanged(event.getFile());
         }
       }
 
       @Override
       public void beforeContentsChange(@NotNull VirtualFileEvent event) {
-        processChange(event.getFile());
+        fileChanged(event.getFile());
       }
 
       @Override
       public void beforeFileDeletion(@NotNull VirtualFileEvent event) {
-        processChange(event.getFile());
+        fileChanged(event.getFile());
       }
 
       @Override
       public void beforeFileMovement(@NotNull VirtualFileMoveEvent event) {
-        processChange(event.getFile());
+        fileChanged(event.getFile());
       }
 
-      private void processChange(VirtualFile file) {
-        fileChanged(file);
-      }
-
-      void fileChanged(VirtualFile file) {
+      private void fileChanged(VirtualFile file) {
         final Module module = getModuleForSourceContentFile(file);
         if (module != null) {
-          synchronized (myLock) {
-            if (myCompilationPhase) {
-              myChangedModulesDuringCompilation.add(module);
-            } else {
-              myVFSChangedModules.add(module);
-            }
+          addToDirtyModules(module);
+        }
+      }
+
+      private void addToDirtyModules(Module module) {
+        synchronized (myLock) {
+          if (myCompilationPhase) {
+            myChangedModulesDuringCompilation.add(module);
+          } else {
+            myVFSChangedModules.add(module);
           }
         }
       }
@@ -270,7 +282,7 @@ public class DirtyScopeHolder extends UserDataHolderBase {
   }
 
   private Module getModuleForSourceContentFile(@NotNull VirtualFile file) {
-    if (myService.getFileIndex().isInSourceContent(file) && myService.getFileTypes().contains(file.getFileType())) {
+    if (myService.getFileTypes().contains(file.getFileType()) && myService.getFileIndex().isInSourceContent(file)) {
       return myService.getFileIndex().getModuleForFile(file);
     }
     return null;

@@ -34,6 +34,7 @@ import com.intellij.debugger.settings.DebuggerSettings;
 import com.intellij.debugger.settings.NodeRendererSettings;
 import com.intellij.debugger.ui.breakpoints.BreakpointManager;
 import com.intellij.debugger.ui.breakpoints.RunToCursorBreakpoint;
+import com.intellij.debugger.ui.breakpoints.StackCapturingLineBreakpoint;
 import com.intellij.debugger.ui.breakpoints.StepIntoBreakpoint;
 import com.intellij.debugger.ui.tree.ValueDescriptor;
 import com.intellij.debugger.ui.tree.render.ArrayRenderer;
@@ -371,6 +372,8 @@ public abstract class DebugProcessImpl extends UserDataHolderBase implements Deb
       stepRequest.setSuspendPolicy(suspendContext.getSuspendPolicy() == EventRequest.SUSPEND_EVENT_THREAD
                                    ? EventRequest.SUSPEND_EVENT_THREAD
                                    : EventRequest.SUSPEND_ALL);
+
+      stepRequest.addCountFilter(1);
 
       if (hint != null) {
         //noinspection HardCodedStringLiteral
@@ -726,7 +729,12 @@ public abstract class DebugProcessImpl extends UserDataHolderBase implements Deb
     DebuggerManagerThreadImpl.assertIsManagerThread();
     final VirtualMachineProxyImpl vm = myVirtualMachineProxy;
     if (vm == null) {
-      throw new VMDisconnectedException();
+      if (isInInitialState()) {
+        throw new IllegalStateException("Virtual machine is not initialized yet");
+      }
+      else {
+        throw new VMDisconnectedException();
+      }
     }
     return vm;
   }
@@ -1400,6 +1408,11 @@ public abstract class DebugProcessImpl extends UserDataHolderBase implements Deb
     }
   }
 
+  public void onHotSwapFinished() {
+    getPositionManager().clearCache();
+    StackCapturingLineBreakpoint.clearCaches(this);
+  }
+
   @NotNull
   public SuspendManager getSuspendManager() {
     return mySuspendManager;
@@ -1991,7 +2004,11 @@ public abstract class DebugProcessImpl extends UserDataHolderBase implements Deb
           afterProcessStarted(() -> getManagerThread().schedule(new DebuggerCommandImpl() {
             @Override
             protected void action() throws Exception {
-              commitVM(vm1);
+              try {
+                commitVM(vm1);
+              } catch (VMDisconnectedException e) {
+                fail();
+              }
             }
           }));
         }

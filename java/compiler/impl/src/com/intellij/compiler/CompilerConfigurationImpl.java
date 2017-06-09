@@ -135,12 +135,18 @@ public class CompilerConfigurationImpl extends CompilerConfiguration implements 
     project.getMessageBus().connect().subscribe(ExcludedEntriesListener.TOPIC, new ExcludedEntriesListener() {
       @Override
       public void onEntryAdded(@NotNull ExcludeEntryDescription description) {
-        BuildManager.getInstance().clearState(project);
+        clearState();
       }
 
       @Override
       public void onEntryRemoved(@NotNull ExcludeEntryDescription description) {
-        BuildManager.getInstance().clearState(project);
+        clearState();
+      }
+
+      private void clearState() {
+        if (project.isOpen()) {
+          BuildManager.getInstance().clearState(project);
+        }
       }
     });
     return cfg;
@@ -349,18 +355,7 @@ public class CompilerConfigurationImpl extends CompilerConfiguration implements 
       throw new MalformedPatternException(ex);
     }
   }
-
-  @Override
-  public void disposeComponent() {
-  }
-
-  @Override
-  public void initComponent() { }
-
-  @Override
-  public void projectClosed() {
-  }
-
+  
   public JavacCompiler getJavacCompiler() {
     createCompilers();
     return JAVAC_EXTERNAL_BACKEND;

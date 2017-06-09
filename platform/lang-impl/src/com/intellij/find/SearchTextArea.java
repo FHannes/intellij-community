@@ -52,15 +52,22 @@ import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
+import javax.swing.plaf.TextUI;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultEditorKit;
+import javax.swing.text.PlainDocument;
 import java.awt.*;
 import java.awt.event.*;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 
+import static java.awt.event.InputEvent.*;
 import static javax.swing.ScrollPaneConstants.*;
 
 public class SearchTextArea extends NonOpaquePanel implements PropertyChangeListener, FocusListener {
+  public static final KeyStroke NEW_LINE_KEYSTROKE
+    = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, (SystemInfo.isMac ? META_DOWN_MASK : CTRL_DOWN_MASK) | SHIFT_DOWN_MASK);
   private final JTextArea myTextArea;
   private final boolean mySearchMode;
   private final boolean myInfoMode;
@@ -71,18 +78,48 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
   private JBScrollPane myScrollPane;
   private final ActionButton myHistoryPopupButton;
   private final LafHelper myHelper;
+  private boolean myMultilineEnabled = true;
 
   public SearchTextArea(boolean searchMode) {
     this(new JTextArea(), searchMode, false);
   }
 
   public SearchTextArea(@NotNull JTextArea textArea, boolean searchMode, boolean infoMode) {
+    this(textArea, searchMode, infoMode, false);
+  }
+
+  public SearchTextArea(@NotNull JTextArea textArea, boolean searchMode, boolean infoMode, boolean allowInsertTabInMultiline) {
     myTextArea = textArea;
     mySearchMode = searchMode;
     myInfoMode = infoMode;
     myTextArea.addPropertyChangeListener("background", this);
     myTextArea.addPropertyChangeListener("font", this);
     myTextArea.addFocusListener(this);
+    myTextArea.registerKeyboardAction(e -> {
+      if (allowInsertTabInMultiline && myTextArea.getText().contains("\n")) {
+        if (myTextArea.isEditable() && myTextArea.isEnabled()) {
+          myTextArea.replaceSelection("\t");
+        }
+        else {
+          UIManager.getLookAndFeel().provideErrorFeedback(myTextArea);
+        }
+      }
+      else {
+        myTextArea.transferFocus();
+      }
+    }, KeyStroke.getKeyStroke(KeyEvent.VK_TAB, 0), WHEN_FOCUSED);
+
+    myTextArea.registerKeyboardAction(e -> myTextArea.transferFocusBackward(), KeyStroke.getKeyStroke(KeyEvent.VK_TAB, SHIFT_DOWN_MASK), WHEN_FOCUSED);
+    KeymapUtil.reassignAction(myTextArea, KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), NEW_LINE_KEYSTROKE, WHEN_FOCUSED);
+    myTextArea.setDocument(new PlainDocument() {
+      @Override
+      public void insertString(int offs, String str, AttributeSet a) throws BadLocationException {
+        if (getProperty("filterNewlines") == Boolean.TRUE && str.indexOf('\n')>=0) {
+          str = StringUtil.replace(str, "\n", "");
+        }
+        if (!StringUtil.isEmpty(str)) super.insertString(offs, str, a);
+      }
+    });
     myTextArea.getDocument().addDocumentListener(new DocumentAdapter() {
       @Override
       protected void textChanged(DocumentEvent e) {
@@ -94,25 +131,30 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
       @Override
       public Dimension getPreferredSize() {
         Dimension d = super.getPreferredSize();
-        d.height = Math.min(d.height, myTextArea.getUI().getPreferredSize(myTextArea).height);
+        TextUI ui = myTextArea.getUI();
+        if (ui != null) {
+          d.height = Math.min(d.height, ui.getPreferredSize(myTextArea).height);
+        }
         return d;
       }
     };
     myTextArea.setBorder(new Border() {
       @Override
-      public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
-
-      }
+      public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {}
 
       @Override
       public Insets getBorderInsets(Component c) {
-        int bottom = (StringUtil.getLineBreakCount(myTextArea.getText()) > 0) ? 2 : UIUtil.isUnderDarcula() ? 1 : 0;
-        int top = myTextArea.getFontMetrics(myTextArea.getFont()).getHeight() <= 16 ? 2 : 1;
-        if (JBUI.isUsrHiDPI()) {
-          bottom = 2;
-          top = 2;
+        if (SystemInfo.isMac && !UIUtil.isUnderDarcula()) {
+          return new JBInsets(3, 0, 3, 0);
+        } else {
+          int bottom = (StringUtil.getLineBreakCount(myTextArea.getText()) > 0) ? 2 : UIUtil.isUnderDarcula() ? 2 : 1;
+          int top = myTextArea.getFontMetrics(myTextArea.getFont()).getHeight() <= 16 ? 2 : 1;
+          if (JBUI.isUsrHiDPI()) {
+            bottom = 2;
+            top = 2;
+          }
+          return new JBInsets(top, 0, bottom, 0);
         }
-        return new JBInsets(top, 0, bottom, 0);
       }
 
       @Override
@@ -150,14 +192,12 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
     if (myInfoMode) {
       add(myInfoLabel, "gapright " + JBUI.scale(4));
     }
-    else {
-      add(myIconsPanel, myHelper.getIconsPanelConstraints());
-      updateIconsLayout();
-    }
+    add(myIconsPanel, myHelper.getIconsPanelConstraints());
+    updateIconsLayout();
   }
 
   protected boolean isNewLineAvailable() {
-    return Registry.is("ide.find.show.add.newline.hint");
+    return Registry.is("ide.find.show.add.newline.hint") && myMultilineEnabled;
   }
 
   private void updateIconsLayout() {
@@ -196,6 +236,27 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
     }
   }
 
+  private final KeyAdapter myEnterRedispatcher = new KeyAdapter() {
+    @Override
+    public void keyPressed(KeyEvent e) {
+      if (e.getKeyCode() == KeyEvent.VK_ENTER && SearchTextArea.this.getParent() != null) {
+        SearchTextArea.this.getParent().dispatchEvent(e);
+      }
+    }
+  };
+
+  public void setMultilineEnabled(boolean enabled) {
+    if (myMultilineEnabled == enabled) return;
+
+    myMultilineEnabled = enabled;
+    myTextArea.getDocument().putProperty("filterNewlines", myMultilineEnabled ? null : Boolean.TRUE);
+    if (!myMultilineEnabled) {
+      myTextArea.addKeyListener(myEnterRedispatcher);
+    } else {
+      myTextArea.removeKeyListener(myEnterRedispatcher);
+    }
+    updateIconsLayout();
+  }
 
   @NotNull
   public JTextArea getTextArea() {
@@ -312,7 +373,7 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
 
   private class NewLineAction extends DumbAwareAction {
     public NewLineAction() {
-      super(null, "New line (" + KeymapUtil.getKeystrokeText(SearchReplaceComponent.NEW_LINE_KEYSTROKE) + ")",
+      super(null, "New line (" + KeymapUtil.getKeystrokeText(NEW_LINE_KEYSTROKE) + ")",
             AllIcons.Actions.SearchNewLine);
     }
 
@@ -348,7 +409,7 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
   private class MacLafHelper extends LafHelper {
     @Override
     Border getBorder() {
-      return new EmptyBorder(3 + Math.max(0, JBUI.scale(16) - UIUtil.getLineHeight(myTextArea)) / 2, 6, 3, 4);
+      return new EmptyBorder(3 + Math.max(0, JBUI.scale(16) - UIUtil.getLineHeight(myTextArea)) / 2, 6, 4, 4);
     }
 
     @Override
@@ -394,9 +455,13 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
     void paint(Graphics2D g) {
       Rectangle r = new Rectangle(getSize());
       int h = myIconsPanel.getParent() != null ? Math.max(myIconsPanel.getHeight(), myScrollPane.getHeight()) : myScrollPane.getHeight();
-      r.height = Math.max(r.height, h + getInsets().top + getInsets().bottom);
-      if (r.height % 2 == 1) r.height--;
-      g.setColor(myTextArea.isEnabled() ? enabledBorderColor : disabledBorderColor);
+
+      Insets i = getInsets();
+      Insets ei = myTextArea.getInsets();
+
+      int deltaY = i.top - ei.top;
+      r.y += deltaY;
+      r.height = Math.max(r.height, h + i.top + i.bottom) - (i.bottom - ei.bottom) - deltaY;
       MacIntelliJTextFieldUI.paintAquaSearchFocusRing(g, r, myTextArea);
     }
   }
@@ -414,16 +479,12 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
 
     @Override
     String getHistoryButtonConstraints() {
-      return "ay top, gaptop " + JBUI.scale(getIconTopGap());//Double scaling inside but it looks not bad
-    }
-
-    private int getIconTopGap() {
-      return Math.max(2, (UIUtil.getLineHeight(myTextArea) + myTextArea.getInsets().top + myTextArea.getInsets().bottom - JBUI.scale(16)) / 2);
+      return "ay baseline";
     }
 
     @Override
     String getIconsPanelConstraints() {
-      return "gaptop " + getIconTopGap() + ",ay top";
+      return "ay baseline";
     }
 
     @Override

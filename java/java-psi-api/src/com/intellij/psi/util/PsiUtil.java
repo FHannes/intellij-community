@@ -84,7 +84,13 @@ public final class PsiUtil extends PsiUtilCore {
   public static boolean isAccessedForWriting(@NotNull PsiExpression expr) {
     if (isOnAssignmentLeftHand(expr)) return true;
     PsiElement parent = skipParenthesizedExprUp(expr.getParent());
-    return isIncrementDecrementOperation(parent);
+    if (isIncrementDecrementOperation(parent)) return true;
+    // Added to identify StringBuilder.append() as write
+    if (!(expr instanceof PsiReferenceExpression)) return false;
+    PsiElement resExpr = ((PsiReferenceExpression) expr).resolve();
+    return resExpr instanceof PsiVariable &&
+           ((PsiVariable) resExpr).getType().equalsToText("java.lang.StringBuilder") &&
+           parent.getLastChild().getText().equals("append");
   }
 
   public static boolean isAccessedForReading(@NotNull PsiExpression expr) {
@@ -1005,6 +1011,9 @@ public final class PsiUtil extends PsiUtilCore {
     if (file != null) {
       PsiElement context = file.getContext();
       if (context != null) {
+        if (!context.isValid()) {
+          throw new PsiInvalidElementAccessException(context, "Invalid context in " + file + " of " + file.getClass());
+        }
         return getLanguageLevel(context);
       }
     }

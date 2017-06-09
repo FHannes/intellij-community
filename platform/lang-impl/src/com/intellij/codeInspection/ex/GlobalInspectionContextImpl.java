@@ -104,6 +104,7 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextBase imp
   private volatile InspectionResultsView myView;
   private Content myContent;
   private volatile boolean myViewClosed = true;
+  private long myInspectionStartedTimestamp;
 
   @NotNull
   private AnalysisUIOptions myUIOptions;
@@ -343,10 +344,11 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextBase imp
   }
 
   @Override
-  protected void notifyInspectionsFinished(final AnalysisScope scope) {
+  protected void notifyInspectionsFinished(@NotNull final AnalysisScope scope) {
     if (ApplicationManager.getApplication().isUnitTestMode()) return;
     UIUtil.invokeLaterIfNeeded(() -> {
-      LOG.info("Code inspection finished");
+      long elapsed = System.currentTimeMillis() - myInspectionStartedTimestamp;
+      LOG.info("Code inspection finished. Took "+elapsed+"ms");
       if (getProject().isDisposed()) return;
 
       InspectionResultsView view = myView == null ? new InspectionResultsView(this, createContentProvider()) : null;
@@ -360,7 +362,7 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextBase imp
           Disposer.dispose(view);
         }
       }
-      else if (view != null) {
+      else if (view != null && !view.isDisposed() && getCurrentScope() != null) {
         addView(view);
         view.update();
       }
@@ -372,6 +374,7 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextBase imp
 
   @Override
   protected void runTools(@NotNull final AnalysisScope scope, boolean runGlobalToolsOnly, boolean isOfflineInspections) {
+    myInspectionStartedTimestamp = System.currentTimeMillis();
     final ProgressIndicator progressIndicator = ProgressIndicatorProvider.getGlobalProgressIndicator();
     if (progressIndicator == null) {
       throw new IncorrectOperationException("Must be run under progress");
@@ -420,7 +423,9 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextBase imp
         if (!file.isValid()) {
           return;
         }
-        LOG.assertTrue(scope.contains(file.getVirtualFile()), file.getName());
+        if (!scope.contains(file.getVirtualFile())) {
+          LOG.error(file.getName()+"; scope: "+scope);
+        }
         inspectFile(file, inspectionManager, localTools, globalSimpleTools, map);
       })) {
         throw new ProcessCanceledException();

@@ -50,7 +50,7 @@ import java.util.*;
 public class StubUpdatingIndex extends CustomImplementationFileBasedIndexExtension<Integer, SerializedStubTree, FileContent>
   implements PsiDependentIndex, CustomInputsIndexFileBasedIndexExtension<Integer> {
   static final Logger LOG = Logger.getInstance("#com.intellij.psi.stubs.StubUpdatingIndex");
-  private static final int VERSION = 31  + (PersistentHashMapValueStorage.COMPRESSION_ENABLED ? 1 : 0);
+  private static final int VERSION = 32  + (PersistentHashMapValueStorage.COMPRESSION_ENABLED ? 1 : 0);
 
   // todo remove once we don't need this for stub-ast mismatch debug info
   private static final FileAttribute INDEXED_STAMP = new FileAttribute("stubIndexStamp", 2, true);
@@ -70,12 +70,7 @@ public class StubUpdatingIndex extends CustomImplementationFileBasedIndexExtensi
     }
   };
 
-  private static final FileBasedIndex.InputFilter INPUT_FILTER = new FileBasedIndex.InputFilter() {
-    @Override
-    public boolean acceptInput(@NotNull final VirtualFile file) {
-      return canHaveStub(file);
-    }
-  };
+  private static final FileBasedIndex.InputFilter INPUT_FILTER = file -> canHaveStub(file);
 
   public static boolean canHaveStub(@NotNull VirtualFile file) {
     final FileType fileType = file.getFileType();
@@ -346,8 +341,8 @@ public class StubUpdatingIndex extends CustomImplementationFileBasedIndexExtensi
       final Map<Object, StubIdList> oldMap = oldStubTree.get(key);
       final Map<Object, StubIdList> newMap = newStubTree.get(key);
 
-      final Map<Object, StubIdList> _oldMap = oldMap != null ? oldMap : Collections.<Object, StubIdList>emptyMap();
-      final Map<Object, StubIdList> _newMap = newMap != null ? newMap : Collections.<Object, StubIdList>emptyMap();
+      final Map<Object, StubIdList> _oldMap = oldMap != null ? oldMap : Collections.emptyMap();
+      final Map<Object, StubIdList> _newMap = newMap != null ? newMap : Collections.emptyMap();
 
       stubIndex.updateIndex(key, inputId, _oldMap, _newMap);
     }
@@ -446,13 +441,13 @@ public class StubUpdatingIndex extends CustomImplementationFileBasedIndexExtensi
     }
 
     @Override
-    public void flush() throws StorageException {
+    protected void doFlush() throws IOException, StorageException {
       final StubIndexImpl stubIndex = getStubIndex();
       try {
         stubIndex.flush();
       }
       finally {
-        super.flush();
+        super.doFlush();
       }
     }
 
@@ -463,36 +458,22 @@ public class StubUpdatingIndex extends CustomImplementationFileBasedIndexExtensi
       StubUpdatingData stubUpdatingData = (StubUpdatingData)updateData;
       final Map<StubIndexKey, Map<Object, StubIdList>> newStubIndicesValueMap = stubUpdatingData.getNewStubIndicesValueMap();
 
-      final StubIndexImpl stubIndex = getStubIndex();
-      final Collection<StubIndexKey> allStubIndices = stubIndex.getAllStubIndexKeys();
       try {
-        // first write-lock affected stub indices to avoid deadlocks
-        for (StubIndexKey key : allStubIndices) {
-          stubIndex.getWriteLock(key).lock();
-        }
+        getWriteLock().lock();
 
-        try {
-          getWriteLock().lock();
+        super.updateWithMap(inputId, updateData);
 
-          super.updateWithMap(inputId, updateData);
+        final Map<StubIndexKey, Map<Object, StubIdList>> previousStubIndicesValueMap = stubUpdatingData.getOldStubIndicesValueMap();
 
-          final Map<StubIndexKey, Map<Object, StubIdList>> previousStubIndicesValueMap = stubUpdatingData.getOldStubIndicesValueMap();
-
-          updateStubIndices(
-            getAffectedIndices(previousStubIndicesValueMap, newStubIndicesValueMap),
-            inputId,
-            previousStubIndicesValueMap,
-            newStubIndicesValueMap
-          );
-        }
-        finally {
-          getWriteLock().unlock();
-        }
+        updateStubIndices(
+          getAffectedIndices(previousStubIndicesValueMap, newStubIndicesValueMap),
+          inputId,
+          previousStubIndicesValueMap,
+          newStubIndicesValueMap
+        );
       }
       finally {
-        for (StubIndexKey key : allStubIndices) {
-          stubIndex.getWriteLock(key).unlock();
-        }
+        getWriteLock().unlock();
       }
     }
 
@@ -514,34 +495,19 @@ public class StubUpdatingIndex extends CustomImplementationFileBasedIndexExtensi
     }
 
     @Override
-    public void clear() throws StorageException {
+    protected void doClear() throws StorageException, IOException {
       final StubIndexImpl stubIndex = StubIndexImpl.getInstanceOrInvalidate();
-      final Collection<StubIndexKey> allStubIndexKeys = stubIndex != null? stubIndex.getAllStubIndexKeys() : Collections.<StubIndexKey>emptyList();
-      try {
-        for (StubIndexKey key : allStubIndexKeys) {
-          //noinspection ConstantConditions
-          stubIndex.getWriteLock(key).lock();
-        }
-        getWriteLock().lock();
-        if (stubIndex != null) {
-          stubIndex.clearAllIndices();
-        }
-        myStubVersionMap.clear();
-        super.clear();
+      if (stubIndex != null) {
+        stubIndex.clearAllIndices();
       }
-      finally {
-        getWriteLock().unlock();
-        for (StubIndexKey key : allStubIndexKeys) {
-          //noinspection ConstantConditions
-          stubIndex.getWriteLock(key).unlock();
-        }
-      }
+      myStubVersionMap.clear();
+      super.doClear();
     }
 
     @Override
-    public void dispose() {
+    protected void doDispose() throws StorageException {
       try {
-        super.dispose();
+        super.doDispose();
       }
       finally {
         getStubIndex().dispose();

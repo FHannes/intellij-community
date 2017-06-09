@@ -36,6 +36,7 @@ import com.intellij.diff.tools.util.base.HighlightPolicy;
 import com.intellij.diff.tools.util.base.IgnorePolicy;
 import com.intellij.diff.tools.util.base.TextDiffViewerUtil;
 import com.intellij.diff.tools.util.text.LineOffsets;
+import com.intellij.diff.tools.util.text.LineOffsetsUtil;
 import com.intellij.diff.tools.util.text.MergeInnerDifferences;
 import com.intellij.diff.tools.util.text.TextDiffProviderBase;
 import com.intellij.diff.util.*;
@@ -242,10 +243,10 @@ public class TextMergeViewer implements MergeTool.MergeViewer {
       group.add(myEditorSettingsAction);
 
       DefaultActionGroup diffGroup = new DefaultActionGroup("Compare With", true);
-      diffGroup.getTemplatePresentation().setIcon(AllIcons.Diff.Diff);
-      diffGroup.add(new TextShowPartialDiffAction(PartialDiffMode.LEFT_MIDDLE));
-      diffGroup.add(new TextShowPartialDiffAction(PartialDiffMode.RIGHT_MIDDLE));
-      diffGroup.add(new TextShowPartialDiffAction(PartialDiffMode.LEFT_RIGHT));
+      diffGroup.getTemplatePresentation().setIcon(AllIcons.Actions.Diff);
+      diffGroup.add(new TextShowPartialDiffAction(PartialDiffMode.LEFT_MIDDLE, true));
+      diffGroup.add(new TextShowPartialDiffAction(PartialDiffMode.RIGHT_MIDDLE, true));
+      diffGroup.add(new TextShowPartialDiffAction(PartialDiffMode.LEFT_RIGHT, true));
       diffGroup.add(new ShowDiffWithBaseAction(ThreeSide.LEFT));
       diffGroup.add(new ShowDiffWithBaseAction(ThreeSide.BASE));
       diffGroup.add(new ShowDiffWithBaseAction(ThreeSide.RIGHT));
@@ -406,7 +407,7 @@ public class TextMergeViewer implements MergeTool.MergeViewer {
           indicator.checkCanceled();
           return ContainerUtil.map(contents, content -> content.getDocument().getImmutableCharSequence());
         });
-        List<LineOffsets> lineOffsets = ContainerUtil.map(sequences, LineOffsets::create);
+        List<LineOffsets> lineOffsets = ContainerUtil.map(sequences, LineOffsetsUtil::create);
 
         ComparisonManager manager = ComparisonManager.getInstance();
         List<MergeLineFragment> lineFragments = manager.compareLines(sequences.get(0), sequences.get(1), sequences.get(2),
@@ -781,51 +782,6 @@ public class TextMergeViewer implements MergeTool.MergeViewer {
       }
     }
 
-    @Nullable
-    private CharSequence tryResolveConflictedChangeUsingInnerDifferences(@NotNull TextMergeChange change) {
-      if (!change.isConflict()) return null;
-      if (change.isResolved(Side.LEFT) || change.isResolved(Side.RIGHT)) return null;
-
-      MergeLineFragment changeFragment = change.getFragment();
-      if (changeFragment.getStartLine(ThreeSide.LEFT) == changeFragment.getEndLine(ThreeSide.LEFT)) return null;
-      if (changeFragment.getStartLine(ThreeSide.BASE) == changeFragment.getEndLine(ThreeSide.BASE)) return null;
-      if (changeFragment.getStartLine(ThreeSide.RIGHT) == changeFragment.getEndLine(ThreeSide.RIGHT)) return null;
-
-
-      int baseStartLine = changeFragment.getStartLine(ThreeSide.BASE);
-      int baseEndLine = changeFragment.getEndLine(ThreeSide.BASE);
-      DiffContent baseDiffContent = ThreeSide.BASE.select(myMergeRequest.getContents());
-      Document baseDocument = ((DocumentContent)baseDiffContent).getDocument();
-
-      int resultStartLine = change.getStartLine();
-      int resultEndLine = change.getEndLine();
-      Document resultDocument = getEditor().getDocument();
-
-      CharSequence baseContent = DiffUtil.getLinesContent(baseDocument, baseStartLine, baseEndLine);
-      CharSequence resultContent = DiffUtil.getLinesContent(resultDocument, resultStartLine, resultEndLine);
-      if (!StringUtil.equals(baseContent, resultContent)) return null;
-
-
-      List<CharSequence> texts = ThreeSide.map((side) -> {
-        return DiffUtil.getLinesContent(getEditor(side).getDocument(), change.getStartLine(side), change.getEndLine(side));
-      });
-
-      return ComparisonMergeUtil.tryResolveConflict(texts.get(0), texts.get(1), texts.get(2));
-    }
-
-    public boolean canResolveConflictedChange(@NotNull TextMergeChange change) {
-      return tryResolveConflictedChangeUsingInnerDifferences(change) != null;
-    }
-
-    public void resolveConflictedChange(@NotNull TextMergeChange change) {
-      CharSequence newContent = tryResolveConflictedChangeUsingInnerDifferences(change);
-      if (newContent == null) return;
-
-      String[] newContentLines = LineTokenizer.tokenize(newContent, false);
-      myModel.replaceChange(change.getIndex(), Arrays.asList(newContentLines));
-      markChangeResolved(change);
-    }
-
     private class MyMergeModel extends MergeModelBase<TextMergeChange.State> {
       public MyMergeModel(@Nullable Project project, @NotNull Document document) {
         super(project, document);
@@ -875,19 +831,7 @@ public class TextMergeViewer implements MergeTool.MergeViewer {
     //
 
     private boolean hasNonConflictedChanges(@NotNull ThreeSide side) {
-      if (ContainerUtil.exists(getAllChanges(), change -> !change.isResolved() &&
-                                                          !change.isConflict() &&
-                                                          change.isChange(side))) {
-        return true;
-      }
-
-      if (side == ThreeSide.BASE) {
-        if (ContainerUtil.exists(getAllChanges(), change -> canResolveConflictedChange(change))) {
-          return true;
-        }
-      }
-
-      return false;
+      return ContainerUtil.exists(getAllChanges(), change -> canApplyNonConflictedChange(change, side));
     }
 
     private void applyNonConflictedChanges(@NotNull ThreeSide side) {
@@ -902,14 +846,55 @@ public class TextMergeViewer implements MergeTool.MergeViewer {
       if (firstUnresolved != null) doScrollToChange(firstUnresolved, true);
     }
 
-    private void applyNonConflictedChange(@NotNull TextMergeChange change, @NotNull ThreeSide side) {
+    public boolean canApplyNonConflictedChange(@NotNull TextMergeChange change, @NotNull ThreeSide side) {
       if (change.isConflict()) {
-        if (side != ThreeSide.BASE) return;
-        resolveConflictedChange(change);
+        return side == ThreeSide.BASE &&
+               change.getType().canBeResolved() &&
+               !change.isResolved(Side.LEFT) && !change.isResolved(Side.RIGHT) &&
+               !isChangeRangeModified(change);
       }
       else {
-        if (change.isResolved(side)) return;
-        if (!change.isChange(side)) return;
+        return !change.isResolved() &&
+               change.isChange(side) &&
+               !isChangeRangeModified(change);
+      }
+    }
+
+    private boolean isChangeRangeModified(@NotNull TextMergeChange change) {
+      MergeLineFragment changeFragment = change.getFragment();
+      int baseStartLine = changeFragment.getStartLine(ThreeSide.BASE);
+      int baseEndLine = changeFragment.getEndLine(ThreeSide.BASE);
+      DiffContent baseDiffContent = ThreeSide.BASE.select(myMergeRequest.getContents());
+      Document baseDocument = ((DocumentContent)baseDiffContent).getDocument();
+
+      int resultStartLine = change.getStartLine();
+      int resultEndLine = change.getEndLine();
+      Document resultDocument = getEditor().getDocument();
+
+      CharSequence baseContent = DiffUtil.getLinesContent(baseDocument, baseStartLine, baseEndLine);
+      CharSequence resultContent = DiffUtil.getLinesContent(resultDocument, resultStartLine, resultEndLine);
+      return !StringUtil.equals(baseContent, resultContent);
+    }
+
+    public void applyNonConflictedChange(@NotNull TextMergeChange change, @NotNull ThreeSide side) {
+      if (!canApplyNonConflictedChange(change, side)) return;
+
+      if (change.isConflict()) {
+        List<CharSequence> texts = ThreeSide.map(it -> {
+          return DiffUtil.getLinesContent(getEditor(it).getDocument(), change.getStartLine(it), change.getEndLine(it));
+        });
+
+        CharSequence newContent = ComparisonMergeUtil.tryResolveConflict(texts.get(0), texts.get(1), texts.get(2));
+        if (newContent == null) {
+          LOG.warn(String.format("Can't resolve conflicting change:\n'%s'\n'%s'\n'%s'\n", texts.get(0), texts.get(1), texts.get(2)));
+          return;
+        }
+
+        String[] newContentLines = LineTokenizer.tokenize(newContent, false);
+        myModel.replaceChange(change.getIndex(), Arrays.asList(newContentLines));
+        markChangeResolved(change);
+      }
+      else {
         Side masterSide = side.select(Side.LEFT,
                                       change.isChange(Side.LEFT) ? Side.LEFT : Side.RIGHT,
                                       Side.RIGHT);
@@ -1160,9 +1145,7 @@ public class TextMergeViewer implements MergeTool.MergeViewer {
 
       @Override
       protected boolean isEnabled(@NotNull TextMergeChange change) {
-        if (change.isResolved()) return false;
-        if (change.isConflict()) return canResolveConflictedChange(change);
-        return true;
+        return canApplyNonConflictedChange(change, ThreeSide.BASE);
       }
 
       @Override

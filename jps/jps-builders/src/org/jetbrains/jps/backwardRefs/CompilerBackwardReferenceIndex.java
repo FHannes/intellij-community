@@ -21,21 +21,20 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.util.CommonProcessors;
 import com.intellij.util.Processor;
-import com.intellij.util.indexing.*;
+import com.intellij.util.indexing.IndexExtension;
+import com.intellij.util.indexing.IndexId;
+import com.intellij.util.indexing.InvertedIndex;
 import com.intellij.util.indexing.impl.*;
 import com.intellij.util.io.*;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.backwardRefs.index.CompiledFileData;
 import org.jetbrains.jps.backwardRefs.index.CompilerIndices;
 import org.jetbrains.jps.builders.storage.BuildDataCorruptedException;
 
 import java.io.*;
 import java.io.DataOutputStream;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class CompilerBackwardReferenceIndex {
   private final static Logger LOG = Logger.getInstance(CompilerBackwardReferenceIndex.class);
@@ -44,7 +43,7 @@ public class CompilerBackwardReferenceIndex {
   private final static String NAME_ENUM_TAB = "name.tab";
 
   private static final String VERSION_FILE = "version";
-  private final Map<ID<?, ?>, InvertedIndex<?, ?, CompiledFileData>> myIndices;
+  private final Map<IndexId<?, ?>, InvertedIndex<?, ?, CompiledFileData>> myIndices;
   private final NameEnumerator myNameEnumerator;
   private final PersistentStringEnumerator myFilePathEnumerator;
   private final File myIndicesDir;
@@ -65,7 +64,7 @@ public class CompilerBackwardReferenceIndex {
   });
   private volatile Exception myRebuildRequestCause;
 
-  public CompilerBackwardReferenceIndex(File buildDir) {
+  public CompilerBackwardReferenceIndex(File buildDir, boolean readOnly) {
     myIndicesDir = getIndexDir(buildDir);
     if (!myIndicesDir.exists() && !myIndicesDir.mkdirs()) {
       throw new RuntimeException("Can't create dir: " + buildDir.getAbsolutePath());
@@ -76,15 +75,15 @@ public class CompilerBackwardReferenceIndex {
       }
       myFilePathEnumerator = new PersistentStringEnumerator(new File(myIndicesDir, FILE_ENUM_TAB)) {
         @Override
-        public int enumerate(@Nullable String value) throws IOException {
+        public int enumerate(String value) throws IOException {
           return super.enumerate(SystemInfo.isFileSystemCaseSensitive ? value : value.toLowerCase(Locale.ROOT));
         }
       };
 
       myIndices = new HashMap<>();
-      for (IndexExtension<LightRef, ?, CompiledFileData> indexExtension : CompilerIndices.getIndices()) {
+      for (IndexExtension<?, ?, CompiledFileData> indexExtension : CompilerIndices.getIndices()) {
         //noinspection unchecked
-        myIndices.put(indexExtension.getName(), new CompilerMapReduceIndex(indexExtension, myIndicesDir));
+        myIndices.put(indexExtension.getName(), new CompilerMapReduceIndex(indexExtension, myIndicesDir, readOnly));
       }
 
       myNameEnumerator = new NameEnumerator(new File(myIndicesDir, NAME_ENUM_TAB));
@@ -99,7 +98,7 @@ public class CompilerBackwardReferenceIndex {
     return myIndices.values();
   }
 
-  public <K, V> InvertedIndex<K, V, CompiledFileData> get(ID<K, V> key) {
+  public <K, V> InvertedIndex<K, V, CompiledFileData> get(IndexId<K, V> key) {
     //noinspection unchecked
     return (InvertedIndex<K, V, CompiledFileData>)myIndices.get(key);
   }
@@ -140,6 +139,10 @@ public class CompilerBackwardReferenceIndex {
     return myRebuildRequestCause;
   }
 
+  File getIndicesDir() {
+    return myIndicesDir;
+  }
+
   public static void removeIndexFiles(File buildDir) {
     final File indexDir = getIndexDir(buildDir);
     if (indexDir.exists()) {
@@ -161,14 +164,19 @@ public class CompilerBackwardReferenceIndex {
     try {
       final DataInputStream is = new DataInputStream(new FileInputStream(versionFile));
       try {
-        return is.readInt() != CompilerIndices.VERSION;
+        int currentIndexVersion = is.readInt();
+        boolean isDiffer = currentIndexVersion != CompilerIndices.VERSION;
+        if (isDiffer) {
+          LOG.info("backward reference index version differ, expected = " + CompilerIndices.VERSION + ", current = " + currentIndexVersion);
+        }
+        return isDiffer;
       }
       finally {
         is.close();
       }
     }
-    catch (IOException ex) {
-      LOG.info(ex);
+    catch (IOException ignored) {
+      LOG.info("backward reference index version differ due to: " + ignored.getClass());
     }
     return true;
   }
@@ -193,7 +201,6 @@ public class CompilerBackwardReferenceIndex {
   }
 
   void setRebuildRequestCause(Exception e) {
-    LOG.error(e);
     myRebuildRequestCause = e;
   }
 
@@ -220,16 +227,17 @@ public class CompilerBackwardReferenceIndex {
 
   class CompilerMapReduceIndex<Key, Value> extends MapReduceIndex<Key, Value, CompiledFileData> {
     public CompilerMapReduceIndex(@NotNull final IndexExtension<Key, Value, CompiledFileData> extension,
-                                  @NotNull final File indexDir)
+                                  @NotNull final File indexDir,
+                                  boolean readOnly)
       throws IOException {
       super(extension,
-            createIndexStorage(extension.getKeyDescriptor(), extension.getValueExternalizer(), extension.getName(), indexDir),
-            new MapBasedForwardIndex<Key, Value>(extension) {
+            createIndexStorage(extension.getKeyDescriptor(), extension.getValueExternalizer(), extension.getName(), indexDir, readOnly),
+            readOnly ? null : new MapBasedForwardIndex<Key, Value>(extension) {
               @NotNull
               @Override
               public PersistentHashMap<Integer, Collection<Key>> createMap() throws IOException {
-                ID<Key, Value> id = extension.getName();
-                return new PersistentHashMap<>(new File(indexDir, id + ".inputs"),
+                IndexId<Key, Value> id = extension.getName();
+                return new PersistentHashMap<>(new File(indexDir, id.getName() + ".inputs"),
                                                EnumeratorIntegerDescriptor.INSTANCE,
                                                new InputIndexDataExternalizer<>(extension.getKeyDescriptor(),
                                                                                 id));
@@ -250,13 +258,16 @@ public class CompilerBackwardReferenceIndex {
 
   private static <Key, Value> IndexStorage<Key, Value> createIndexStorage(@NotNull KeyDescriptor<Key> keyDescriptor,
                                                                           @NotNull DataExternalizer<Value> valueExternalizer,
-                                                                          @NotNull ID<Key, Value> indexId,
-                                                                          @NotNull File indexDir) throws IOException {
-    return new MapIndexStorage<Key, Value>(new File(indexDir, indexId.toString()),
+                                                                          @NotNull IndexId<Key, Value> indexId,
+                                                                          @NotNull File indexDir,
+                                                                          boolean readOnly) throws IOException {
+    return new MapIndexStorage<Key, Value>(new File(indexDir, indexId.getName()),
                                            keyDescriptor,
                                            valueExternalizer,
                                            16 * 1024,
-                                           false) {
+                                           false,
+                                           true,
+                                           readOnly) {
       @Override
       public void checkCanceled() {
         //TODO

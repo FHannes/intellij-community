@@ -49,14 +49,17 @@ import gnu.trove.TObjectIntHashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.*;
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.File;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 @State(name = "FileBasedIndex", storages = @Storage(value = "stubIndex.xml", roamingType = RoamingType.DISABLED))
-public class StubIndexImpl extends StubIndex implements ApplicationComponentAdapter, PersistentStateComponent<StubIndexState> {
+public class StubIndexImpl extends StubIndex implements PersistentStateComponent<StubIndexState>, ApplicationComponent {
   private static final AtomicReference<Boolean> ourForcedClean = new AtomicReference<>(null);
   private static final Logger LOG = Logger.getInstance("#com.intellij.psi.stubs.StubIndexImpl");
 
@@ -107,11 +110,14 @@ public class StubIndexImpl extends StubIndex implements ApplicationComponentAdap
     synchronized (state) {
       state.myIndexIdToVersionMap.put(indexKey, version);
     }
-    final File versionFile = IndexInfrastructure.getVersionFile(indexKey);
-    final boolean versionFileExisted = versionFile.exists();
+
     final File indexRootDir = IndexInfrastructure.getIndexRootDir(indexKey);
     boolean needRebuild = false;
-    if (forceClean || IndexingStamp.versionDiffers(versionFile, version)) {
+
+    if (forceClean || IndexingStamp.versionDiffers(indexKey, version)) {
+      final File versionFile = IndexInfrastructure.getVersionFile(indexKey);
+      final boolean versionFileExisted = versionFile.exists();
+
       final String[] children = indexRootDir.list();
       // rebuild only if there exists what to rebuild
       boolean indexRootHasChildren = children != null && children.length > 0;
@@ -120,7 +126,7 @@ public class StubIndexImpl extends StubIndex implements ApplicationComponentAdap
         LOG.info("Version has changed for stub index " + extension.getKey() + ". The index will be rebuilt.");
       }
       if (indexRootHasChildren) FileUtil.deleteWithRenaming(indexRootDir);
-      IndexingStamp.rewriteVersion(versionFile, version); // todo snapshots indices
+      IndexingStamp.rewriteVersion(indexKey, version); // todo snapshots indices
     }
 
     for (int attempt = 0; attempt < 2; attempt++) {
@@ -172,21 +178,24 @@ public class StubIndexImpl extends StubIndex implements ApplicationComponentAdap
       }
       catch (IOException e) {
         needRebuild = true;
-        onExceptionInstantiatingIndex(version, versionFile, indexRootDir, e);
+        onExceptionInstantiatingIndex(indexKey, version, indexRootDir, e);
       } catch (RuntimeException e) {
         //noinspection ThrowableResultOfMethodCallIgnored
         Throwable cause = FileBasedIndexImpl.getCauseToRebuildIndex(e);
         if (cause == null) throw e;
-        onExceptionInstantiatingIndex(version, versionFile, indexRootDir, e);
+        onExceptionInstantiatingIndex(indexKey, version, indexRootDir, e);
       }
     }
     return needRebuild;
   }
 
-  private static void onExceptionInstantiatingIndex(int version, File versionFile, File indexRootDir, Exception e) throws IOException {
+  private static <K> void onExceptionInstantiatingIndex(StubIndexKey<K, ?> indexKey,
+                                                        int version,
+                                                        File indexRootDir,
+                                                        Exception e) throws IOException {
     LOG.info(e);
     FileUtil.deleteWithRenaming(indexRootDir);
-    IndexingStamp.rewriteVersion(versionFile, version); // todo snapshots indices
+    IndexingStamp.rewriteVersion(indexKey, version); // todo snapshots indices
   }
 
   public long getIndexModificationStamp(StubIndexKey<?, ?> indexId, @NotNull Project project) {
@@ -202,9 +211,7 @@ public class StubIndexImpl extends StubIndex implements ApplicationComponentAdap
     if (!myInitialized) {
       return;
     }
-    AsyncState state = getAsyncState();
-    for (StubIndexKey key : getAllStubIndexKeys()) {
-      final MyIndex<?> index = state.myIndices.get(key);
+    for (MyIndex<?> index : getAsyncState().myIndices.values()) {
       index.flush();
     }
   }
@@ -332,26 +339,29 @@ public class StubIndexImpl extends StubIndex implements ApplicationComponentAdap
                                        @Nullable final GlobalSearchScope scope,
                                        @NotNull StubIdListContainerAction action) {
     final FileBasedIndexImpl fileBasedIndex = (FileBasedIndexImpl)FileBasedIndex.getInstance();
-    fileBasedIndex.ensureUpToDate(StubUpdatingIndex.INDEX_ID, project, scope);
+    ID<Integer, SerializedStubTree> stubUpdatingIndexId = StubUpdatingIndex.INDEX_ID;
+    myAccessValidator.checkAccessingIndexDuringOtherIndexProcessing(stubUpdatingIndexId);
+    fileBasedIndex.ensureUpToDate(stubUpdatingIndexId, project, scope);
 
     final MyIndex<Key> index = (MyIndex<Key>)getAsyncState().myIndices.get(indexKey);
 
+    UpdatableIndex<Integer, SerializedStubTree, FileContent> stubUpdatingIndex = fileBasedIndex.getIndex(stubUpdatingIndexId);
     try {
-      myAccessValidator.checkAccessingIndexDuringOtherIndexProcessing(indexKey);
+      myAccessValidator.checkAccessingIndexDuringOtherIndexProcessing(stubUpdatingIndexId);
 
       try {
         // disable up-to-date check to avoid locks on attempt to acquire index write lock while holding at the same time the readLock for this index
         FileBasedIndexImpl.disableUpToDateCheckForCurrentThread();
 
-        index.getReadLock().lock();
+        stubUpdatingIndex.getReadLock().lock();
 
-        myAccessValidator.startedProcessingActivityForIndex(indexKey);
+        myAccessValidator.startedProcessingActivityForIndex(stubUpdatingIndexId);
 
         return index.getData(key).forEach(action);
       }
       finally {
-        myAccessValidator.stoppedProcessingActivityForIndex(indexKey);
-        index.getReadLock().unlock();
+        myAccessValidator.stoppedProcessingActivityForIndex(stubUpdatingIndexId);
+        stubUpdatingIndex.getReadLock().unlock();
         FileBasedIndexImpl.enableUpToDateCheckForCurrentThread();
       }
     }
@@ -492,18 +502,20 @@ public class StubIndexImpl extends StubIndex implements ApplicationComponentAdap
   }
 
   public void cleanupMemoryStorage() {
-    for (UpdatableIndex index : getAsyncState().myIndices.values()) {
-      final IndexStorage indexStorage = ((VfsAwareMapReduceIndex)index).getStorage();
-      index.getWriteLock().lock();
-      try {
+    UpdatableIndex<Integer, SerializedStubTree, FileContent> stubUpdatingIndex =
+      ((FileBasedIndexImpl)FileBasedIndex.getInstance()).getIndex(StubUpdatingIndex.INDEX_ID);
+    stubUpdatingIndex.getWriteLock().lock();
+
+    try {
+      for (UpdatableIndex index : getAsyncState().myIndices.values()) {
+        final IndexStorage indexStorage = ((VfsAwareMapReduceIndex)index).getStorage();
         ((MemoryIndexStorage)indexStorage).clearMemoryMap();
       }
-      finally {
-        index.getWriteLock().unlock();
-      }
+    }
+    finally {
+      stubUpdatingIndex.getWriteLock().unlock();
     }
   }
-
 
   public void clearAllIndices() {
     for (UpdatableIndex index : getAsyncState().myIndices.values()) {
@@ -525,7 +537,7 @@ public class StubIndexImpl extends StubIndex implements ApplicationComponentAdap
     final Set<String> indicesToDrop =
       new HashSet<>(myPreviouslyRegistered != null ? myPreviouslyRegistered.registeredIndices : Collections.emptyList());
     for (ID<?, ?> key : state.myIndices.keySet()) {
-      indicesToDrop.remove(key.toString());
+      indicesToDrop.remove(key.getName());
     }
 
     if (!indicesToDrop.isEmpty()) {
@@ -548,14 +560,6 @@ public class StubIndexImpl extends StubIndex implements ApplicationComponentAdap
     myPreviouslyRegistered = state;
   }
 
-  public final Lock getWriteLock(StubIndexKey indexKey) {
-    return getAsyncState().myIndices.get(indexKey).getWriteLock();
-  }
-
-  Collection<StubIndexKey> getAllStubIndexKeys() {
-    return Collections.unmodifiableCollection(getAsyncState().myIndices.keySet());
-  }
-
   public <K> void updateIndex(@NotNull StubIndexKey key,
                               int fileId,
                               @NotNull final Map<K, StubIdList> oldValues,
@@ -573,6 +577,12 @@ public class StubIndexImpl extends StubIndex implements ApplicationComponentAdap
   }
 
   private static class MyIndex<K> extends VfsAwareMapReduceIndex<K, StubIdList, Void> {
+    @NotNull
+    @Override
+    protected ReentrantReadWriteLock createLock() {
+      UpdatableIndex<?, ?, FileContent> index = ((FileBasedIndexImpl)FileBasedIndex.getInstance()).getIndex(StubUpdatingIndex.INDEX_ID);
+      return ((MapReduceIndex)index).getLock();
+    }
 
     public MyIndex(IndexExtension<K, StubIdList, Void> extension, IndexStorage<K, StubIdList> storage) throws IOException {
       super(extension, storage);

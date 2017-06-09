@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,9 +30,10 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.project.ProjectManagerAdapter;
+import com.intellij.openapi.project.ProjectManagerListener;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.SwitchBootJdkAction;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtilRt;
@@ -41,6 +42,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.impl.IdeFrameImpl;
 import com.intellij.testGuiFramework.fixtures.IdeFrameFixture;
+import com.intellij.testGuiFramework.impl.FirstStart;
 import com.intellij.testGuiFramework.matcher.ClassNameMatcher;
 import com.intellij.ui.KeyStrokeAdapter;
 import com.intellij.ui.components.JBList;
@@ -48,6 +50,7 @@ import com.intellij.ui.popup.PopupFactoryImpl;
 import com.intellij.ui.popup.list.ListPopupModel;
 import com.intellij.util.JdkBundle;
 import com.intellij.util.Producer;
+import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.EdtInvocationManager;
 import org.fest.swing.core.*;
 import org.fest.swing.core.Robot;
@@ -113,11 +116,10 @@ GuiTestUtil {
 
   public static final String JDK_HOME_FOR_TESTS = "JDK_HOME_FOR_TESTS";
   public static final String TEST_DATA_DIR = "GUI_TEST_DATA_DIR";
+  public static final String FIRST_START = "GUI_FIRST_START";
   private static final EventQueue SYSTEM_EVENT_QUEUE = Toolkit.getDefaultToolkit().getSystemEventQueue();
   private static final File TMP_PROJECT_ROOT = createTempProjectCreationDir();
 
-  // Called by MethodInvoker via reflection
-  @SuppressWarnings("unused")
   public static void failIfIdeHasFatalErrors() {
     final MessagePool messagePool = MessagePool.getInstance();
     List<AbstractMessage> fatalErrors = messagePool.getFatalErrors(true, true);
@@ -187,7 +189,7 @@ GuiTestUtil {
         return path;
       }
     }
-    System.out.println("Please specify " + description + ", using system property " + quote(propertyName));
+    LOG.warn("Please specify " + description + ", using system property " + quote(propertyName));
     return null;
   }
 
@@ -198,14 +200,20 @@ GuiTestUtil {
   // Called by IdeTestApplication via reflection.
   @SuppressWarnings("UnusedDeclaration")
   public static void waitForIdeToStart() {
+    String firstStart = getSystemPropertyOrEnvironmentVariable(FIRST_START);
+    boolean isFirstStart = firstStart != null && firstStart.toLowerCase().equals("true");
     GuiActionRunner.executeInEDT(false);
     Robot robot = null;
     try {
       robot = BasicRobot.robotWithCurrentAwtHierarchy();
-      final MyProjectManagerListener listener = new MyProjectManagerListener();
 
       //[ACCEPT IntelliJ IDEA Privacy Policy Agreement]
       acceptAgreementIfNeeded(robot);
+
+      if(isFirstStart) (new FirstStart(robot)).completeBefore();
+
+      final MyProjectManagerListener listener = new MyProjectManagerListener();
+      final Ref<MessageBusConnection> connection = new Ref<>();
 
       findFrame(new GenericTypeMatcher<Frame>(Frame.class) {
         @Override
@@ -213,13 +221,16 @@ GuiTestUtil {
           if (frame instanceof IdeFrame) {
             if (frame instanceof IdeFrameImpl) {
               listener.myActive = true;
-              ProjectManager.getInstance().addProjectManagerListener(listener);
+              connection.set(ApplicationManager.getApplication().getMessageBus().connect());
+              connection.get().subscribe(ProjectManager.TOPIC, listener);
             }
             return true;
           }
           return false;
         }
       }).withTimeout(LONG_TIMEOUT.duration()).using(robot);
+
+      if(isFirstStart) (new FirstStart(robot)).completeAfter();
 
       //TODO: clarify why we are skipping event here?
       // We know the IDE event queue was pushed in front of the AWT queue. Some JDKs will leave a dummy event in the AWT queue, which
@@ -244,7 +255,11 @@ GuiTestUtil {
                                !progressManager.hasProgressIndicator() &&
                                !progressManager.hasUnsafeProgressIndicator();
               if (isIdle) {
-                ProjectManager.getInstance().removeProjectManagerListener(listener);
+                MessageBusConnection busConnection = connection.get();
+                if (busConnection != null) {
+                  connection.set(null);
+                  busConnection.disconnect();
+                }
               }
               return isIdle;
             }
@@ -292,12 +307,7 @@ GuiTestUtil {
       execute(new GuiTask() {
         @Override
         protected void executeInEDT() throws Throwable {
-          EdtInvocationManager.getInstance().invokeLater(new Runnable() {
-            @Override
-            public void run() {
-              acceptButton.doClick();
-            }
-          });
+          EdtInvocationManager.getInstance().invokeLater(() -> acceptButton.doClick());
         }
       });
     }
@@ -328,7 +338,7 @@ GuiTestUtil {
       completeInstallationDialog.button("Evaluate for free for 30 days").click();
     }
     catch (WaitTimedOutError we) {
-      System.out.println("Timed out waiting for \"" + dialogName + "\" JDialog. Continue...");
+      LOG.error("Timed out waiting for \"" + dialogName + "\" JDialog. Continue...");
     }
   }
 
@@ -342,7 +352,7 @@ GuiTestUtil {
       completeInstallationDialog.button("Evaluate for free for 30 days").click();
     }
     catch (WaitTimedOutError we) {
-      System.out.println("Timed out waiting for \"" + dialogName + "\" JDialog. Continue...");
+      LOG.error("Timed out waiting for \"" + dialogName + "\" JDialog. Continue...");
     }
   }
 
@@ -356,7 +366,7 @@ GuiTestUtil {
       completeInstallationDialog.button("Skip All and Set Defaults").click();
     }
     catch (WaitTimedOutError we) {
-      System.out.println("Timed out waiting for \"" + dialogName + "\" JDialog. Continue...");
+      LOG.error("Timed out waiting for \"" + dialogName + "\" JDialog. Continue...");
     }
   }
 
@@ -453,7 +463,20 @@ GuiTestUtil {
     }
   }
 
+  public static void clickPopupMenuItem(@NotNull String label, boolean searchByPrefix, @NotNull Component component, @NotNull Robot robot, @NotNull Timeout timeout) {
+    if (searchByPrefix) {
+      clickPopupMenuItemMatching(new PrefixMatcher(label), component, robot, timeout);
+    }
+    else {
+      clickPopupMenuItemMatching(new EqualsMatcher(label), component, robot, timeout);
+    }
+  }
+
   public static void clickPopupMenuItemMatching(@NotNull Matcher<String> labelMatcher, @NotNull Component component, @NotNull Robot robot) {
+    clickPopupMenuItemMatching(labelMatcher, component, robot, SHORT_TIMEOUT);
+  }
+
+  public static void clickPopupMenuItemMatching(@NotNull Matcher<String> labelMatcher, @NotNull Component component, @NotNull Robot robot, @NotNull Timeout timeout) {
     // IntelliJ doesn't seem to use a normal JPopupMenu, so this won't work:
     //    JPopupMenu menu = myRobot.findActivePopupMenu();
     // Instead, it uses a JList (technically a JBList), which is placed somewhere
@@ -465,13 +488,13 @@ GuiTestUtil {
     // so limit it to one that is actually used as a popup, as identified by its model being a ListPopupModel:
     assertNotNull(root);
 
-    JBList list = waitUntilFound(robot, new GenericTypeMatcher<JBList>(JBList.class) {
+    JBList list = waitUntilFound(robot, null,  new GenericTypeMatcher<JBList>(JBList.class) {
       @Override
       protected boolean isMatching(@NotNull JBList list) {
         ListModel model = list.getModel();
         return model instanceof ListPopupModel;
       }
-    });
+    }, timeout);
 
 
     // We can't use the normal JListFixture method to click by label since the ListModel items are
@@ -647,7 +670,7 @@ GuiTestUtil {
   }
 
   public static void skip(@NotNull String testName) {
-    System.out.println("Skipping test '" + testName + "'");
+    LOG.info("Skipping test '" + testName + "'");
   }
 
   /**
@@ -711,7 +734,7 @@ GuiTestUtil {
     return s == null ? System.getenv(name) : s;
   }
 
-  private static class MyProjectManagerListener extends ProjectManagerAdapter {
+  private static class MyProjectManagerListener implements ProjectManagerListener {
     boolean myActive;
     boolean myNotified;
 
@@ -797,14 +820,23 @@ GuiTestUtil {
     return new JTreeFixture(robot, actionTree);
   }
 
+  public static JRadioButtonFixture findRadioButton(@NotNull Robot robot, @NotNull Container container, @NotNull String text, @NotNull Timeout timeout){
+    JRadioButton radioButton = waitUntilFound(robot, container, new GenericTypeMatcher<JRadioButton>(JRadioButton.class) {
+      @Override
+      protected boolean isMatching(@Nonnull JRadioButton button) {
+        return (button.getText() != null && button.getText().equals(text));
+      }
+    }, timeout);
+    return new JRadioButtonFixture(robot, radioButton);
+  }
+
   public static JRadioButtonFixture findRadioButton(@NotNull Robot robot, @NotNull Container container, @NotNull String text){
     JRadioButton radioButton = waitUntilFound(robot, container, new GenericTypeMatcher<JRadioButton>(JRadioButton.class) {
       @Override
       protected boolean isMatching(@Nonnull JRadioButton button) {
         return (button.getText() != null && button.getText().equals(text));
       }
-    });
-
+    }, SHORT_TIMEOUT);
     return new JRadioButtonFixture(robot, radioButton);
   }
 
@@ -853,5 +885,9 @@ GuiTestUtil {
         return produce;
       }
     }, timeout);
+  }
+
+  public static Component getListCellRendererComponent(JList list, Object value, int index) {
+    return list.getCellRenderer().getListCellRendererComponent(list, value, index, true, true);
   }
 }

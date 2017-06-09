@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2015 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -173,18 +173,22 @@ public abstract class JpsBuildTestCase extends UsefulTestCase {
 
   protected JpsSdk<JpsDummyElement> addJdk(final String name) {
     try {
-      return addJdk(name, FileUtil.toSystemIndependentName(ClasspathBootstrap.getResourceFile(Object.class).getCanonicalPath()));
+      String pathToRtJar = ClasspathBootstrap.getResourcePath(Object.class);
+      String path = pathToRtJar == null ? null : FileUtil.toSystemIndependentName(new File(pathToRtJar).getCanonicalPath());
+      return addJdk(name, path);
     }
     catch (IOException e) {
       throw new RuntimeException(e);
     }
   }
 
-  protected JpsSdk<JpsDummyElement> addJdk(final String name, final String path) {
+  protected JpsSdk<JpsDummyElement> addJdk(final String name, @Nullable String jdkClassesRoot) {
     String homePath = System.getProperty("java.home");
     String versionString = System.getProperty("java.version");
     JpsTypedLibrary<JpsSdk<JpsDummyElement>> jdk = myModel.getGlobal().addSdk(name, homePath, versionString, JpsJavaSdkType.INSTANCE);
-    jdk.addRoot(JpsPathUtil.pathToUrl(path), JpsOrderRootType.COMPILED);
+    if (jdkClassesRoot != null) {
+      jdk.addRoot(JpsPathUtil.pathToUrl(jdkClassesRoot), JpsOrderRootType.COMPILED);
+    }
     return jdk.getProperties();
   }
 
@@ -212,7 +216,7 @@ public abstract class JpsBuildTestCase extends UsefulTestCase {
   }
 
   protected void loadProject(String projectPath) {
-    loadProject(projectPath, Collections.<String, String>emptyMap());
+    loadProject(projectPath, Collections.emptyMap());
   }
 
   protected void loadProject(String projectPath,

@@ -519,15 +519,13 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
 
       return content;
     }
-    else {
-      try {
-        assert length >= 0 : file;
-        return FileUtil.loadBytes(contentStream, (int)length);
-      }
-      catch (IOException e) {
-        FSRecords.handleError(e);
-        return ArrayUtil.EMPTY_BYTE_ARRAY;
-      }
+    try {
+      assert length >= 0 : file;
+      return FileUtil.loadBytes(contentStream, (int)length);
+    }
+    catch (IOException e) {
+      FSRecords.handleError(e);
+      return ArrayUtil.EMPTY_BYTE_ARRAY;
     }
   }
 
@@ -757,10 +755,7 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
 
       if (changedParent != null) {
         if (parentToChildrenEventsChanges == null) parentToChildrenEventsChanges = new THashMap<>();
-        List<VFileEvent> parentChildrenChanges = parentToChildrenEventsChanges.get(changedParent);
-        if (parentChildrenChanges == null) {
-          parentToChildrenEventsChanges.put(changedParent, parentChildrenChanges = new SmartList<>());
-        }
+        List<VFileEvent> parentChildrenChanges = parentToChildrenEventsChanges.computeIfAbsent(changedParent, k -> new SmartList<>());
         parentChildrenChanges.add(event);
       }
       else {
@@ -854,7 +849,8 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
     VirtualFileSystemEntry root = myRoots.get(rootUrl);
     if (root != null) return root;
 
-    String rootName, rootPath;
+    String rootName;
+    String rootPath;
     if (fs instanceof ArchiveFileSystem) {
       ArchiveFileSystem afs = (ArchiveFileSystem)fs;
       VirtualFile localFile = afs.findLocalByRootPath(path);
@@ -1006,14 +1002,14 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
     return VfsUtilCore.toVirtualFileArray(roots);
   }
 
-  private VirtualFileSystemEntry applyEvent(@NotNull VFileEvent event) {
+  private void applyEvent(@NotNull VFileEvent event) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Applying " + event);
     }
     try {
       if (event instanceof VFileCreateEvent) {
         final VFileCreateEvent createEvent = (VFileCreateEvent)event;
-        return executeCreateChild(createEvent.getParent(), createEvent.getChildName());
+        executeCreateChild(createEvent.getParent(), createEvent.getChildName());
       }
       else if (event instanceof VFileDeleteEvent) {
         final VFileDeleteEvent deleteEvent = (VFileDeleteEvent)event;
@@ -1025,7 +1021,7 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
       }
       else if (event instanceof VFileCopyEvent) {
         final VFileCopyEvent copyEvent = (VFileCopyEvent)event;
-        return executeCreateChild(copyEvent.getNewParent(), copyEvent.getNewChildName());
+        executeCreateChild(copyEvent.getNewParent(), copyEvent.getNewChildName());
       }
       else if (event instanceof VFileMoveEvent) {
         final VFileMoveEvent moveEvent = (VFileMoveEvent)event;
@@ -1057,7 +1053,6 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
       // Exception applying single event should not prevent other events from applying.
       LOG.error(e);
     }
-    return null;
   }
 
   @NotNull
@@ -1066,7 +1061,7 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
     return "PersistentFS";
   }
 
-  private static VirtualFileSystemEntry executeCreateChild(@NotNull VirtualFile parent, @NotNull String name) {
+  private static void executeCreateChild(@NotNull VirtualFile parent, @NotNull String name) {
     final NewVirtualFileSystem delegate = getDelegate(parent);
     final VirtualFile fake = new FakeVirtualFile(parent, name);
     final FileAttributes attributes = delegate.getAttributes(fake);
@@ -1078,9 +1073,7 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
       final VirtualDirectoryImpl dir = (VirtualDirectoryImpl)parent;
       VirtualFileSystemEntry child = dir.createChild(name, childId, dir.getFileSystem());
       dir.addChild(child);
-      return child;
     }
-    return null;
   }
 
   private static int createAndFillRecord(@NotNull NewVirtualFileSystem delegateSystem,
@@ -1225,10 +1218,8 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
   @TestOnly
   public void cleanPersistedContents() {
     int[] roots = FSRecords.listRoots();
-    if (roots != null) {
-      for (int root : roots) {
-        markForContentReloadRecursively(root);
-      }
+    for (int root : roots) {
+      markForContentReloadRecursively(root);
     }
   }
 
@@ -1268,6 +1259,7 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
       return myName;
     }
 
+    @NotNull
     @Override
     protected char[] appendPathOnFileSystem(int pathLength, int[] position) {
       char[] chars = new char[pathLength + myPathBeforeSlash.length()];

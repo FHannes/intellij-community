@@ -17,6 +17,7 @@ package com.intellij.psi.impl.smartPointers;
 
 import com.intellij.lang.Language;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.impl.FrozenDocument;
@@ -31,9 +32,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/**
-* User: cdr
-*/
 public class SelfElementInfo extends SmartPointerElementInfo {
   private static final FileDocumentManager ourFileDocManager = FileDocumentManager.getInstance();
   private volatile Identikit myIdentikit;
@@ -56,7 +54,7 @@ public class SelfElementInfo extends SmartPointerElementInfo {
     setRange(range);
   }
 
-  protected void switchToAnchor(@NotNull PsiElement element) {
+  void switchToAnchor(@NotNull PsiElement element) {
     Pair<Identikit.ByAnchor, PsiElement> pair = Identikit.withAnchor(element, myIdentikit.getFileLanguage());
     if (pair != null) {
       assert pair.first.hashCode() == myIdentikit.hashCode();
@@ -149,7 +147,7 @@ public class SelfElementInfo extends SmartPointerElementInfo {
   public static PsiDirectory restoreDirectoryFromVirtual(final VirtualFile virtualFile, @NotNull final Project project) {
     if (virtualFile == null) return null;
 
-    return ApplicationManager.getApplication().runReadAction((Computable<PsiDirectory>)() -> {
+    return ReadAction.compute(() -> {
       VirtualFile child = restoreVFile(virtualFile);
       if (child == null || !child.isValid()) return null;
       PsiDirectory file = PsiManager.getInstance(project).findDirectory(child);
@@ -184,7 +182,7 @@ public class SelfElementInfo extends SmartPointerElementInfo {
       final SelfElementInfo otherInfo = (SelfElementInfo)other;
       if (!getVirtualFile().equals(other.getVirtualFile()) || myIdentikit != otherInfo.myIdentikit) return false;
 
-      return ApplicationManager.getApplication().runReadAction((Computable<Boolean>)() -> {
+      return ReadAction.compute(() -> {
         Segment range1 = getPsiRange();
         Segment range2 = otherInfo.getPsiRange();
         return range1 != null && range2 != null
@@ -192,12 +190,7 @@ public class SelfElementInfo extends SmartPointerElementInfo {
                && range1.getEndOffset() == range2.getEndOffset();
       });
     }
-    return areRestoredElementsEqual(other);
-  }
-
-  protected boolean areRestoredElementsEqual(@NotNull final SmartPointerElementInfo other) {
-    return ApplicationManager.getApplication().runReadAction(
-      (Computable<Boolean>)() -> Comparing.equal(restoreElement(), other.restoreElement()));
+    return false;
   }
 
   @Override

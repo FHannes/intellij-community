@@ -21,8 +21,6 @@ import com.intellij.reference.SoftReference
 import com.intellij.util.io.inputStream
 import com.intellij.util.io.outputStream
 import com.intellij.util.text.CharSequenceReader
-import com.sun.org.apache.xerces.internal.impl.Constants
-import org.apache.xerces.util.SecurityManager
 import org.jdom.Document
 import org.jdom.Element
 import org.jdom.JDOMException
@@ -35,6 +33,7 @@ import org.xml.sax.InputSource
 import org.xml.sax.XMLReader
 import java.io.*
 import java.nio.file.Path
+import javax.xml.XMLConstants
 
 private val cachedSaxBuilder = ThreadLocal<SoftReference<SAXBuilder>>()
 
@@ -45,9 +44,11 @@ private fun getSaxBuilder(): SAXBuilder {
     saxBuilder = object : SAXBuilder() {
       override fun configureParser(parser: XMLReader, contentHandler: SAXHandler?) {
         super.configureParser(parser, contentHandler)
-        val manager = SecurityManager()
-        manager.entityExpansionLimit = 10000
-        parser.setProperty(Constants.XERCES_PROPERTY_PREFIX + Constants.SECURITY_MANAGER_PROPERTY, manager)
+        try {
+          parser.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+        }
+        catch (ignore: Exception) {
+        }
       }
     }
     saxBuilder.ignoringBoundaryWhitespace = true
@@ -61,8 +62,18 @@ private fun getSaxBuilder(): SAXBuilder {
 @JvmOverloads
 @Throws(IOException::class)
 fun Parent.write(file: Path, lineSeparator: String = "\n") {
-  BufferedOutputStream(file.outputStream()).use {
-    JDOMUtil.write(this, it, lineSeparator)
+  write(file.outputStream(), lineSeparator)
+}
+
+@JvmOverloads
+fun Parent.write(output: OutputStream, lineSeparator: String = "\n") {
+  output.bufferedWriter().use { writer ->
+    if (this is Document) {
+      JDOMUtil.writeDocument(this, writer, lineSeparator)
+    }
+    else {
+      JDOMUtil.writeElement(this as Element, writer, lineSeparator)
+    }
   }
 }
 
@@ -78,7 +89,7 @@ fun loadElement(stream: InputStream): Element = loadDocument(stream.reader()).de
 @Throws(IOException::class, JDOMException::class)
 fun loadElement(path: Path): Element = loadDocument(path.inputStream().bufferedReader()).detachRootElement()
 
-private fun loadDocument(reader: Reader): Document = reader.use { getSaxBuilder().build(it) }
+fun loadDocument(reader: Reader): Document = reader.use { getSaxBuilder().build(it) }
 
 fun Element?.isEmpty() = this == null || JDOMUtil.isEmpty(this)
 
@@ -123,4 +134,10 @@ fun Element.addOptionTag(name: String, value: String) {
   element.setAttribute("name", name)
   element.setAttribute("value", value)
   addContent(element)
+}
+
+fun Parent.toBufferExposingByteArray(lineSeparator: String = "\n"): BufferExposingByteArrayOutputStream {
+  val out = BufferExposingByteArrayOutputStream(512)
+  JDOMUtil.write(this, out, lineSeparator)
+  return out
 }

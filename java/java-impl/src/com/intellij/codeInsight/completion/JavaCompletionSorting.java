@@ -59,6 +59,11 @@ public class JavaCompletionSorting {
     boolean afterNew = JavaSmartCompletionContributor.AFTER_NEW.accepts(position);
 
     List<LookupElementWeigher> afterProximity = new ArrayList<>();
+    final PreferMostUsedWeigher preferMostUsedWeigher = PreferMostUsedWeigher.create(position);
+    if (preferMostUsedWeigher != null) {
+      afterProximity.add(preferMostUsedWeigher);
+      ContainerUtil.addIfNotNull(afterProximity, preferStatics(position, expectedTypes));
+    }
     afterProximity.add(new PreferContainingSameWords(expectedTypes));
     afterProximity.add(new PreferShorter(expectedTypes));
 
@@ -75,11 +80,14 @@ public class JavaCompletionSorting {
     List<LookupElementWeigher> afterStats = ContainerUtil.newArrayList();
     afterStats.add(new PreferByKindWeigher(type, position, expectedTypes));
     if (!smart) {
-      ContainerUtil.addIfNotNull(afterStats, preferStatics(position, expectedTypes));
+      if (preferMostUsedWeigher == null) {
+        ContainerUtil.addIfNotNull(afterStats, preferStatics(position, expectedTypes));
+      }
       if (!afterNew) {
         afterStats.add(new PreferExpected(false, expectedTypes, position));
       }
     }
+
     ContainerUtil.addIfNotNull(afterStats, recursion(parameters, expectedTypes));
     afterStats.add(new PreferSimilarlyEnding(expectedTypes));
     if (ContainerUtil.or(expectedTypes, info -> !info.getType().equals(PsiType.VOID))) {
@@ -92,6 +100,7 @@ public class JavaCompletionSorting {
     return result.withRelevanceSorter(sorter);
   }
 
+  @NotNull
   private static ExpectedTypeInfo[] getExpectedTypesWithDfa(CompletionParameters parameters, PsiElement position) {
     if (psiElement().beforeLeaf(psiElement().withText(".")).accepts(position)) {
       return ExpectedTypeInfo.EMPTY_ARRAY;
@@ -290,9 +299,9 @@ public class JavaCompletionSorting {
     private final CompletionParameters myParameters;
     private final CompletionLocation myLocation;
 
-    public PreferDefaultTypeWeigher(ExpectedTypeInfo[] expectedTypes, CompletionParameters parameters) {
+    public PreferDefaultTypeWeigher(@NotNull ExpectedTypeInfo[] expectedTypes, CompletionParameters parameters) {
       super("defaultType");
-      myExpectedTypes = expectedTypes == null ? null : ContainerUtil.map2Array(expectedTypes, ExpectedTypeInfo.class, info -> {
+      myExpectedTypes = ContainerUtil.map2Array(expectedTypes, ExpectedTypeInfo.class, info -> {
         PsiType type = removeClassWildcard(info.getType());
         PsiType defaultType = removeClassWildcard(info.getDefaultType());
         if (type == info.getType() && defaultType == info.getDefaultType()) {
@@ -320,25 +329,16 @@ public class JavaCompletionSorting {
         }
       }
 
-      if (myExpectedTypes == null) return MyResult.normal;
-
       PsiType itemType = JavaCompletionUtil.getLookupElementType(item);
-      if (itemType == null || !itemType.isValid()) return MyResult.normal;
-
-      if (object instanceof PsiClass) {
-        for (final ExpectedTypeInfo info : myExpectedTypes) {
-          if (TypeConversionUtil.erasure(info.getType().getDeepComponentType()).equals(TypeConversionUtil.erasure(itemType))) {
-            return AbstractExpectedTypeSkipper.skips(item, myLocation) ? MyResult.expectedNoSelect : MyResult.exactlyExpected;
-          }
-        }
+      if (isExactlyExpected(item, itemType)) {
+        return AbstractExpectedTypeSkipper.skips(item, myLocation) ? MyResult.expectedNoSelect : MyResult.exactlyExpected;
       }
+
+      if (itemType == null) return MyResult.normal;
 
       for (final ExpectedTypeInfo expectedInfo : myExpectedTypes) {
         final PsiType defaultType =  expectedInfo.getDefaultType();
         final PsiType expectedType = expectedInfo.getType();
-        if (!expectedType.isValid()) {
-          return MyResult.normal;
-        }
 
         if (defaultType != expectedType) {
           if (defaultType.equals(itemType)) {
@@ -355,6 +355,27 @@ public class JavaCompletionSorting {
       }
 
       return MyResult.normal;
+    }
+
+    private boolean isExactlyExpected(@NotNull LookupElement item, @Nullable PsiType itemType) {
+      if (JavaCompletionUtil.SUPER_METHOD_PARAMETERS.get(item) != null) {
+        return true;
+      }
+      if (itemType == null || itemType.equalsToText(CommonClassNames.JAVA_LANG_OBJECT) || hasUnboundTypeArguments(item)) {
+        return false;
+      }
+
+      return ContainerUtil.exists(myExpectedTypes, info -> box(info.getType().getDeepComponentType()).equals(box(itemType)));
+    }
+
+    private static boolean hasUnboundTypeArguments(@NotNull LookupElement item) {
+      JavaMethodCallElement call = item.as(JavaMethodCallElement.CLASS_CONDITION_KEY);
+      return call != null && !call.getInferenceSubstitutor().equals(PsiSubstitutor.EMPTY);
+    }
+
+    private PsiType box(PsiType expectedType) {
+      PsiClassType boxed = expectedType instanceof PsiPrimitiveType ? ((PsiPrimitiveType)expectedType).getBoxedType(myParameters.getPosition()) : null;
+      return boxed != null ? boxed : expectedType;
     }
 
     private static PsiType removeClassWildcard(PsiType type) {

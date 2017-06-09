@@ -37,7 +37,7 @@ import java.util.List;
 public class PythonCompletionTest extends PyTestCase {
 
   private void doTest() {
-    CamelHumpMatcher.forceStartMatching(getTestRootDisposable());
+    CamelHumpMatcher.forceStartMatching(myFixture.getTestRootDisposable());
     final String testName = getTestName(true);
     myFixture.configureByFile(testName + ".py");
     myFixture.completeBasic();
@@ -1103,6 +1103,44 @@ public class PythonCompletionTest extends PyTestCase {
 
     assertNotNull(suggested);
     assertContainsElements(suggested, "baz");
+  }
+
+  // PY-22570
+  public void testNamesReexportedViaStarImport() {
+    myFixture.copyDirectoryToProject(getTestName(true), "");
+    myFixture.configureByFile("a.py");
+    myFixture.completeBasic();
+    final List<String> variants = myFixture.getLookupElementStrings();
+    assertSameElements(variants, "mod1", "mod2", "foo", "_bar");
+  }
+
+  // PY-23150
+  public void testHeavyStarPropagation() {
+    doMultiFileTest();
+    assertSize(802, myFixture.getLookupElements());
+  }
+
+  // PY-22828
+  public void testNoImportedBuiltinNames() {
+    final List<String> suggested = doTestByText("T<caret>\n");
+    assertNotNull(suggested);
+    assertContainsElements(suggested, "TypeError");
+    assertDoesntContain(suggested, "TypeVar");
+  }
+
+  // PY-22828
+  public void testNoProtectedBuiltinNames() {
+    final List<String> suggested = doTestByText("_<caret>\n");
+    assertNotNull(suggested);
+    assertContainsElements(suggested, "__import__");
+    assertDoesntContain(suggested, "_T", "_KT");
+  }
+
+  // PY-21519
+  public void testTypeComment() {
+    myFixture.copyFileToProject("../typing/typing.py");
+    final List<String> variants = doTestByFile();
+    assertContainsElements(variants, "List", "Union", "Optional");
   }
 
   @Override

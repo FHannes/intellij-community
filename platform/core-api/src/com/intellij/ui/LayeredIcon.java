@@ -26,7 +26,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.Arrays;
 
-public class LayeredIcon extends JBUI.AuxScalableJBIcon {
+public class LayeredIcon extends JBUI.UpdatingScalableJBIcon<LayeredIcon> {
   private static final Logger LOG = Logger.getInstance("#com.intellij.ui.LayeredIcon");
   private final Icon[] myIcons;
   private Icon[] myScaledIcons;
@@ -134,6 +134,7 @@ public class LayeredIcon extends JBUI.AuxScalableJBIcon {
     return myIcons[layer];
   }
 
+  @NotNull
   public Icon[] getAllLayers() {
     return myIcons;
   }

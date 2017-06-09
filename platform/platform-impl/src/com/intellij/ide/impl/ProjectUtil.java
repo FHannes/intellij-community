@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.ActionCallback;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.*;
@@ -55,7 +56,7 @@ import java.io.IOException;
  * @author Eugene Belyaev
  */
 public class ProjectUtil {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.ide.impl.ProjectUtil");
+  private static final Logger LOG = Logger.getInstance(ProjectUtil.class);
 
   private ProjectUtil() { }
 
@@ -282,12 +283,7 @@ public class ProjectUtil {
 
     IProjectStore projectStore = ProjectKt.getStateStore(project);
     String existingBaseDirPath = projectStore.getProjectBasePath();
-    if (existingBaseDirPath == null) {
-      // could be null if not yet initialized
-      return false;
-    }
-
-    final File projectFile = new File(projectFilePath);
+    File projectFile = new File(projectFilePath);
     if (projectFile.isDirectory()) {
       return FileUtil.pathsEqual(projectFilePath, existingBaseDirPath);
     }
@@ -299,8 +295,10 @@ public class ProjectUtil {
     File parent = projectFile.getParentFile();
     if (parent.getName().equals(Project.DIRECTORY_STORE_FOLDER)) {
       parent = parent.getParentFile();
+      return parent != null && FileUtil.pathsEqual(parent.getPath(), existingBaseDirPath);
     }
-    return parent != null && FileUtil.pathsEqual(parent.getPath(), existingBaseDirPath);
+    return FileUtil.pathsEqual(parent.getPath(), existingBaseDirPath) &&
+           ProjectFileType.DEFAULT_EXTENSION.equals(FileUtilRt.getExtension(projectFile.getName()));
   }
 
   public static void focusProjectWindow(final Project p, boolean executeIfAppInactive) {

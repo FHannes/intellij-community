@@ -22,6 +22,7 @@ import com.intellij.testFramework.IdeaTestUtil;
 import com.intellij.testFramework.LightProjectDescriptor;
 import com.intellij.testFramework.fixtures.LightCodeInsightFixtureTestCase;
 import org.intellij.lang.annotations.Language;
+import org.intellij.lang.regexp.inspection.AnonymousGroupInspection;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -29,6 +30,11 @@ import org.jetbrains.annotations.NotNull;
  */
 @SuppressWarnings("Annotator")
 public class RegExpHighlightingTest extends LightCodeInsightFixtureTestCase {
+
+  public void testAnonymousCapturingGroupInspection() {
+    myFixture.enableInspections(new AnonymousGroupInspection());
+    doTest("<warning descr=\"Anonymous capturing group\">(</warning>moo)<warning descr=\"Numeric back reference\">\\1</warning>");
+  }
 
   public void testSingleRepetition() {
     doTest("a<weak_warning descr=\"Single repetition\">{1}</weak_warning>");
@@ -39,8 +45,8 @@ public class RegExpHighlightingTest extends LightCodeInsightFixtureTestCase {
   }
 
   public void testBoundaries() {
-    doTest("\\b <error descr=\"Unsupported boundary\">\\b{g}</error> \\B \\A \\z \\Z \\G");
-    IdeaTestUtil.setTestVersion(JavaSdkVersion.JDK_1_9, myFixture.getModule(), getTestRootDisposable());
+    doTest("\\b <error descr=\"This boundary is not supported in this regex dialect\">\\b{g}</error> \\B \\A \\z \\Z \\G");
+    IdeaTestUtil.setTestVersion(JavaSdkVersion.JDK_1_9, myFixture.getModule(), myFixture.getTestRootDisposable());
     doTest("\\b \\b{g} \\B \\A \\z \\Z \\G");
   }
 
@@ -70,7 +76,7 @@ public class RegExpHighlightingTest extends LightCodeInsightFixtureTestCase {
 
   public void testUnicodeGrapheme() {
     doTest("<error descr=\"Illegal/unsupported escape sequence\">\\X</error>");
-    IdeaTestUtil.setTestVersion(JavaSdkVersion.JDK_1_9, myFixture.getModule(), getTestRootDisposable());
+    IdeaTestUtil.setTestVersion(JavaSdkVersion.JDK_1_9, myFixture.getModule(), myFixture.getTestRootDisposable());
     doTest("\\X");
   }
 
@@ -131,7 +137,7 @@ public class RegExpHighlightingTest extends LightCodeInsightFixtureTestCase {
   }
 
   public void testIllegalCharacterRange4() {
-    IdeaTestUtil.setTestVersion(JavaSdkVersion.JDK_1_9, myFixture.getModule(), getTestRootDisposable());
+    IdeaTestUtil.setTestVersion(JavaSdkVersion.JDK_1_9, myFixture.getModule(), myFixture.getTestRootDisposable());
     doTest("[<error descr=\"Illegal character range (to < from)\">\\N{LATIN SMALL LETTER Z}-\\N{LATIN SMALL LETTER A}</error>]");
   }
 
@@ -240,6 +246,6 @@ public class RegExpHighlightingTest extends LightCodeInsightFixtureTestCase {
   @NotNull
   @Override
   protected LightProjectDescriptor getProjectDescriptor() {
-    return JAVA_9;
+    return JAVA_8;
   }
 }

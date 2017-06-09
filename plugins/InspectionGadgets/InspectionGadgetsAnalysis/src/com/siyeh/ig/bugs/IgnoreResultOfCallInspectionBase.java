@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,12 @@ package com.siyeh.ig.bugs;
 
 import com.intellij.codeInsight.AnnotationUtil;
 import com.intellij.codeInspection.dataFlow.ControlFlowAnalyzer;
+import com.intellij.codeInspection.dataFlow.MethodContract;
+import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PropertyUtil;
 import com.intellij.psi.util.PsiUtilCore;
@@ -29,11 +32,13 @@ import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.psiutils.LibraryUtil;
 import com.siyeh.ig.psiutils.MethodMatcher;
+import org.intellij.lang.annotations.Pattern;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 
 public class IgnoreResultOfCallInspectionBase extends BaseInspection {
@@ -66,13 +71,18 @@ public class IgnoreResultOfCallInspectionBase extends BaseInspection {
       .add("java.math.BigDecimal",".*")
       .add("java.net.InetAddress",".*")
       .add("java.net.URI",".*")
+      .add("java.util.List", "of")
+      .add("java.util.Set", "of")
+      .add("java.util.Map", "of|ofEntries|entry")
+      .add("java.util.Collections", "unmodifiable.*|singleton.*|checked.*|min|max|stream")
       .add("java.util.UUID",".*")
-      .add("java.util.regex.Matcher","pattern|toMatchResult|start|end|group|groupCount|matches|find|lookingAt|quoteReplacement|replaceAll|replaceFirst|regionStart|regionEnd|hasTransparantBounds|hasAnchoringBounds|hitEnd|requireEnd")
+      .add("java.util.regex.Matcher","pattern|toMatchResult|start|end|group|groupCount|matches|find|lookingAt|quoteReplacement|replaceAll|replaceFirst|regionStart|regionEnd|hasTransparentBounds|hasAnchoringBounds|hitEnd|requireEnd")
       .add("java.util.regex.Pattern",".*")
       .add("java.util.stream.BaseStream",".*")
       .finishDefault();
   }
 
+  @Pattern(VALID_ID_PATTERN)
   @Override
   @NotNull
   public String getID() {
@@ -162,11 +172,7 @@ public class IgnoreResultOfCallInspectionBase extends BaseInspection {
         return;
       }
 
-      final PsiAnnotation anno = ControlFlowAnalyzer.findContractAnnotation(method);
-      final boolean honorInferred = Registry.is("ide.ignore.call.result.inspection.honor.inferred.pure");
-      if (anno != null &&
-          (honorInferred || !AnnotationUtil.isInferredAnnotation(anno)) &&
-          Boolean.TRUE.equals(AnnotationUtil.getBooleanAttributeValue(anno, "pure"))) {
+      if (isPureMethod(method)) {
         registerMethodCallOrRefError(call, aClass);
         return;
       }
@@ -182,6 +188,16 @@ public class IgnoreResultOfCallInspectionBase extends BaseInspection {
       }
 
       registerMethodCallOrRefError(call, aClass);
+    }
+
+    private boolean isPureMethod(PsiMethod method) {
+      final PsiAnnotation anno = ControlFlowAnalyzer.findContractAnnotation(method);
+      if (anno == null) return false;
+      final boolean honorInferred = Registry.is("ide.ignore.call.result.inspection.honor.inferred.pure");
+      if (!honorInferred && AnnotationUtil.isInferredAnnotation(anno)) return false;
+      return Boolean.TRUE.equals(AnnotationUtil.getBooleanAttributeValue(anno, "pure")) &&
+             ControlFlowAnalyzer.getMethodCallContracts(method, null).stream()
+               .noneMatch(c -> c.getReturnValue() == MethodContract.ValueConstraint.THROW_EXCEPTION);
     }
 
     private void registerMethodCallOrRefError(PsiExpression call, PsiClass aClass) {
@@ -215,7 +231,22 @@ public class IgnoreResultOfCallInspectionBase extends BaseInspection {
           if (aPackage == null) {
             return null;
           }
-          return AnnotationUtil.findAnnotation(aPackage, fqAnnotationNames);
+          PsiAnnotation annotation = AnnotationUtil.findAnnotation(aPackage, fqAnnotationNames);
+          if(annotation != null) {
+            // Check that annotation actually belongs to the same library/source root
+            // which could be important in case of split-packages
+            VirtualFile annotationFile = PsiUtilCore.getVirtualFile(annotation);
+            VirtualFile currentFile = classOwner.getVirtualFile();
+            if(annotationFile != null && currentFile != null) {
+              ProjectFileIndex projectFileIndex = ProjectFileIndex.getInstance(element.getProject());
+              VirtualFile annotationClassRoot = projectFileIndex.getClassRootForFile(annotationFile);
+              VirtualFile currentClassRoot = projectFileIndex.getClassRootForFile(currentFile);
+              if (!Objects.equals(annotationClassRoot, currentClassRoot)) {
+                return null;
+              }
+            }
+          }
+          return annotation;
         }
 
         element = element.getContext();

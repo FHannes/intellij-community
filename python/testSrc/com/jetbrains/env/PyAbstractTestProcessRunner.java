@@ -142,7 +142,7 @@ public class PyAbstractTestProcessRunner<CONF_T extends AbstractPythonRunConfigu
     builder.append(StringUtil.repeat(".", level));
     builder.append(test.getName());
     if (test.isLeaf()) {
-      builder.append(test.isPassed() ? "(+)" : "(-)");
+      builder.append(test.isPassed() ? "(+)" : (test.isIgnored() ? "(~)" : "(-)"));
     }
     builder.append('\n');
     for (SMTestProxy child : test.getChildren()) {
@@ -186,6 +186,10 @@ public class PyAbstractTestProcessRunner<CONF_T extends AbstractPythonRunConfigu
     return myProxyManager.getPassedTestsCount();
   }
 
+  public int getIgnoredTestsCount() {
+    return myProxyManager.getIgnoredTestsCount();
+  }
+
   /**
    * @return number of all tests
    */
@@ -201,11 +205,8 @@ public class PyAbstractTestProcessRunner<CONF_T extends AbstractPythonRunConfigu
       return null;
     }
 
+    assert getFailedTestsCount() > 0: String.format("No failed tests on iteration %d, not sure what to rerun", myCurrentRerunStep);
     final Logger logger = Logger.getInstance(PyAbstractTestProcessRunner.class);
-    if (getFailedTestsCount() == 0) {
-      logger
-        .warn(String.format("No failed tests on iteration %d, not sure what to rerun", myCurrentRerunStep));
-    }
     logger.info(String.format("Starting iteration %s", myCurrentRerunStep));
 
     myCurrentRerunStep++;

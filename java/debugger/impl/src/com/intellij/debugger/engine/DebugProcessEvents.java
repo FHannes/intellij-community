@@ -135,6 +135,9 @@ public class DebugProcessEvents extends DebugProcessImpl {
 
     @Override
     public void run() {
+      String oldThreadName = Thread.currentThread().getName();
+      Thread.currentThread().setName("DebugProcessEvents");
+
       try {
         EventQueue eventQueue = myVmProxy.eventQueue();
         while (!isStopped()) {
@@ -188,6 +191,7 @@ public class DebugProcessEvents extends DebugProcessImpl {
                         continue;
                       }
                       if (!DebuggerSession.enableBreakpointsDuringEvaluation()) {
+                        notifySkippedBreakpoints(locatableEvent);
                         eventSet.resume();
                         return;
                       }
@@ -270,6 +274,7 @@ public class DebugProcessEvents extends DebugProcessImpl {
       }
       finally {
         Thread.interrupted(); // reset interrupted status
+        Thread.currentThread().setName(oldThreadName);
       }
     }
 
@@ -459,6 +464,7 @@ public class DebugProcessEvents extends DebugProcessImpl {
         SuspendContextImpl evaluatingContext = SuspendManagerUtil.getEvaluatingContext(suspendManager, suspendContext.getThread());
 
         if (evaluatingContext != null && !DebuggerSession.enableBreakpointsDuringEvaluation()) {
+          notifySkippedBreakpoints(event);
           // is inside evaluation, so ignore any breakpoints
           suspendManager.voteResume(suspendContext);
           return;
@@ -517,6 +523,12 @@ public class DebugProcessEvents extends DebugProcessImpl {
         }
       }
     });
+  }
+
+  private void notifySkippedBreakpoints(LocatableEvent event) {
+    XDebugSessionImpl.NOTIFICATION_GROUP
+      .createNotification(DebuggerBundle.message("message.breakpoint.skipped", event.location()), MessageType.INFO)
+      .notify(getProject());
   }
 
   @Nullable

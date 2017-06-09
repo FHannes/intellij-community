@@ -38,6 +38,7 @@ public class HardcodedContractsTest extends DataFlowInspectionTestCase {
     myFixture.addClass("package org.hamcrest; public class CoreMatchers { " +
                        "public static <T> Matcher<T> notNullValue() {}\n" +
                        "public static <T> Matcher<T> not(Matcher<T> matcher) {}\n" +
+                       "public static <T> Matcher<T> is(Matcher<T> matcher) {}\n" +
                        "public static <T> Matcher<T> equalTo(T operand) {}\n" +
                        "}");
     myFixture.addClass("package org.hamcrest; public interface Matcher<T> {}");
@@ -104,6 +105,13 @@ public class HardcodedContractsTest extends DataFlowInspectionTestCase {
                        "    public static void state(boolean expression, String s) {}\n" +
                        "    public static void notNull(Object o) {}\n" +
                        "    public static void notNull(Object o, String s) {}\n" +
+                       "}");
+    checkHighlighting();
+  }
+
+  public void testJunit5Assert() {
+    myFixture.addClass("package org.junit.jupiter.api; public class Assertions {\n" +
+                       "    public static void assertNotNull(Object actual){}" +
                        "}");
     checkHighlighting();
   }

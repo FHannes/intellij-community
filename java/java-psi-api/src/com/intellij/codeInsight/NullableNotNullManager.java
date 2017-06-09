@@ -18,7 +18,6 @@ package com.intellij.codeInsight;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.JDOMExternalizableStringList;
 import com.intellij.openapi.util.RecursionManager;
 import com.intellij.psi.*;
@@ -34,7 +33,7 @@ import java.util.*;
  * @since 25.01.2011
  */
 public abstract class NullableNotNullManager {
-  protected static final Logger LOG = Logger.getInstance("#" + NullableNotNullManager.class.getName());
+  protected static final Logger LOG = Logger.getInstance(NullableNotNullManager.class);
 
   public String myDefaultNullable = AnnotationUtil.NULLABLE;
   public String myDefaultNotNull = AnnotationUtil.NOT_NULL;
@@ -44,7 +43,8 @@ public abstract class NullableNotNullManager {
   private static final String JAVAX_ANNOTATION_NULLABLE = "javax.annotation.Nullable";
   private static final String JAVAX_ANNOTATION_NONNULL = "javax.annotation.Nonnull";
 
-  static final String[] DEFAULT_NULLABLES = {AnnotationUtil.NULLABLE, JAVAX_ANNOTATION_NULLABLE,
+  static final String[] DEFAULT_NULLABLES = {AnnotationUtil.NULLABLE, 
+    JAVAX_ANNOTATION_NULLABLE, "javax.annotation.CheckForNull",
     "edu.umd.cs.findbugs.annotations.Nullable", "android.support.annotation.Nullable"
   };
 
@@ -357,4 +357,12 @@ public abstract class NullableNotNullManager {
   }
 
   public abstract List<String> getPredefinedNotNulls();
+
+  public static boolean isNullableAnnotation(@NotNull PsiAnnotation annotation) {
+    return getInstance(annotation.getProject()).getNullables().contains(annotation.getQualifiedName());
+  }
+
+  public static boolean isNotNullAnnotation(@NotNull PsiAnnotation annotation) {
+    return getInstance(annotation.getProject()).getNotNulls().contains(annotation.getQualifiedName());
+  }
 }

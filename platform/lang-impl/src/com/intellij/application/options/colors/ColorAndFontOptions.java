@@ -19,6 +19,7 @@ package com.intellij.application.options.colors;
 import com.intellij.application.options.OptionsContainingConfigurable;
 import com.intellij.application.options.editor.EditorOptionsProvider;
 import com.intellij.application.options.schemes.SchemesModel;
+import com.intellij.codeHighlighting.RainbowHighlighter;
 import com.intellij.execution.impl.ConsoleViewUtil;
 import com.intellij.ide.ui.LafManager;
 import com.intellij.ide.ui.laf.LafManagerImpl;
@@ -26,6 +27,7 @@ import com.intellij.ide.ui.laf.darcula.DarculaInstaller;
 import com.intellij.ide.ui.laf.darcula.DarculaLookAndFeelInfo;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ApplicationBundle;
 import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.editor.colors.*;
@@ -34,11 +36,9 @@ import com.intellij.openapi.editor.colors.impl.*;
 import com.intellij.openapi.editor.markup.EffectType;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.extensions.Extensions;
-import com.intellij.openapi.options.Configurable;
-import com.intellij.openapi.options.ConfigurationException;
-import com.intellij.openapi.options.SchemeManager;
-import com.intellij.openapi.options.SearchableConfigurable;
+import com.intellij.openapi.options.*;
 import com.intellij.openapi.options.colors.*;
+import com.intellij.openapi.options.ex.Settings;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.DialogWrapper;
@@ -70,11 +70,16 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.*;
 import java.util.List;
+import java.util.function.Function;
 
-public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract 
+import static com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT;
+import static com.intellij.openapi.actionSystem.PlatformDataKeys.CONTEXT_COMPONENT;
+
+public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
   implements EditorOptionsProvider, SchemesModel<EditorColorsScheme> {
   public static final String ID = "reference.settingsdialog.IDE.editor.colors";
-  
+  public static final String FONT_CONFIGURABLE_NAME = "Font";
+
   private Map<String, MyColorScheme> mySchemes;
   private MyColorScheme mySelectedScheme;
 
@@ -207,11 +212,11 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
   public static boolean isReadOnly(@NotNull final EditorColorsScheme scheme) {
     return ((MyColorScheme)scheme).isReadOnly();
   }
-  
+
   public static boolean canBeDeleted(@NotNull final EditorColorsScheme scheme) {
     return scheme instanceof  MyColorScheme && ((MyColorScheme)scheme).canBeDeleted();
   }
-  
+
   @NotNull
   public Collection<EditorColorsScheme> getOrderedSchemes() {
     List<EditorColorsScheme> schemes = new ArrayList<>(mySchemes.values());
@@ -227,7 +232,7 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
   public boolean saveSchemeAs(@NotNull EditorColorsScheme editorScheme, @NotNull String name) {
     if (editorScheme instanceof MyColorScheme) {
       MyColorScheme scheme = (MyColorScheme)editorScheme;
-      EditorColorsScheme clone = (EditorColorsScheme)scheme.getOriginalScheme().clone();
+      EditorColorsScheme clone = (EditorColorsScheme)scheme.getParentScheme().clone();
       scheme.apply(clone);
       if (clone instanceof AbstractColorsScheme) {
         ((AbstractColorsScheme)clone).setSaveNeeded(true);
@@ -248,6 +253,7 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
   }
 
   public void addImportedScheme(@NotNull EditorColorsScheme imported) {
+    if (imported instanceof AbstractColorsScheme) ((AbstractColorsScheme)imported).setSaveNeeded(true);
     MyColorScheme newScheme = new MyColorScheme(imported);
     initScheme(newScheme);
 
@@ -281,8 +287,8 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
       (DefaultColorsScheme)EditorColorsManager.getInstance().getScheme(EditorColorsManager.DEFAULT_SCHEME_NAME);
     selectScheme(defaultScheme.getEditableCopyName());
   }
-  
-  
+
+
   void resetSchemeToOriginal(@NotNull String name) {
     MyColorScheme schemeToReset = mySchemes.get(name);
     schemeToReset.resetToOriginal();
@@ -304,13 +310,13 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
 
       List<EditorColorsScheme> result = new ArrayList<>(mySchemes.values().size());
       boolean activeSchemeModified = false;
-      EditorColorsScheme activeOriginalScheme = mySelectedScheme.getOriginalScheme();
+      EditorColorsScheme activeOriginalScheme = mySelectedScheme.getParentScheme();
       for (MyColorScheme scheme : mySchemes.values()) {
         boolean isModified = scheme.apply();
-        if (isModified && !activeSchemeModified && activeOriginalScheme == scheme.getOriginalScheme()) {
+        if (isModified && !activeSchemeModified && activeOriginalScheme == scheme.getParentScheme()) {
           activeSchemeModified = true;
         }
-        result.add(scheme.getOriginalScheme());
+        result.add(scheme.getParentScheme());
       }
 
       // refresh only if scheme is not switched
@@ -506,8 +512,8 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
     @Override
     @NotNull
     public NewColorAndFontPanel createPanel(@NotNull ColorAndFontOptions options) {
-      FontEditorPreview previewPanel = new FontEditorPreview(options, true);
-      return new NewColorAndFontPanel(new SchemesPanel(options), new FontOptions(options), previewPanel, "Font", null, null){
+      FontEditorPreview previewPanel = new FontEditorPreview(()->options.getSelectedScheme(), true);
+      return new NewColorAndFontPanel(new SchemesPanel(options, 0), new FontOptions(options), previewPanel, FONT_CONFIGURABLE_NAME, null, null){
         @Override
         public boolean containsFontOptions() {
           return true;
@@ -526,13 +532,13 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
     @Override
     @NotNull
     public NewColorAndFontPanel createPanel(@NotNull ColorAndFontOptions options) {
-      FontEditorPreview previewPanel = new FontEditorPreview(options, false) {
+      FontEditorPreview previewPanel = new FontEditorPreview(()->options.getSelectedScheme(), false) {
         @Override
         protected EditorColorsScheme updateOptionsScheme(EditorColorsScheme selectedScheme) {
           return ConsoleViewUtil.updateConsoleColorScheme(selectedScheme);
         }
       };
-      return new NewColorAndFontPanel(new SchemesPanel(options), new ConsoleFontOptions(options), previewPanel, "Font", null, null){
+      return new NewColorAndFontPanel(new SchemesPanel(options, 0), new ConsoleFontOptions(options), previewPanel, "Font", null, null){
         @Override
         public boolean containsFontOptions() {
           return true;
@@ -593,7 +599,6 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
                                        @NotNull MyColorScheme scheme) {
     String group = provider.getDisplayName();
     List<AttributesDescriptor> attributeDescriptors = ColorSettingsUtil.getAllAttributeDescriptors(provider);
-    //todo: single point configuration?
     if (provider instanceof RainbowColorSettingsPage) {
       descriptions.add(new RainbowAttributeDescriptor(((RainbowColorSettingsPage)provider).getLanguage(),
                                                       group,
@@ -603,17 +608,6 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
     }
     for (AttributesDescriptor descriptor : attributeDescriptors) {
       addSchemedDescription(descriptions, descriptor.getDisplayName(), group, descriptor.getKey(), scheme, null, null);
-    //  if (provider instanceof RainbowColorSettingsPage
-    //      && ((RainbowColorSettingsPage)provider).isRainbowType(descriptor.getKey())) {
-    //    //todo: joined sub-descriptor?
-    //    descriptions.add(new RainbowAttributeDescriptor(group,
-    //                                                    descriptor.getDisplayName()
-    //                                                    + EditorSchemeAttributeDescriptorWithPath.NAME_SEPARATOR
-    //                                                    + ApplicationBundle.message("rainbow.option.panel.display.name"),
-    //                                                    scheme,
-    //                                                    scheme.getInitRainbowState(),
-    //                                                    scheme.getCurrentRainbowState()));
-    //  }
     }
 
     ColorDescriptor[] colorDescriptors = provider.getColorDescriptors();
@@ -1088,20 +1082,33 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
     private MyColorScheme(@NotNull EditorColorsScheme parentScheme) {
       super(parentScheme);
 
-      parentScheme.getFontPreferences().copyTo(getFontPreferences());
-      setLineSpacing(parentScheme.getLineSpacing());
+      if (parentScheme.isUseEditorFontPreferencesInConsole()) {
+        setUseEditorFontPreferencesInConsole();
+      }
+      else {
+        setConsoleFontPreferences(parentScheme.getConsoleFontPreferences());
+      }
 
-      parentScheme.getConsoleFontPreferences().copyTo(getConsoleFontPreferences());
-      setConsoleLineSpacing(parentScheme.getConsoleLineSpacing());
+      if (parentScheme.isUseAppFontPreferencesInEditor()) {
+        setUseAppFontPreferencesInEditor();
+      }
+      else {
+        setFontPreferences(parentScheme.getFontPreferences());
+      }
 
       setQuickDocFontSize(parentScheme.getQuickDocFontSize());
       myName = parentScheme.getName();
 
-      //noinspection UseOfPropertiesAsHashtable
-      getMetaProperties().putAll(parentScheme.getMetaProperties());
+      RainbowHighlighter.transferRainbowState(this, parentScheme);
       myRainbowState = new RainbowColorsInSchemeState(this, parentScheme);
 
       initFonts();
+    }
+
+    @Nullable
+    @Override
+    public AbstractColorsScheme getOriginal() {
+      return myParentScheme instanceof AbstractColorsScheme ? ((AbstractColorsScheme)myParentScheme).getOriginal() : null;
     }
 
     @NotNull
@@ -1146,14 +1153,11 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
     }
 
     private boolean isFontModified() {
-      if (!getFontPreferences().equals(myParentScheme.getFontPreferences())) return true;
-      if (getLineSpacing() != myParentScheme.getLineSpacing()) return true;
-      return getQuickDocFontSize() != myParentScheme.getQuickDocFontSize();
+      return !areDelegatingOrEqual(getFontPreferences(), myParentScheme.getFontPreferences());
     }
 
     private boolean isConsoleFontModified() {
-      if (!getConsoleFontPreferences().equals(myParentScheme.getConsoleFontPreferences())) return true;
-      return getConsoleLineSpacing() != myParentScheme.getConsoleLineSpacing();
+      return !areDelegatingOrEqual(getConsoleFontPreferences(), myParentScheme.getConsoleFontPreferences());
     }
 
     private boolean apply() {
@@ -1166,11 +1170,19 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
     private boolean apply(@NotNull EditorColorsScheme scheme) {
       boolean isModified = isFontModified() || isConsoleFontModified();
 
-      scheme.setFontPreferences(getFontPreferences());
-      scheme.setLineSpacing(myLineSpacing);
-      scheme.setQuickDocFontSize(getQuickDocFontSize());
-      scheme.setConsoleFontPreferences(getConsoleFontPreferences());
-      scheme.setConsoleLineSpacing(getConsoleLineSpacing());
+      if (isUseAppFontPreferencesInEditor()) {
+        scheme.setUseAppFontPreferencesInEditor();
+      }
+      else {
+        scheme.setFontPreferences(getFontPreferences());
+      }
+
+      if (isUseEditorFontPreferencesInConsole()) {
+        scheme.setUseEditorFontPreferencesInConsole();
+      }
+      else {
+        scheme.setConsoleFontPreferences(getConsoleFontPreferences());
+      }
 
       for (EditorSchemeAttributeDescriptor descriptor : myDescriptors) {
         if (descriptor.isModified()) {
@@ -1188,11 +1200,6 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
     @Override
     public Object clone() {
       return null;
-    }
-
-    @NotNull
-    public EditorColorsScheme getOriginalScheme() {
-      return myParentScheme;
     }
 
     public void setIsNew() {
@@ -1226,7 +1233,7 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
       }
       return false;
     }
-    
+
     public void resetToOriginal() {
       if (myParentScheme instanceof AbstractColorsScheme) {
         AbstractColorsScheme originalScheme = ((AbstractColorsScheme)myParentScheme).getOriginal();
@@ -1406,5 +1413,83 @@ public class ColorAndFontOptions extends SearchableConfigurable.Parent.Abstract
     public String toString() {
       return "Color And Fonts for "+getDisplayName();
     }
+  }
+
+  /**
+   * Shows a requested page to edit a color settings.
+   * If current data context represents a setting dialog that can open a requested page,
+   * it will be opened. Otherwise, the new dialog will be opened.
+   * The simplest way to get a data context is
+   * <pre>DataManager.getInstance().getDataContext(myComponent)</pre>
+   * where is {@code myComponent} is a {@link JComponent} in a Swing hierarchy.
+   * A specific color can be requested by the {@code search} text.
+   *
+   * @param context a data context to find {@link Settings} or a parent for dialog
+   * @param search  a text to find on the found page
+   * @param name    a name of a page to find via {@link #findSubConfigurable(String)}
+   * @return {@code true} if a color was shown to edit, {@code false} if a requested page does not exist
+   */
+  public static boolean selectOrEditColor(@NotNull DataContext context, @Nullable String search, @NotNull String name) {
+    return selectOrEdit(context, search, options -> options.findSubConfigurable(name));
+  }
+
+  /**
+   * Shows a requested page to edit a color settings.
+   * If current data context represents a setting dialog that can open a requested page,
+   * it will be opened. Otherwise, the new dialog will be opened.
+   * The simplest way to get a data context is
+   * <pre>DataManager.getInstance().getDataContext(myComponent)</pre>
+   * where is {@code myComponent} is a {@link JComponent} in a Swing hierarchy.
+   * A specific color can be requested by the {@code search} text.
+   *
+   * @param context a data context to find {@link Settings} or a parent for dialog
+   * @param search  a text to find on the found page
+   * @param type    a type of a page to find via {@link #findSubConfigurable(Class)}
+   * @return {@code true} if a color was shown to edit, {@code false} if a requested page does not exist
+   */
+  public static boolean selectOrEditColor(@NotNull DataContext context, @Nullable String search, @NotNull Class<?> type) {
+    return selectOrEdit(context, search, options -> options.findSubConfigurable(type));
+  }
+
+  private static boolean selectOrEdit(DataContext context, String search, Function<ColorAndFontOptions, SearchableConfigurable> function) {
+    return select(context, search, function) || edit(context, search, function);
+  }
+
+  private static boolean select(DataContext context, String search, Function<ColorAndFontOptions, SearchableConfigurable> function) {
+    Settings settings = Settings.KEY.getData(context);
+    if (settings == null) return false;
+
+    ColorAndFontOptions options = settings.find(ColorAndFontOptions.class);
+    if (options == null) return false;
+
+    SearchableConfigurable page = function.apply(options);
+    if (page == null) return false;
+
+    settings.select(page, search);
+    return true;
+  }
+
+  private static boolean edit(DataContext context, String search, Function<ColorAndFontOptions, SearchableConfigurable> function) {
+    ColorAndFontOptions options = new ColorAndFontOptions();
+    SearchableConfigurable page = function.apply(options);
+
+    Configurable[] configurables = options.getConfigurables();
+    try {
+      if (page != null) {
+        Runnable runnable = search == null ? null : page.enableSearch(search);
+        Window window = UIUtil.getWindow(CONTEXT_COMPONENT.getData(context));
+        if (window != null) {
+          ShowSettingsUtil.getInstance().editConfigurable(window, page, runnable);
+        }
+        else {
+          ShowSettingsUtil.getInstance().editConfigurable(PROJECT.getData(context), page, runnable);
+        }
+      }
+    }
+    finally {
+      for (Configurable configurable : configurables) configurable.disposeUIResources();
+      options.disposeUIResources();
+    }
+    return page != null;
   }
 }

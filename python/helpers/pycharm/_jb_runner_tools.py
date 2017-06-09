@@ -2,9 +2,8 @@
 """
 Tools to implement runners (https://confluence.jetbrains.com/display/~link/PyCharm+test+runners+protocol)
 """
-import argparse
 import atexit
-import imp
+import _jb_utils
 import os
 import re
 import sys
@@ -15,15 +14,24 @@ from teamcity import teamcity_presence_env_var, messages
 if teamcity_presence_env_var not in os.environ:
     os.environ[teamcity_presence_env_var] = "LOCAL"
 
+# Providing this env variable disables output buffering.
+# anything sent to stdout/stderr goes to IDE directly, not after test is over like it is done by default.
+# out and err are not in sync, so output may go to wrong test
+JB_DISABLE_BUFFERING = "JB_DISABLE_BUFFERING" in os.environ
+
 
 def _parse_parametrized(part):
     """
 
     Support nose generators / py.test parameters and other functions that provides names like foo(1,2)
     Until https://github.com/JetBrains/teamcity-messages/issues/121, all such tests are provided
-    with parentheses
+    with parentheses.
+    
+    Tests with docstring are reported in similar way but they have space before parenthesis and should be ignored
+    by this function
+    
     """
-    match = re.match("^(.+)(\(.+\))$", part)
+    match = re.match("^([^\\s)(]+)(\\(.+\\))$", part)
     if not match:
         return [part]
     else:
@@ -155,16 +163,23 @@ PARSE_FUNC = None
 
 
 class NewTeamcityServiceMessages(_old_service_messages):
+    _latest_subtest_result = None
+    
     def message(self, messageName, **properties):
-        # Intellij may fail to process message if it has char just before it.
-        # Space before message has no visible affect, but saves from such cases
-        print(" ")
-        if messageName in {"enteredTheMatrix", "testCount"}:
+        if messageName in set(["enteredTheMatrix", "testCount"]):
             _old_service_messages.message(self, messageName, **properties)
             return
 
         try:
-            properties["locationHint"] = "python://{0}".format(properties["name"])
+            # Report directory so Java site knows which folder to resolve names against
+
+            # tests with docstrings are reported in format "test.name (some test here)".
+            # text should be part of name, but not location.
+            possible_location = str(properties["name"])
+            loc = possible_location.find("(")
+            if loc > 0:
+                possible_location = possible_location[:loc].strip()
+            properties["locationHint"] = "python<{0}>://{1}".format(os.getcwd(), possible_location)
         except KeyError:
             # If message does not have name, then it is not test
             # Simply pass it
@@ -205,14 +220,33 @@ class NewTeamcityServiceMessages(_old_service_messages):
             return test_name
 
     # Blocks are used for 2 cases now:
-    # 1) Unittest subtests (broken, because failure can't be reported)
+    # 1) Unittest subtests (only closed, opened by subTestBlockOpened)
     # 2) setup/teardown (does not work, see https://github.com/JetBrains/teamcity-messages/issues/114)
-    # So, temporary disabled
     # def blockOpened(self, name, flowId=None):
-    #     self.testStarted(".".join(TREE_MANAGER.current_branch + [self._fix_setup_teardown_name(name)]))
-    #
-    # def blockClosed(self, name, flowId=None):
-    #     self.testFinished(".".join(TREE_MANAGER.current_branch + [self._fix_setup_teardown_name(name)]))
+    #      self.testStarted(".".join(TREE_MANAGER.current_branch + [self._fix_setup_teardown_name(name)]))
+
+    def blockClosed(self, name, flowId=None):
+
+        # If _latest_subtest_result is not set or does not exist we closing setup method, not a subtest
+        try:
+            if not self._latest_subtest_result:
+                return
+        except AttributeError:
+            return
+
+        # closing subtest
+        test_name = ".".join(TREE_MANAGER.current_branch)
+        if self._latest_subtest_result in set(["Failure", "Error"]):
+            self.testFailed(test_name)
+        if self._latest_subtest_result == "Skip":
+            self.testIgnored(test_name)
+
+        self.testFinished(test_name)
+        self._latest_subtest_result = None
+
+    def subTestBlockOpened(self, name, subTestResult, flowId=None):
+        self.testStarted(".".join(TREE_MANAGER.current_branch + [name]))
+        self._latest_subtest_result = subTestResult
 
     def testStarted(self, testName, captureStandardOutput=None, flowId=None, is_suite=False):
         test_name_as_list = self._test_to_list(testName)
@@ -237,7 +271,7 @@ class NewTeamcityServiceMessages(_old_service_messages):
                 "details": details}
         self.message("testFailed", **args)
 
-    def testFinished(self, testName, testDuration=None, flowId=None,  is_suite=False):
+    def testFinished(self, testName, testDuration=None, flowId=None, is_suite=False):
         testName = ".".join(self._test_to_list(testName))
 
         def _write_finished_message():
@@ -290,12 +324,10 @@ messages.TeamcityServiceMessages = NewTeamcityServiceMessages
 
 # Monkeypatched
 
-
 def jb_patch_separator(targets, fs_glue, python_glue, fs_to_python_glue):
     """
-    Targets are always dot separated according to manual.
-    However, some runners may need different separators.
-    This function splits target to file/symbol parts and glues them using provided glues.
+    Converts python target if format "/path/foo.py::parts.to.python" provided by Java to 
+    python specific format
 
     :param targets: list of dot-separated targets
     :param fs_glue: how to glue fs parts of target. I.e.: module "eggs" in "spam" package is "spam[fs_glue]eggs"
@@ -307,20 +339,15 @@ def jb_patch_separator(targets, fs_glue, python_glue, fs_to_python_glue):
         return []
 
     def _patch_target(target):
-        path = None
-        parts = target.split(".")
-        for i in range(0, len(parts)):
-            m = parts[i]
-            try:
-                (fil, path, desc) = imp.find_module(m, [path] if path else None)
-            except ImportError:
-                fs_part = fs_glue.join(parts[:i])
-                python_path = python_glue.join(parts[i:])
-                return fs_part + fs_to_python_glue + python_path if python_path else fs_part
-            if desc[2] == imp.PKG_DIRECTORY:
-                # Package
-                path = imp.load_module(m, fil, path, desc).__path__[0]
-        return target
+        # /path/foo.py::parts.to.python
+        match = re.match("^(:?(.+)[.]py::)?(.+)$", target)
+        assert match, "unexpected string: {0}".format(target)
+        fs_part = match.group(2)
+        python_part = match.group(3).replace(".", python_glue)
+        if fs_part:
+            return fs_part.replace("/", fs_glue) + fs_to_python_glue + python_part
+        else:
+            return python_part
 
     return map(_patch_target, targets)
 
@@ -342,12 +369,21 @@ def jb_start_tests():
         del sys.argv[index:]
     except ValueError:
         pass
-    parser = argparse.ArgumentParser(description='PyCharm test runner')
-    parser.add_argument('--path', help='Path to file or folder to run')
-    parser.add_argument('--target', help='Python target to run', action="append")
-    namespace = parser.parse_args()
+    utils = _jb_utils.VersionAgnosticUtils()
+
+    namespace = utils.get_options(
+        _jb_utils.OptionDescription('--path', 'Path to file or folder to run'),
+        _jb_utils.OptionDescription('--target', 'Python target to run', "append"))
     del sys.argv[1:]  # Remove all args
     NewTeamcityServiceMessages().message('enteredTheMatrix')
+
+    # PyCharm helpers dir is first dir in sys.path because helper is launched.
+    # But sys.path should be same as when launched with test runner directly
+    try:
+        if os.path.abspath(sys.path[0]) == os.path.abspath(os.environ["PYCHARM_HELPERS_DIR"]):
+            sys.path.pop(0)
+    except KeyError:
+        pass
     return namespace.path, namespace.target, additional_args
 
 
@@ -363,4 +399,4 @@ def jb_doc_args(framework_name, args):
     Runner encouraged to report its arguments to user with aid of this function
 
     """
-    print("Launching {0} with arguments {1}".format(framework_name, " ".join(args)))
+    print("Launching {0} with arguments {1} in {2}".format(framework_name, " ".join(args), os.getcwd()))

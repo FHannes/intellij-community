@@ -24,6 +24,7 @@ import com.intellij.codeInsight.lookup.LookupElementAction;
 import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
+import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.injected.editor.EditorWindow;
 import com.intellij.openapi.actionSystem.*;
@@ -327,11 +328,8 @@ class LookupUi {
             panelHeight -= myList.getFixedCellHeight() / 2;
           }
           int width = Math.max(listWidth, adSize.width);
+          width = Math.min(width, Registry.intValue("ide.completion.max.width"));
           int height = Math.min(panelHeight, myMaximumHeight);
-
-          if (Registry.is("ide.completion.width.constant")) {
-            return new Dimension(Registry.intValue("ide.completion.max.width"), height);
-          }
 
           return new Dimension(width, height);
         }
@@ -342,7 +340,7 @@ class LookupUi {
           mainPanel.setSize(size);
           mainPanel.validate();
 
-          if (!myLookup.myResizePending) {
+          if (IdeEventQueue.getInstance().getTrueCurrentEvent().getID() == MouseEvent.MOUSE_DRAGGED) {
             Dimension preferredSize = preferredLayoutSize(null);
             if (preferredSize.width != size.width) {
               UISettings.getInstance().setMaxLookupWidth(Math.max(500, size.width));

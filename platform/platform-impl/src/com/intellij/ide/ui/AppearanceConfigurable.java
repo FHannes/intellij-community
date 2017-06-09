@@ -34,9 +34,10 @@ import com.intellij.openapi.wm.ex.WindowManagerEx;
 import com.intellij.ui.FontComboBox;
 import com.intellij.ui.ListCellRendererWrapper;
 import com.intellij.ui.components.JBCheckBox;
+import com.intellij.util.ui.GraphicsUtil;
+import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
-import sun.swing.SwingUtilities2;
 
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
@@ -174,7 +175,7 @@ public class AppearanceConfigurable extends BaseConfigurable implements Searchab
       settings.setIdeAAType((AntialiasingType)myComponent.myAntialiasingInIDE.getSelectedItem());
       for (Window w : Window.getWindows()) {
         for (JComponent c : UIUtil.uiTraverser(w).filter(JComponent.class)) {
-          c.putClientProperty(SwingUtilities2.AA_TEXT_PROPERTY_KEY, AntialiasingType.getAAHintForSwingComponent());
+          GraphicsUtil.setAntialiasingType(c, AntialiasingType.getAAHintForSwingComponent());
         }
       }
       shouldUpdateUI = true;
@@ -222,6 +223,9 @@ public class AppearanceConfigurable extends BaseConfigurable implements Searchab
     update |= settings.getRightHorizontalSplit() != myComponent.myRightLayoutCheckBox.isSelected();
     settings.setRightHorizontalSplit(myComponent.myRightLayoutCheckBox.isSelected());
 
+    update |= settings.getSmoothScrolling() != myComponent.mySmoothScrollingCheckBox.isSelected();
+    settings.setSmoothScrolling(myComponent.mySmoothScrollingCheckBox.isSelected());
+
     update |= settings.getNavigateToPreview() != (myComponent.myNavigateToPreviewCheckBox.isVisible() && myComponent.myNavigateToPreviewCheckBox.isSelected());
     settings.setNavigateToPreview(myComponent.myNavigateToPreviewCheckBox.isSelected());
 
@@ -241,17 +245,26 @@ public class AppearanceConfigurable extends BaseConfigurable implements Searchab
     settings.setShowIconInQuickNavigation(myComponent.myHideIconsInQuickNavigation.isSelected());
 
     if (!Comparing.equal(myComponent.myLafComboBox.getSelectedItem(), lafManager.getCurrentLookAndFeel())) {
-      final UIManager.LookAndFeelInfo lafInfo = (UIManager.LookAndFeelInfo)myComponent.myLafComboBox.getSelectedItem();
-      if (lafManager.checkLookAndFeel(lafInfo)) {
-        update = true;
-        shouldUpdateUI = false;
-        //noinspection SSBasedInspection
-        SwingUtilities.invokeLater(() -> QuickChangeLookAndFeel.switchLafAndUpdateUI(lafManager, lafInfo));
-      }
+      UIManager.LookAndFeelInfo lafInfo = (UIManager.LookAndFeelInfo)myComponent.myLafComboBox.getSelectedItem();
+      update = true;
+      shouldUpdateUI = false;
+      //noinspection SSBasedInspection
+      SwingUtilities.invokeLater(() -> QuickChangeLookAndFeel.switchLafAndUpdateUI(lafManager, lafInfo));
     }
 
     if (shouldUpdateUI) {
       lafManager.updateUI();
+      shouldUpdateUI = false;
+    }
+    // reset to default when unchecked
+    if (!myComponent.myOverrideLAFFonts.isSelected()) {
+      assert !shouldUpdateUI;
+      int defSize = JBUI.Fonts.label().getSize();
+      settings.setFontSize(defSize);
+      myComponent.myFontSizeCombo.getModel().setSelectedItem(String.valueOf(defSize));
+      String defName = JBUI.Fonts.label().getFontName();
+      settings.setFontFace(defName);
+      myComponent.myFontCombo.setFontName(defName);
     }
 
     if (WindowManagerEx.getInstanceEx().isAlphaModeSupported()) {
@@ -346,6 +359,7 @@ public class AppearanceConfigurable extends BaseConfigurable implements Searchab
     myComponent.myWidescreenLayoutCheckBox.setSelected(settings.getWideScreenSupport());
     myComponent.myLeftLayoutCheckBox.setSelected(settings.getLeftHorizontalSplit());
     myComponent.myRightLayoutCheckBox.setSelected(settings.getRightHorizontalSplit());
+    myComponent.mySmoothScrollingCheckBox.setSelected(settings.getSmoothScrolling());
     myComponent.myNavigateToPreviewCheckBox.setSelected(settings.getNavigateToPreview());
     myComponent.myNavigateToPreviewCheckBox.setVisible(false);//disabled for a while
     myComponent.myColorBlindnessPanel.setColorBlindness(settings.getColorBlindness());
@@ -411,6 +425,7 @@ public class AppearanceConfigurable extends BaseConfigurable implements Searchab
     isModified |= myComponent.myWidescreenLayoutCheckBox.isSelected() != settings.getWideScreenSupport();
     isModified |= myComponent.myLeftLayoutCheckBox.isSelected() != settings.getLeftHorizontalSplit();
     isModified |= myComponent.myRightLayoutCheckBox.isSelected() != settings.getRightHorizontalSplit();
+    isModified |= myComponent.mySmoothScrollingCheckBox.isSelected() != settings.getSmoothScrolling();
     isModified |= myComponent.myNavigateToPreviewCheckBox.isSelected() != settings.getNavigateToPreview();
     isModified |= myComponent.myColorBlindnessPanel.getColorBlindness() != settings.getColorBlindness();
 
@@ -485,6 +500,7 @@ public class AppearanceConfigurable extends BaseConfigurable implements Searchab
     private JCheckBox myRightLayoutCheckBox;
     private JSlider myInitialTooltipDelaySlider;
     private ComboBox myPresentationModeFontSize;
+    private JCheckBox mySmoothScrollingCheckBox;
     private JCheckBox myNavigateToPreviewCheckBox;
     private ColorBlindnessPanel myColorBlindnessPanel;
     private JComboBox myAntialiasingInIDE;
@@ -518,10 +534,8 @@ public class AppearanceConfigurable extends BaseConfigurable implements Searchab
   }
 
   private static class AAListCellRenderer extends ListCellRendererWrapper<AntialiasingType> {
-    private static final SwingUtilities2.AATextInfo SUBPIXEL_HINT = new SwingUtilities2.AATextInfo(
-      RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB, UIUtil.getLcdContrastValue());
-    private static final SwingUtilities2.AATextInfo GREYSCALE_HINT = new SwingUtilities2.AATextInfo(
-      RenderingHints.VALUE_TEXT_ANTIALIAS_ON, UIUtil.getLcdContrastValue());
+    private static final Object SUBPIXEL_HINT = GraphicsUtil.createAATextInfo(RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+    private static final Object GREYSCALE_HINT = GraphicsUtil.createAATextInfo(RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
     private final boolean useEditorAASettings;
 
@@ -533,13 +547,13 @@ public class AppearanceConfigurable extends BaseConfigurable implements Searchab
     @Override
     public void customize(JList list, AntialiasingType value, int index, boolean selected, boolean hasFocus) {
       if (value == AntialiasingType.SUBPIXEL) {
-        setClientProperty(SwingUtilities2.AA_TEXT_PROPERTY_KEY, SUBPIXEL_HINT);
+        GraphicsUtil.generatePropertiesForAntialiasing(SUBPIXEL_HINT, this::setClientProperty);
       }
       else if (value == AntialiasingType.GREYSCALE) {
-        setClientProperty(SwingUtilities2.AA_TEXT_PROPERTY_KEY, GREYSCALE_HINT);
+        GraphicsUtil.generatePropertiesForAntialiasing(GREYSCALE_HINT, this::setClientProperty);
       }
       else if (value == AntialiasingType.OFF) {
-        setClientProperty(SwingUtilities2.AA_TEXT_PROPERTY_KEY, null);
+        GraphicsUtil.generatePropertiesForAntialiasing(null, this::setClientProperty);
       }
 
       if (useEditorAASettings) {

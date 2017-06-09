@@ -18,10 +18,11 @@ import static org.junit.Assert.assertEquals;
 public final class PythonDocTestingTest extends PyEnvTestCase {
 
 
+
   @Test
   public void testConfigurationProducer() throws Exception {
     runPythonTest(
-      new CreateConfigurationTestTask<>(null, PythonDocTestRunConfiguration.class, "doctest_test.py"));
+      new CreateConfigurationByFileTask<>(null, PythonDocTestRunConfiguration.class, "doctest_test.py"));
   }
 
   @Test

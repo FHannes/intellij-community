@@ -34,6 +34,7 @@ import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.psi.templateLanguages.TemplateDataLanguagePatterns;
 import com.intellij.ui.*;
 import com.intellij.ui.components.JBList;
+import com.intellij.util.ui.JBDimension;
 import gnu.trove.THashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -90,17 +91,15 @@ public class FileTypeConfigurable extends BaseConfigurable implements Searchable
 
   private void updateFileTypeList() {
     FileType[] types = myTempFileTypes.toArray(new FileType[myTempFileTypes.size()]);
-    Arrays.sort(types, new Comparator() {
-      @Override
-      public int compare(@NotNull Object o1, @NotNull Object o2) {
-        FileType fileType1 = (FileType)o1;
-        FileType fileType2 = (FileType)o2;
-        return fileType1.getDescription().compareToIgnoreCase(fileType2.getDescription());
-      }
+    Arrays.sort(types, (o1, o2) -> {
+      FileType fileType1 = (FileType)o1;
+      FileType fileType2 = (FileType)o2;
+      return fileType1.getDescription().compareToIgnoreCase(fileType2.getDescription());
     });
     myRecognizedFileType.setFileTypes(types);
   }
 
+  @NotNull
   private static FileType[] getModifiableFileTypes() {
     FileType[] registeredFileTypes = FileTypeManager.getInstance().getRegisteredFileTypes();
     ArrayList<FileType> result = new ArrayList<>();
@@ -173,7 +172,7 @@ public class FileTypeConfigurable extends BaseConfigurable implements Searchable
 
     @Override
     public Dimension getPreferredSize() {
-      return new Dimension(0, 20);
+      return new JBDimension(0, 20);
     }
   }
 
@@ -296,7 +295,8 @@ public class FileTypeConfigurable extends BaseConfigurable implements Searchable
         }
       }
       myTempPatternsTable.addAssociation(matcher, type);
-      myTempTemplateDataLanguages.addAssociation(matcher, dialog.getTemplateDataLanguage());
+      Language language = dialog.getTemplateDataLanguage();
+      if (language != null) myTempTemplateDataLanguages.addAssociation(matcher, language);
 
       updateExtensionList();
       final int index = myPatterns.getListModel().indexOf(matcher.getPresentableString());

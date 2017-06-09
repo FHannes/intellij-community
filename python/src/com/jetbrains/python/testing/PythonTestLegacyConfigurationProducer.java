@@ -18,9 +18,7 @@ package com.jetbrains.python.testing;
 import com.google.common.collect.Sets;
 import com.intellij.execution.Location;
 import com.intellij.execution.actions.ConfigurationContext;
-import com.intellij.execution.actions.ConfigurationFromContext;
 import com.intellij.execution.configurations.ConfigurationFactory;
-import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.facet.Facet;
 import com.intellij.facet.FacetManager;
 import com.intellij.openapi.module.Module;
@@ -38,9 +36,7 @@ import com.jetbrains.python.PythonModuleTypeBase;
 import com.jetbrains.python.facet.PythonFacetSettings;
 import com.jetbrains.python.psi.*;
 import com.jetbrains.python.psi.types.TypeEvalContext;
-import com.jetbrains.python.run.PythonRunConfigurationProducer;
-import com.jetbrains.python.testing.unittest.PythonUnitTestRunConfiguration;
-import com.jetbrains.python.testing.universalTests.PyUniversalTestLegacyInteropKt;
+import com.jetbrains.python.run.RunnableScriptFilter;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -50,9 +46,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 
-/**
- * User: ktisha
- */
 abstract public class PythonTestLegacyConfigurationProducer<T extends AbstractPythonLegacyTestRunConfiguration<T>>
   extends AbstractPythonTestConfigurationProducer<AbstractPythonLegacyTestRunConfiguration<T>> {
 
@@ -116,6 +109,8 @@ abstract public class PythonTestLegacyConfigurationProducer<T extends AbstractPy
     return confType == AbstractPythonLegacyTestRunConfiguration.TestType.TEST_SCRIPT && isTestFileEquals;
   }
 
+
+
   @Override
   protected boolean setupConfigurationFromContext(AbstractPythonLegacyTestRunConfiguration<T> configuration,
                                                   ConfigurationContext context,
@@ -128,7 +123,7 @@ abstract public class PythonTestLegacyConfigurationProducer<T extends AbstractPy
       element = PyUtil.findNonWhitespaceAtOffset(element.getContainingFile(), element.getTextOffset());
     }
 
-    if (PythonUnitTestRunnableScriptFilter.isIfNameMain(location)) return false;
+    if (RunnableScriptFilter.isIfNameMain(location)) return false;
     final Module module = location.getModule();
     if (!isPythonModule(module)) return false;
 

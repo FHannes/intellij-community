@@ -27,7 +27,6 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.Ref;
-import com.intellij.util.ui.EdtInvocationManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.ide.PooledThreadExecutor;
@@ -82,7 +81,7 @@ public class ProgressIndicatorUtils {
   }
 
   /**
-   * Same as {@link #runInReadActionWithWriteActionPriority(Runnable)}, optionally allowing to pass a {@link ProgressIndicatorUtils}
+   * Same as {@link #runInReadActionWithWriteActionPriority(Runnable)}, optionally allowing to pass a {@link ProgressIndicator}
    * instance, which can be used to cancel action externally.
    */
   public static boolean runInReadActionWithWriteActionPriority(@NotNull final Runnable action, 
@@ -161,19 +160,15 @@ public class ProgressIndicatorUtils {
   public static CompletableFuture<?> scheduleWithWriteActionPriority(@NotNull final ProgressIndicator progressIndicator,
                                                                      @NotNull final Executor executor,
                                                                      @NotNull final ReadTask readTask) {
-    final Application application = ApplicationManager.getApplication();
     // invoke later even if on EDT
     // to avoid tasks eagerly restarting immediately, allocating many pooled threads
     // which get cancelled too soon when a next write action arrives in the same EDT batch
     // (can happen when processing multiple VFS events or writing multiple files on save)
 
-    // use SwingUtilities instead of application.invokeLater
-    // to tolerate any immediate modality changes (e.g. https://youtrack.jetbrains.com/issue/IDEA-135180)
-
     CompletableFuture<?> future = new CompletableFuture<>();
-    //noinspection SSBasedInspection
-    EdtInvocationManager.getInstance().invokeLater(() -> {
-      if (application.isDisposed() || progressIndicator.isCanceled()) {
+    Application application = ApplicationManager.getApplication();
+    application.invokeLater(() -> {
+      if (application.isDisposed() || progressIndicator.isCanceled() || future.isCancelled()) {
         future.complete(null);
         return;
       }
@@ -203,10 +198,13 @@ public class ProgressIndicatorUtils {
             if (continuation == null) {
               future.complete(null);
             }
-            else {
+            else if (!future.isCancelled()) {
               application.invokeLater(new Runnable() {
                 @Override
                 public void run() {
+                  if (future.isCancelled()) return;
+
+                  application.removeApplicationListener(listener); // remove listener early to prevent firing it during continuation execution
                   try {
                     if (!progressIndicator.isCanceled()) {
                       continuation.getAction().run();
@@ -232,11 +230,10 @@ public class ProgressIndicatorUtils {
         });
       }
       catch (RuntimeException | Error e) {
-        application.removeApplicationListener(listener);
         future.completeExceptionally(e);
         throw e;
       }
-    });
+    }, ModalityState.any()); // 'any' to tolerate immediate modality changes (e.g. https://youtrack.jetbrains.com/issue/IDEA-135180)
     return future;
   }
 

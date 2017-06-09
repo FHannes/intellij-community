@@ -19,12 +19,13 @@ import com.intellij.openapi.components.RoamingType
 import com.intellij.openapi.components.StateStorage
 import com.intellij.openapi.components.TrackingPathMacroSubstitutor
 import com.intellij.openapi.components.impl.stores.FileStorageCoreUtil
-import com.intellij.openapi.diagnostic.catchAndLog
 import com.intellij.openapi.diagnostic.debug
+import com.intellij.openapi.diagnostic.runAndLogException
 import com.intellij.openapi.util.JDOMUtil
 import com.intellij.util.containers.SmartHashSet
 import com.intellij.util.isEmpty
 import com.intellij.util.loadElement
+import com.intellij.util.toBufferExposingByteArray
 import gnu.trove.THashMap
 import org.jdom.Attribute
 import org.jdom.Element
@@ -33,9 +34,8 @@ abstract class XmlElementStorage protected constructor(val fileSpec: String,
                                                        protected val rootElementName: String?,
                                                        protected val pathMacroSubstitutor: TrackingPathMacroSubstitutor? = null,
                                                        roamingType: RoamingType? = RoamingType.DEFAULT,
-                                                       provider: StreamProvider? = null) : StorageBaseEx<StateMap>() {
-  val roamingType: RoamingType = roamingType ?: RoamingType.DEFAULT
-  private val provider: StreamProvider? = if (provider == null || roamingType == RoamingType.DISABLED) null else provider
+                                                       private val provider: StreamProvider? = null) : StorageBaseEx<StateMap>() {
+  val roamingType = roamingType ?: RoamingType.DEFAULT
 
   protected abstract fun loadLocalData(): Element?
 
@@ -51,7 +51,7 @@ abstract class XmlElementStorage protected constructor(val fileSpec: String,
 
   private fun loadElement(useStreamProvider: Boolean = true): Element? {
     var element: Element? = null
-    LOG.catchAndLog {
+    LOG.runAndLogException {
       if (!useStreamProvider || !(provider?.read(fileSpec, roamingType) {
         it?.let {
           element = loadElement(it)
@@ -169,7 +169,7 @@ abstract class XmlElementStorage protected constructor(val fileSpec: String,
       return
     }
 
-    LOG.catchAndLog {
+    LOG.runAndLogException {
       val newElement = if (deleted) null else loadElement(useStreamProvider)
       val states = storageDataRef.get()
       if (newElement == null) {

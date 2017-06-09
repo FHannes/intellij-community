@@ -21,25 +21,39 @@ import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.options.ExternalizableScheme;
 import com.intellij.openapi.util.Comparing;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Map;
 import java.util.function.Function;
 
 import static com.intellij.openapi.editor.markup.TextAttributes.USE_INHERITED_MARKER;
 
 public class EditorColorsSchemeImpl extends AbstractColorsScheme implements ExternalizableScheme {
+  private final Map<TextAttributesKey, TextAttributes> myAttributesTempMap = ContainerUtil.newConcurrentMap();
+  
   public EditorColorsSchemeImpl(EditorColorsScheme parentScheme) {
     super(parentScheme);
   }
-
+  
+  @Override
+  public void copyTo(AbstractColorsScheme newScheme) {
+    super.copyTo(newScheme);
+    myAttributesTempMap.clear();
+  }
+  
   @Override
   public void setAttributes(@NotNull TextAttributesKey key, @NotNull TextAttributes attributes) {
-    if (attributes == USE_INHERITED_MARKER || attributes != getAttributes(key)) {
+    if (TextAttributesKey.isTemp(key)) {
+      myAttributesTempMap.put(key, attributes);
+    }
+    else if (attributes == USE_INHERITED_MARKER || attributes != getAttributes(key)) {
       myAttributesMap.put(key, attributes);
+      myAttributesTempMap.clear();
     }
   }
 
@@ -53,6 +67,10 @@ public class EditorColorsSchemeImpl extends AbstractColorsScheme implements Exte
   @Override
   public TextAttributes getAttributes(@Nullable TextAttributesKey key) {
     if (key != null) {
+      if (TextAttributesKey.isTemp(key)) {
+        return myAttributesTempMap.get(key);
+      }
+      
       TextAttributes attributes = getDirectlyDefinedAttributes(key);
       if (attributes != null && attributes != USE_INHERITED_MARKER) {
         return attributes;
@@ -128,9 +146,9 @@ public class EditorColorsSchemeImpl extends AbstractColorsScheme implements Exte
       Color thisColor = getColor(key);
       Color otherColor = otherScheme.getColor(key);
       if (thisColor == null) {
-        return otherColor == null;
+        if (otherColor != null) return false;
       }
-      if (!isColorKeyIgnored(filters, key) && !thisColor.equals(otherColor)) {
+      else if (!isColorKeyIgnored(filters, key) && !thisColor.equals(otherColor)) {
         return false;
       }
     }
@@ -144,8 +162,8 @@ public class EditorColorsSchemeImpl extends AbstractColorsScheme implements Exte
 
   private static boolean isColorKeyIgnored(@NotNull Collection<Function<ColorKey, Boolean>> filters, ColorKey key) {
     for (Function<ColorKey,Boolean> filter : filters) {
-      if (filter.apply(key)) return false;
+      if (filter.apply(key)) return true;
     }
-    return true;
+    return false;
   }
 }

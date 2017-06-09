@@ -19,12 +19,14 @@ import com.intellij.ide.WelcomeWizardUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.*
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.ComponentTreeEventDispatcher
 import com.intellij.util.PlatformUtils
 import com.intellij.util.SystemProperties
+import com.intellij.util.ui.GraphicsUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.UIUtil.isValidFont
@@ -34,7 +36,6 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 import com.intellij.util.xmlb.annotations.OptionTag
 import com.intellij.util.xmlb.annotations.Property
 import com.intellij.util.xmlb.annotations.Transient
-import sun.swing.SwingUtilities2
 import java.awt.Font
 import java.awt.Graphics
 import java.awt.Graphics2D
@@ -49,15 +50,15 @@ class UISettings : BaseState(), PersistentStateComponent<UISettings> {
   // should be stored or shouldn't by the provided filter only.
   @get:Property(filter = FontFilter::class)
   @get:OptionTag("FONT_FACE")
-  var fontFace by storedProperty<String?>()
+  var fontFace by string()
 
   @get:Property(filter = FontFilter::class)
   @get:OptionTag("FONT_SIZE")
-  var fontSize by storedProperty(0)
+  var fontSize by storedProperty(defFontSize)
 
   @get:Property(filter = FontFilter::class)
   @get:OptionTag("FONT_SCALE")
-  private var fontScale by storedProperty(0f)
+  var fontScale by storedProperty(0f)
 
   @get:OptionTag("RECENT_FILES_LIMIT") var recentFilesLimit by storedProperty(50)
   @get:OptionTag("CONSOLE_COMMAND_HISTORY_LIMIT") var consoleCommandHistoryLimit by storedProperty(300)
@@ -113,6 +114,7 @@ class UISettings : BaseState(), PersistentStateComponent<UISettings> {
   @get:OptionTag("MARK_MODIFIED_TABS_WITH_ASTERISK") var markModifiedTabsWithAsterisk by storedProperty(false)
   @get:OptionTag("SHOW_TABS_TOOLTIPS") var showTabsTooltips by storedProperty(true)
   @get:OptionTag("SHOW_DIRECTORY_FOR_NON_UNIQUE_FILENAMES") var showDirectoryForNonUniqueFilenames by storedProperty(true)
+  var smoothScrolling by storedProperty(SystemInfo.isMac && (SystemInfo.isJetBrainsJvm || SystemInfo.isJavaVersionAtLeast("9")))
   @get:OptionTag("NAVIGATE_TO_PREVIEW") var navigateToPreview by storedProperty(false)
 
   @get:OptionTag("SORT_LOOKUP_ELEMENTS_LEXICOGRAPHICALLY") var sortLookupElementsLexicographically by storedProperty(false)
@@ -189,17 +191,18 @@ class UISettings : BaseState(), PersistentStateComponent<UISettings> {
     val fontData = systemFontFaceAndSize
     if (fontFace == null) fontFace = fontData.first
     if (fontSize <= 0) fontSize = fontData.second
-    if (fontScale <= 0) fontScale = JBUI.scale(1f)
+    if (fontScale <= 0) fontScale = defFontScale
   }
 
   class FontFilter : SerializationFilter {
     override fun accepts(accessor: Accessor, bean: Any): Boolean {
       val settings = bean as UISettings
       val fontData = systemFontFaceAndSize
-      if ("FONT_FACE" == accessor.name) {
+      if ("fontFace" == accessor.name) {
         return fontData.first != settings.fontFace
       }
-      // store only in pair
+      // fontSize/fontScale should either be stored in pair or not stored at all
+      // otherwise the fontSize restore logic gets broken (see loadState)
       return !(fontData.second == settings.fontSize && 1f == settings.fontScale)
     }
   }
@@ -228,14 +231,8 @@ class UISettings : BaseState(), PersistentStateComponent<UISettings> {
       alphaModeRatio = 0.5f
     }
 
-    if (fontScale <= 0) {
-      // Reset font to default on switch from IDEA-managed HiDPI to JRE-managed HiDPI. Doesn't affect OSX.
-      if (UIUtil.isJreHiDPIEnabled() && !SystemInfo.isMac) fontSize = UIUtil.DEF_SYSTEM_FONT_SIZE.toInt()
-    }
-    else {
-      fontSize = JBUI.scale(fontSize / fontScale).toInt()
-    }
-    fontScale = JBUI.scale(1f)
+    fontSize = restoreFontSize(fontSize, fontScale)
+    fontScale = defFontScale
     initDefFont()
 
     // 1. Sometimes system font cannot display standard ASCII symbols. If so we have
@@ -268,6 +265,8 @@ class UISettings : BaseState(), PersistentStateComponent<UISettings> {
   }
 
   companion object {
+    private val LOG = Logger.getInstance(UISettings::class.java)
+
     const val ANIMATION_DURATION = 300 // Milliseconds
 
     /** Not tabbed pane.  */
@@ -302,7 +301,7 @@ class UISettings : BaseState(), PersistentStateComponent<UISettings> {
     val shadowInstance: UISettings
       get() {
         val app = ApplicationManager.getApplication()
-        return (if (app == null) null else instance) ?: UISettings().withDefFont()
+        return (if (app == null) null else instanceOrNull) ?: UISettings().withDefFont()
       }
 
     private val systemFontFaceAndSize: Pair<String, Int>
@@ -359,12 +358,48 @@ class UISettings : BaseState(), PersistentStateComponent<UISettings> {
      */
     @JvmStatic
     fun setupComponentAntialiasing(component: JComponent) {
-      component.putClientProperty(SwingUtilities2.AA_TEXT_PROPERTY_KEY, AntialiasingType.getAAHintForSwingComponent())
+      com.intellij.util.ui.GraphicsUtil.setAntialiasingType(component, AntialiasingType.getAAHintForSwingComponent())
     }
 
     @JvmStatic
     fun setupEditorAntialiasing(component: JComponent) {
-      instance.editorAAType?.let { component.putClientProperty(SwingUtilities2.AA_TEXT_PROPERTY_KEY, it.textInfo) }
+      instance.editorAAType?.let { GraphicsUtil.setAntialiasingType(component, it.textInfo) }
+    }
+
+    /**
+     * Returns the default font scale, which depends on the HiDPI mode (see JBUI#ScaleType).
+     * <p>
+     * The font is represented:
+     * - in relative (dpi-independent) points in the JRE-managed HiDPI mode, so the method returns 1.0f
+     * - in absolute (dpi-dependent) points in the IDE-managed HiDPI mode, so the method returns the default screen scale
+     *
+     * @return the system font scale
+     */
+    @JvmStatic
+    val defFontScale: Float
+      get() = if (UIUtil.isJreHiDPIEnabled()) 1f else JBUI.sysScale()
+
+    /**
+     * Returns the default font size scaled by #defFontScale
+     *
+     * @return the default scaled font size
+     */
+    @JvmStatic
+    val defFontSize: Int
+      get() = Math.round(UIUtil.DEF_SYSTEM_FONT_SIZE * defFontScale)
+
+    @JvmStatic
+    fun restoreFontSize(readSize: Int, readScale: Float?): Int {
+      var size = readSize
+      if (readScale == null || readScale <= 0) {
+        // Reset font to default on switch from IDE-managed HiDPI to JRE-managed HiDPI. Doesn't affect OSX.
+        if (UIUtil.isJreHiDPIEnabled() && !SystemInfo.isMac) size = defFontSize
+      }
+      else {
+        if (readScale != defFontScale) size = Math.round((readSize / readScale) * defFontScale)
+      }
+      LOG.info("Loaded: fontSize=$readSize, fontScale=$readScale; restored: fontSize=$size, fontScale=$defFontScale")
+      return size
     }
   }
 

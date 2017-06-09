@@ -107,6 +107,7 @@ public class ChangeDiffRequestProducer implements DiffRequestProducer {
     }
 
     if (!Comparing.equal(change1.getClass(), change2.getClass())) return false;
+    if (!Comparing.equal(change1.getFileStatus(), change2.getFileStatus())) return false;
     if (!isEquals(change1.getBeforeRevision(), change2.getBeforeRevision())) return false;
     if (!isEquals(change1.getAfterRevision(), change2.getAfterRevision())) return false;
 
@@ -133,7 +134,7 @@ public class ChangeDiffRequestProducer implements DiffRequestProducer {
 
   @Nullable
   public static ChangeDiffRequestProducer create(@Nullable Project project, @NotNull Change change) {
-    return create(project, change, Collections.<Key, Object>emptyMap());
+    return create(project, change, Collections.emptyMap());
   }
 
   @Nullable
@@ -341,24 +342,9 @@ public class ChangeDiffRequestProducer implements DiffRequestProducer {
   public static String getRequestTitle(@NotNull Change change) {
     ContentRevision bRev = change.getBeforeRevision();
     ContentRevision aRev = change.getAfterRevision();
-
-    assert bRev != null || aRev != null;
-    if (bRev != null && aRev != null) {
-      FilePath bPath = bRev.getFile();
-      FilePath aPath = aRev.getFile();
-      if (bPath.equals(aPath)) {
-        return DiffRequestFactoryImpl.getContentTitle(bPath);
-      }
-      else {
-        return DiffRequestFactoryImpl.getTitle(bPath, aPath, " -> ");
-      }
-    }
-    else if (bRev != null) {
-      return DiffRequestFactoryImpl.getContentTitle(bRev.getFile());
-    }
-    else {
-      return DiffRequestFactoryImpl.getContentTitle(aRev.getFile());
-    }
+    FilePath bPath = bRev != null ? bRev.getFile() : null;
+    FilePath aPath = aRev != null ? aRev.getFile() : null;
+    return DiffRequestFactoryImpl.getTitle(bPath, aPath, " -> ");
   }
 
   @NotNull
@@ -385,14 +371,6 @@ public class ChangeDiffRequestProducer implements DiffRequestProducer {
         VirtualFile vFile = ((CurrentContentRevision)revision).getVirtualFile();
         if (vFile == null) throw new DiffRequestProducerException("Can't get current revision content");
         return contentFactory.create(project, vFile);
-      }
-
-      if (revision instanceof BinaryContentRevision) {
-        byte[] content = ((BinaryContentRevision)revision).getBinaryContent();
-        if (content == null) {
-          throw new DiffRequestProducerException("Can't get binary revision content");
-        }
-        return contentFactory.createFromBytes(project, content, filePath);
       }
 
       if (revision instanceof ByteBackedContentRevision) {

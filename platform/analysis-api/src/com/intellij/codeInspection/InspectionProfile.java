@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,10 +29,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/**
- * User: anna
- * Date: Dec 7, 2004
- */
 public interface InspectionProfile extends Comparable {
   @NotNull
   String getName();
@@ -75,11 +71,13 @@ public interface InspectionProfile extends Comparable {
   @NotNull
   InspectionToolWrapper[] getInspectionTools(@Nullable PsiElement element);
 
-  boolean isToolEnabled(@Nullable HighlightDisplayKey key, PsiElement element);
+  boolean isToolEnabled(@Nullable HighlightDisplayKey key, @Nullable PsiElement element);
 
-  boolean isToolEnabled(@Nullable HighlightDisplayKey key);
+  default boolean isToolEnabled(@Nullable HighlightDisplayKey key) {
+    return isToolEnabled(key, null);
+  }
 
-  boolean isExecutable(Project project);
+  boolean isExecutable(@Nullable Project project);
 
   /**
    * @see {@link InspectionProfileImpl#setSingleTool(String)}

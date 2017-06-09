@@ -58,7 +58,7 @@ public class DependencyConfigurable extends BaseConfigurable {
   private JPanel myDenyPanel;
   private JPanel myAllowPanel;
   private JCheckBox mySkipImports;
-  private static final Logger LOG = Logger.getInstance("#" + DependencyConfigurable.class.getName());
+  private static final Logger LOG = Logger.getInstance(DependencyConfigurable.class);
 
   public DependencyConfigurable(Project project) {
     myProject = project;
@@ -168,10 +168,6 @@ public class DependencyConfigurable extends BaseConfigurable {
     rules.addAll(myDenyRulesModel.getItems());
     rules.addAll(myAllowRulesModel.getItems());
     return !Arrays.asList(validationManager.getAllRules()).equals(rules);
-  }
-
-  @Override
-  public void disposeUIResources() {
   }
 
   private static final DefaultTableCellRenderer

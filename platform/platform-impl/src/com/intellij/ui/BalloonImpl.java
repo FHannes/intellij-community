@@ -24,7 +24,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.ex.AnActionListener;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.ui.GraphicsConfig;
 import com.intellij.openapi.ui.impl.ShadowBorderPainter;
 import com.intellij.openapi.ui.popup.Balloon;
@@ -120,10 +119,19 @@ public class BalloonImpl implements Balloon, IdeTooltip.Ui {
         final MouseEvent me = (MouseEvent)e;
         final boolean insideBalloon = isInsideBalloon(me);
 
-        if (myHideOnMouse && id == MouseEvent.MOUSE_PRESSED) {
-          if (!insideBalloon && !isWithinChildWindow(me)) {
+        boolean forcedExit = id == MouseEvent.MOUSE_EXITED && me.getButton() != MouseEvent.NOBUTTON && !myBlockClicks;
+        if (myHideOnMouse && (id == MouseEvent.MOUSE_PRESSED || forcedExit)) {
+          if ((!insideBalloon || forcedExit) && !isWithinChildWindow(me)) {
             if (myHideListener == null) {
               hide();
+              if (forcedExit) {
+                int[] ids = {MouseEvent.MOUSE_ENTERED, MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_RELEASED, MouseEvent.MOUSE_CLICKED};
+                for (int id_ : ids) {
+                  IdeEventQueue.getInstance()
+                    .dispatchEvent(new MouseEvent(me.getComponent(), id_, me.getWhen(), me.getModifiers(), me.getX(), me
+                      .getY(), me.getClickCount(), me.isPopupTrigger(), me.getButton()));
+                }
+              }
             }
             else {
               myHideListener.run();
@@ -962,23 +970,12 @@ public class BalloonImpl implements Balloon, IdeTooltip.Ui {
     hideAndDispose(false);
   }
 
-  private boolean myTraceDispose;
-
-  public void traceDispose(boolean value) {
-    assert !isDisposed() : "Balloon is already disposed";
-    myTraceDispose = value;
-  }
-
   private void hideAndDispose(final boolean ok) {
     if (myDisposed) return;
 
     if (mySmartFadeoutPaused) {
       mySmartFadeoutPaused = false;
       return;
-    }
-
-    if (myTraceDispose) {
-      Logger.getInstance("#com.intellij.ui.BalloonImpl").error("Dispose balloon before showing", new Throwable());
     }
 
     myDisposed = true;
@@ -1071,9 +1068,8 @@ public class BalloonImpl implements Balloon, IdeTooltip.Ui {
     if (myDefaultPrefSize == null) {
       final EmptyBorder border = myShadowBorderProvider == null ? getPointlessBorder() : null;
       final MyComponent c = new MyComponent(myContent, this, border);
-      if (myShadowBorderProvider != null) {
-        c.setBorder(new EmptyBorder(getShadowBorderInsets()));
-      }
+
+      c.setBorder(new EmptyBorder(getShadowBorderInsets()));
       myDefaultPrefSize = c.getPreferredSize();
     }
     return myDefaultPrefSize;
@@ -1818,7 +1814,7 @@ public class BalloonImpl implements Balloon, IdeTooltip.Ui {
 
     public void _setBounds(Rectangle bounds) {
       Rectangle currentBounds = getBounds();
-      if (currentBounds.width != bounds.width || currentBounds.height != bounds.height) {
+      if (!currentBounds.equals(bounds)) {
         invalidateShadowImage();
       }
 

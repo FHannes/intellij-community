@@ -70,7 +70,7 @@ public class Patch {
     File newerDir = new File(spec.getNewFolder());
     Map<String, Long> oldChecksums = digestFiles(olderDir, spec.getIgnoredFiles(), isNormalized(), ui);
     Map<String, Long> newChecksums = digestFiles(newerDir, spec.getIgnoredFiles(), false, ui);
-    DiffCalculator.Result diff = DiffCalculator.calculate(oldChecksums, newChecksums, spec.getCriticalFiles(), true);
+    DiffCalculator.Result diff = DiffCalculator.calculate(oldChecksums, newChecksums, spec.getCriticalFiles(), spec.getOptionalFiles(), true);
 
     List<PatchAction> tempActions = new ArrayList<>();
 
@@ -86,8 +86,8 @@ public class Patch {
 
     for (Map.Entry<String, DiffCalculator.Update> each : diff.filesToUpdate.entrySet()) {
       DiffCalculator.Update update = each.getValue();
-      if (!spec.isBinary() && Utils.isZipFile(each.getKey())) {
-        tempActions.add(new UpdateZipAction(this, each.getKey(), update.source, update.checksum, update.move));
+      if (!spec.isBinary() && !update.move && Utils.isZipFile(each.getKey())) {
+        tempActions.add(new UpdateZipAction(this, each.getKey(), update.source, update.checksum));
       }
       else {
         tempActions.add(new UpdateAction(this, each.getKey(), update.source, update.checksum, update.move));
@@ -286,7 +286,7 @@ public class Patch {
                result != null &&
                ValidationResult.ALREADY_EXISTS_MESSAGE.equals(result.message) &&
                deletedPaths.contains(mapPath(action.getPath()))) {
-        // create action + the same element was deleted + validated as already exists
+        // do not warn about files which are going to be deleted
         result = null;
       }
 
@@ -311,19 +311,37 @@ public class Patch {
       if (each.shouldApply(toDir, options)) actionsToProcess.add(each);
     }
 
-    forEach(actionsToProcess, "Backing up files...", ui, true, action -> action.backup(toDir, backupDir));
+    if (backupDir != null) {
+      forEach(actionsToProcess, "Backing up files...", ui, true, action -> action.backup(toDir, backupDir));
+    }
 
     List<PatchAction> appliedActions = new ArrayList<>();
+    List<File> createdDirectories = new ArrayList<>();
+    Set<File> createdOptionalFiles = new HashSet<>();
     boolean shouldRevert = false;
     boolean cancelled = false;
+
     try {
       forEach(actionsToProcess, "Applying patch...", ui, true, action -> {
-        if ((action instanceof CreateAction) &&
-            !new File(toDir, action.getPath()).getParentFile().exists()) {
+        if (action instanceof CreateAction && !new File(toDir, action.getPath()).getParentFile().exists()) {
           Runner.logger().info("Create action: " + action.getPath() + " skipped. The parent folder is absent.");
-        } else {
+        }
+        else if (action instanceof UpdateAction && !new File(toDir, action.getPath()).getParentFile().exists()) {
+          Runner.logger().info("Update action: " + action.getPath() + " skipped. The parent folder is absent.");
+        }
+        else {
           appliedActions.add(action);
           action.apply(patchFile, backupDir, toDir);
+
+          if (action instanceof CreateAction) {
+            File file = action.getFile(toDir);
+            if (file.isDirectory()) {
+              createdDirectories.add(0, file);
+            }
+            else if (action.isOptional()) {
+              createdOptionalFiles.add(file);
+            }
+          }
         }
       });
     }
@@ -339,10 +357,21 @@ public class Patch {
     }
 
     if (shouldRevert) {
-      revert(appliedActions, backupDir, rootDir, ui);
+      if (backupDir != null) {
+        revert(appliedActions, backupDir, rootDir, ui);
+      }
       appliedActions.clear();
 
       if (cancelled) throw new OperationCancelledException();
+    }
+    else {
+      for (File directory : createdDirectories) {
+        File[] children = directory.listFiles();
+        if (children != null && createdOptionalFiles.containsAll(Arrays.asList(children))) {
+          Runner.logger().info("Pruning empty directory: " + directory);
+          Utils.delete(directory);
+        }
+      }
     }
 
     // on OS X we need to update bundle timestamp to reset Info.plist caches.

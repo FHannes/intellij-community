@@ -269,12 +269,12 @@ public final class IconLoader {
 
   @Nullable
   private static ImageIcon checkIcon(final Image image, @NotNull URL url) {
-    if (image == null || image.getHeight(LabelHolder.ourFakeComponent) < 1) { // image wasn't loaded or broken
+    if (image == null || image.getHeight(null) < 1) { // image wasn't loaded or broken
       return null;
     }
 
     final Icon icon = getIcon(image);
-    if (icon != null && !isGoodSize(icon)) {
+    if (!isGoodSize(icon)) {
       LOG.error("Invalid icon: " + url); // # 22481
       return EMPTY_ICON;
     }
@@ -375,7 +375,7 @@ public final class IconLoader {
     return icon;
   }
 
-  private static final class CachedImageIcon extends JBUI.AuxJBIcon implements ScalableIcon {
+  private static final class CachedImageIcon extends JBUI.UpdatingJBIcon implements ScalableIcon {
     private volatile Object myRealIcon;
     private String myOriginalPath;
     private ClassLoader myClassLoader;
@@ -587,7 +587,7 @@ public final class IconLoader {
     }
   }
 
-  public abstract static class LazyIcon extends JBUI.AuxJBIcon {
+  public abstract static class LazyIcon extends JBUI.UpdatingJBIcon {
     private boolean myWasComputed;
     private Icon myIcon;
     private boolean isDarkVariant = USE_DARK_ICONS;

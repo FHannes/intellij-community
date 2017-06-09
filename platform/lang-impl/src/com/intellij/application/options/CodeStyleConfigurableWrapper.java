@@ -28,9 +28,6 @@ import org.jetbrains.annotations.NotNull;
 import javax.swing.*;
 import java.util.Set;
 
-/**
- * Created by Kirill.Skrygan on 1/11/2017.
- */
 public class CodeStyleConfigurableWrapper
   implements SearchableConfigurable, Configurable.NoMargin, Configurable.NoScroll, OptionsContainingConfigurable {
   private boolean myInitialResetInvoked;
@@ -118,7 +115,7 @@ public class CodeStyleConfigurableWrapper
   @Override
   @NotNull
   public String getId() {
-    return "preferences.sourceCode." + getDisplayName();
+    return getConfigurableId(getDisplayName());
   }
 
   @Override
@@ -148,5 +145,10 @@ public class CodeStyleConfigurableWrapper
       myPanel = new CodeStyleMainPanel(myOwner.ensureModel(), myFactory, canBeShared());
     }
     return myPanel.processListOptions();
+  }
+
+  @NotNull
+  public static String getConfigurableId(String configurableDisplayName) {
+    return "preferences.sourceCode." + configurableDisplayName;
   }
 }

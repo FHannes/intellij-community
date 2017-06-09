@@ -2,12 +2,6 @@
  * Copyright (c) 2000-2006 JetBrains s.r.o. All Rights Reserved.
  */
 
-/*
- * Created by IntelliJ IDEA.
- * User: Anna.Kozlova
- * Date: 07-Aug-2006
- * Time: 20:34:37
- */
 package com.intellij.codeInspection;
 
 import com.intellij.JavaTestUtil;
@@ -15,7 +9,7 @@ import com.intellij.codeInspection.equalsAndHashcode.EqualsAndHashcode;
 import com.intellij.testFramework.InspectionTestCase;
 
 public class EqualsAndHashCodeTest extends InspectionTestCase {
-  private final EqualsAndHashcode myTool = new EqualsAndHashcode();
+  private EqualsAndHashcode myTool = new EqualsAndHashcode();
 
   @Override
   protected String getTestDataPath() {
@@ -26,6 +20,12 @@ public class EqualsAndHashCodeTest extends InspectionTestCase {
     doTest("equalsAndHashcode/" + getTestName(true), myTool);
   }
 
+
+  @Override
+  protected void tearDown() throws Exception {
+    myTool = null;
+    super.tearDown();
+  }
 
   public void testInnerClass() throws Exception {
     doTest();

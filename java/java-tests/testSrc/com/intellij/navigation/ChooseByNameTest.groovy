@@ -15,6 +15,7 @@
  */
 package com.intellij.navigation
 
+import com.intellij.codeInsight.JavaProjectCodeInsightSettings
 import com.intellij.ide.actions.GotoFileItemProvider
 import com.intellij.ide.util.gotoByName.*
 import com.intellij.lang.java.JavaLanguage
@@ -25,10 +26,8 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.util.Computable
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.CommonClassNames
-import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.ProjectScope
 import com.intellij.testFramework.fixtures.LightCodeInsightFixtureTestCase
 import com.intellij.util.Consumer
@@ -39,7 +38,6 @@ import org.jetbrains.plugins.groovy.lang.psi.GroovyFile
 import javax.swing.*
 
 import static com.intellij.testFramework.EdtTestUtil.runInEdtAndWait
-
 /**
  * @author peter
  */
@@ -58,7 +56,16 @@ class ChooseByNameTest extends LightCodeInsightFixtureTestCase {
     def camelMatch = myFixture.addClass("class UberInstructionUxTopicInterface {}")
     def middleMatch = myFixture.addClass("class BaseUiUtil {}")
     def elements = getPopupElements(new GotoClassModel2(project), "uiuti")
-    assert elements == [startMatch, wordSkipMatch, camelMatch, ChooseByNameBase.NON_PREFIX_SEPARATOR, middleMatch]
+    assert elements == [startMatch, wordSkipMatch, camelMatch, middleMatch]
+  }
+
+  void "test disprefer start matches when prefix starts with asterisk"() {
+    def startMatch = myFixture.addClass('class ITable {}')
+    def endMatch = myFixture.addClass('class HappyHippoIT {}')
+    def camelStartMatch = myFixture.addClass('class IntelligentTesting {}')
+    def camelMiddleMatch = myFixture.addClass('class VeryIntelligentTesting {}')
+
+    assert getPopupElements(new GotoClassModel2(project), "*IT") == [endMatch, startMatch, camelStartMatch, camelMiddleMatch]
   }
 
   void "test annotation syntax"() {
@@ -124,7 +131,7 @@ class Intf {
       xxx1 = intf.findMethodsByName('_xxx1', false)
       xxx2 = intf.findMethodsByName('xxx2', false)
     }
-    assert elements == [xxx2, ChooseByNameBase.NON_PREFIX_SEPARATOR, xxx1]
+    assert elements == [xxx2, xxx1]
   }
 
   void "test prefer exact extension matches"() {
@@ -244,6 +251,7 @@ class Intf {
     assert getPopupElements(model, 'Bar at line 2') == [file]
     assert getPopupElements(model, 'Bar 2:39') == [file]
     assert getPopupElements(model, 'Bar#L2') == [file]
+    assert getPopupElements(model, 'Bar?l=2') == [file]
   }
 
   void "test dollar"() {
@@ -344,7 +352,7 @@ class Intf {
     def popup = createPopup(new GotoClassModel2(project))
     def popupElements = calcPopupElements(popup, 'PsiCl', false)
 
-    assert popupElements == [wanted, ChooseByNameBase.NON_PREFIX_SEPARATOR, smth]
+    assert popupElements == [wanted, smth]
     assert popup.calcSelectedIndex(popupElements.toArray(), 'PsiCl') == 0
   }
 
@@ -353,6 +361,17 @@ class Intf {
     def file = ReadAction.compute { myFixture.javaFacade.findClass(CommonClassNames.JAVA_LANG_OBJECT, scope).containingFile }
     def elements = getPopupElements(new GotoFileModel(project), "Object.class", true)
     assert file in elements
+  }
+
+  void "test classes sorted by qualified name dispreferring excluded from import and completion"() {
+    def foo = myFixture.addClass('package foo; class List {}')
+    def bar = myFixture.addClass('package bar; class List {}')
+
+    def popup = createPopup(new GotoClassModel2(project), myFixture.addClass('class Context {}'))
+    assert calcPopupElements(popup, "List", false) == [bar, foo]
+
+    JavaProjectCodeInsightSettings.setExcludedNames(project, testRootDisposable, 'bar')
+    assert calcPopupElements(popup, "List", false) == [foo, bar]
   }
 
   private List<Object> getPopupElements(ChooseByNameModel model, String text, boolean checkboxState = false) {
@@ -383,7 +402,7 @@ class Intf {
 
     runInEdtAndWait {
       def popup = myPopup = ChooseByNamePopup.createPopup(project, model, (PsiElement)context, "")
-      Disposer.register(testRootDisposable, { popup.close(false) } as Disposable)
+      Disposer.register(myFixture.testRootDisposable, { popup.close(false) } as Disposable)
     }
     myPopup
   }

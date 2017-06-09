@@ -42,7 +42,7 @@ import java.awt.*;
  * @author Anton Katilin
  * @author Vladimir Kondratyev
  */
-public final class ActionPopupMenuImpl extends ApplicationActivationListener.Adapter implements ActionPopupMenu {
+public final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationActivationListener {
 
   private final MyMenu myMenu;
   private final ActionManagerImpl myManager;
@@ -146,10 +146,6 @@ public final class ActionPopupMenuImpl extends ApplicationActivationListener.Ada
         myManager.addActionPopup(ActionPopupMenuImpl.this);
       }
     }
-  }
-
-  @Override
-  public void applicationActivated(IdeFrame ideFrame) {
   }
 
   @Override

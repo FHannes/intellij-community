@@ -18,6 +18,7 @@ package com.jetbrains.python.run;
 import com.google.common.collect.Lists;
 import com.intellij.diagnostic.logging.LogConfigurationPanel;
 import com.intellij.execution.ExecutionBundle;
+import com.intellij.execution.ExecutionException;
 import com.intellij.execution.configuration.AbstractRunConfiguration;
 import com.intellij.execution.configuration.EnvironmentVariablesComponent;
 import com.intellij.execution.configurations.*;
@@ -214,6 +215,7 @@ public abstract class AbstractPythonRunConfiguration<T extends AbstractPythonRun
     return sdkHome;
   }
 
+  @Nullable
   public Sdk getSdk() {
     if (myUseModuleSdk) {
       return PythonSdkType.findPythonSdk(getModule());
@@ -298,6 +300,15 @@ public abstract class AbstractPythonRunConfiguration<T extends AbstractPythonRun
   @Nullable
   public Module getModule() {
     return getConfigurationModule().getModule();
+  }
+
+  @NotNull
+  public final Module getModuleNotNull() throws ExecutionException {
+    final Module module = getModule();
+    if (module == null) {
+      throw new ExecutionException("No module set for configuration, please choose one");
+    }
+    return module;
   }
 
   public boolean isUseModuleSdk() {

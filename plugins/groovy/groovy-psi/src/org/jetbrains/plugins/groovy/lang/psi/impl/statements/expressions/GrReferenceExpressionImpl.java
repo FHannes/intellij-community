@@ -53,11 +53,11 @@ import org.jetbrains.plugins.groovy.lang.psi.api.types.GrTypeArgumentList;
 import org.jetbrains.plugins.groovy.lang.psi.dataFlow.types.TypeInferenceHelper;
 import org.jetbrains.plugins.groovy.lang.psi.impl.*;
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.literals.GrLiteralImpl;
-import org.jetbrains.plugins.groovy.lang.psi.typeEnhancers.GrExpressionTypeCalculator;
 import org.jetbrains.plugins.groovy.lang.psi.typeEnhancers.GrReferenceTypeEnhancer;
 import org.jetbrains.plugins.groovy.lang.psi.util.*;
 import org.jetbrains.plugins.groovy.lang.resolve.DependentResolver;
 import org.jetbrains.plugins.groovy.lang.resolve.ResolveUtil;
+import org.jetbrains.plugins.groovy.lang.typing.GrTypeCalculator;
 
 import java.util.*;
 
@@ -120,12 +120,6 @@ public class GrReferenceExpressionImpl extends GrReferenceElementImpl<GrExpressi
     }
 
     return null;
-  }
-
-  @Override
-  @NotNull
-  public PsiReference getReference() {
-    return this;
   }
 
   @Override
@@ -200,7 +194,6 @@ public class GrReferenceExpressionImpl extends GrReferenceElementImpl<GrExpressi
     return "Reference expression";
   }
 
-
   @Override
   @Nullable
   public PsiType getNominalType() {
@@ -208,8 +201,8 @@ public class GrReferenceExpressionImpl extends GrReferenceElementImpl<GrExpressi
   }
 
   @Nullable
-  private PsiType getNominalType(boolean forceRValue) {
-    final GroovyResolveResult resolveResult = PsiImplUtil.extractUniqueResult(multiResolve(false, forceRValue));
+  private PsiType getNominalType(boolean rValue) {
+    final GroovyResolveResult resolveResult = PsiImplUtil.extractUniqueResult(multiResolve(false, rValue));
     PsiElement resolved = resolveResult.getElement();
 
     for (GrReferenceTypeEnhancer enhancer : GrReferenceTypeEnhancer.EP_NAME.getExtensions()) {
@@ -324,6 +317,7 @@ public class GrReferenceExpressionImpl extends GrReferenceElementImpl<GrExpressi
     if (qualifier instanceof GrReferenceExpression) {
       if (((GrReferenceExpression)qualifier).resolve() instanceof PsiClass) return null;
     }
+    if (ref.getDotTokenType() == GroovyTokenTypes.mSPREAD_DOT) return null;
     if (qualifier != null) {
       PsiType qType = qualifier.getType();
       if (qType instanceof PsiClassType) {
@@ -364,15 +358,13 @@ public class GrReferenceExpressionImpl extends GrReferenceElementImpl<GrExpressi
   }
 
   @Nullable
-  private static PsiType calculateType(@NotNull GrReferenceExpressionImpl refExpr, boolean forceRValue) {
-    final GroovyResolveResult[] results = refExpr.multiResolve(false, forceRValue);
+  private static PsiType calculateType(@NotNull GrReferenceExpressionImpl refExpr) {
+    final GroovyResolveResult[] results = refExpr.multiResolve(false, true);
     final GroovyResolveResult result = PsiImplUtil.extractUniqueResult(results);
     final PsiElement resolved = result.getElement();
 
-    for (GrExpressionTypeCalculator calculator : GrExpressionTypeCalculator.EP_NAME.getExtensions()) {
-      PsiType type = calculator.calculateType(refExpr, resolved);
-      if (type != null) return type;
-    }
+    PsiType typeFromCalculators = GrTypeCalculator.getTypeFromCalculators(refExpr);
+    if (typeFromCalculators != null) return typeFromCalculators;
 
     if (ResolveUtil.isClassReference(refExpr)) {
       GrExpression qualifier = refExpr.getQualifier();
@@ -399,7 +391,7 @@ public class GrReferenceExpressionImpl extends GrReferenceElementImpl<GrExpressi
       }
     }
 
-    final PsiType nominal = refExpr.getNominalType(forceRValue);
+    final PsiType nominal = refExpr.getNominalType(true);
 
     Boolean reassigned = GrReassignedLocalVarsChecker.isReassignedVar(refExpr);
     if (reassigned != null && reassigned.booleanValue()) {
@@ -452,13 +444,7 @@ public class GrReferenceExpressionImpl extends GrReferenceElementImpl<GrExpressi
   @Nullable
   @Override
   public PsiType getType() {
-    return TypeInferenceHelper.getCurrentContext().getExpressionType(this, e -> calculateType(e, false));
-  }
-
-  @Nullable
-  @Override
-  public PsiType getRValueType() {
-    return calculateType(this, true);
+    return TypeInferenceHelper.getCurrentContext().getExpressionType(this, e -> calculateType(e));
   }
 
   @Override
@@ -533,7 +519,6 @@ public class GrReferenceExpressionImpl extends GrReferenceElementImpl<GrExpressi
     GroovyResolveResult[] results = multiResolve(false);
 
     for (GroovyResolveResult result : results) {
-      if (!result.isValidResult()) continue;
       PsiElement baseTarget = result.getElement();
       if (baseTarget == null) continue;
       if (getManager().areElementsEquivalent(element, baseTarget)) {
@@ -617,7 +602,8 @@ public class GrReferenceExpressionImpl extends GrReferenceElementImpl<GrExpressi
             super.visitElement(((GrMethodCall)element).getInvokedExpression());
           }
           else if (element instanceof GrParenthesizedExpression) {
-            super.visitElement(((GrParenthesizedExpression)element).getOperand());
+            GrExpression operand = ((GrParenthesizedExpression)element).getOperand();
+            if (operand != null) super.visitElement(operand);
           }
         }
 

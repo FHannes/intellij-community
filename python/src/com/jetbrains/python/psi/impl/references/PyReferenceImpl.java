@@ -33,6 +33,7 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.PlatformIcons;
 import com.intellij.util.ProcessingContext;
+import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.python.PyNames;
 import com.jetbrains.python.codeInsight.controlflow.ControlFlowCache;
 import com.jetbrains.python.codeInsight.controlflow.ScopeOwner;
@@ -46,6 +47,7 @@ import com.jetbrains.python.psi.types.PyType;
 import com.jetbrains.python.psi.types.TypeEvalContext;
 import com.jetbrains.python.pyi.PyiUtil;
 import com.jetbrains.python.refactoring.PyDefUseUtil;
+import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -269,6 +271,16 @@ public class PyReferenceImpl implements PsiReferenceEx, PsiPolyVariantReference 
           // TODO: Use the results from the processor as a cache for resolving to latest defs
           final ResolveResultList latestDefs = resolveToLatestDefs(instructions, realContext, referencedName, typeEvalContext);
           if (!latestDefs.isEmpty()) {
+            if (ContainerUtil.exists(latestDefs, result -> result.getElement() instanceof PyCallable)) {
+              return StreamEx
+                .of(processor.getResults().keySet())
+                .nonNull()
+                .filter(element -> PyiUtil.isOverload(element, typeEvalContext))
+                .map(element -> new RatedResolveResult(getRate(element, typeEvalContext), element))
+                .prepend(latestDefs)
+                .toList();
+            }
+
             return latestDefs;
           }
           else if (resolvedOwner instanceof PyClass || instructions.isEmpty() && allInOwnScopeComprehensions(resolvedElements)) {
@@ -411,8 +423,8 @@ public class PyReferenceImpl implements PsiReferenceEx, PsiPolyVariantReference 
     return realContext.getContainingFile();
   }
 
-  public static int getRate(PsiElement elt, @NotNull TypeEvalContext context) {
-    int rate;
+  public static int getRate(@Nullable PsiElement elt, @NotNull TypeEvalContext context) {
+    final int rate;
     if (elt instanceof PyTargetExpression && context.maySwitchToAST(elt)) {
       final PsiElement parent = elt.getParent();
       if (parent instanceof PyGlobalStatement || parent instanceof PyNonlocalStatement) {
@@ -427,6 +439,9 @@ public class PyReferenceImpl implements PsiReferenceEx, PsiPolyVariantReference 
     }
     else if (elt instanceof PyFile) {
       rate = RatedResolveResult.RATE_HIGH;
+    }
+    else if (elt != null && !PyiUtil.isInsideStub(elt) && PyiUtil.isOverload(elt, context)) {
+      rate = RatedResolveResult.RATE_LOW;
     }
     else {
       rate = RatedResolveResult.RATE_NORMAL;
@@ -637,7 +652,19 @@ public class PyReferenceImpl implements PsiReferenceEx, PsiPolyVariantReference 
 
     // include our own names
     final int underscores = PyUtil.getInitialUnderscores(element.getName());
-    final CompletionVariantsProcessor processor = new CompletionVariantsProcessor(element);
+    final PyBuiltinCache builtinCache = PyBuiltinCache.getInstance(element);
+    final CompletionVariantsProcessor processor = new CompletionVariantsProcessor(element, e -> {
+      if (builtinCache.isBuiltin(e)) {
+        final String name = e instanceof PyElement ? ((PyElement)e).getName() : null;
+        if (e instanceof PyImportElement) {
+          return false;
+        }
+        if (name != null && PyUtil.getInitialUnderscores(name) == 1) {
+          return false;
+        }
+      }
+      return true;
+    }, null);
     final ScopeOwner owner = realContext instanceof ScopeOwner ? (ScopeOwner)realContext : ScopeUtil.getScopeOwner(realContext);
     if (owner != null) {
       PyResolveUtil.scopeCrawlUp(processor, owner, null, null);
@@ -648,7 +675,7 @@ public class PyReferenceImpl implements PsiReferenceEx, PsiPolyVariantReference 
     KeywordArgumentCompletionUtil.collectFunctionArgNames(element, ret, TypeEvalContext.codeCompletion(element.getProject(), element.getContainingFile()));
 
     // include builtin names
-    final PyFile builtinsFile = PyBuiltinCache.getInstance(element).getBuiltinsFile();
+    final PyFile builtinsFile = builtinCache.getBuiltinsFile();
     if (builtinsFile != null) {
       PyResolveUtil.scopeCrawlUp(processor, builtinsFile, null, null);
     }

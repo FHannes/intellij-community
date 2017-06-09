@@ -35,7 +35,6 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.*;
 import com.intellij.psi.PsiDocumentManager;
-import com.intellij.psi.codeStyle.CodeStyleSchemes;
 import com.intellij.psi.codeStyle.CodeStyleSettings;
 import com.intellij.psi.codeStyle.CodeStyleSettingsManager;
 import com.intellij.psi.impl.source.PostprocessReformattingAspect;
@@ -106,7 +105,7 @@ public abstract class UsefulTestCase extends TestCase {
       CodeInsightSettings defaultSettings = new CodeInsightSettings();
       Element oldS = new Element("temp");
       defaultSettings.writeExternal(oldS);
-      DEFAULT_SETTINGS_EXTERNALIZED = JDOMUtil.writeElement(oldS, "\n");
+      DEFAULT_SETTINGS_EXTERNALIZED = JDOMUtil.writeElement(oldS);
     }
     catch (Exception e) {
       throw new RuntimeException(e);
@@ -130,6 +129,9 @@ public abstract class UsefulTestCase extends TestCase {
     }
     boolean isStressTest = isStressTest();
     ApplicationInfoImpl.setInStressTest(isStressTest);
+    if (isPerformanceTest()) {
+      Timings.getStatistics();
+    }
     // turn off Disposer debugging for performance tests
     Disposer.setDebugMode(!isStressTest);
   }
@@ -256,7 +258,7 @@ public abstract class UsefulTestCase extends TestCase {
         try {
           Element newS = new Element("temp");
           settings.writeExternal(newS);
-          Assert.assertEquals("Code insight settings damaged", DEFAULT_SETTINGS_EXTERNALIZED, JDOMUtil.writeElement(newS, "\n"));
+          Assert.assertEquals("Code insight settings damaged", DEFAULT_SETTINGS_EXTERNALIZED, JDOMUtil.writeElement(newS));
         }
         catch (AssertionError error) {
           CodeInsightSettings clean = new CodeInsightSettings();
@@ -293,7 +295,6 @@ public abstract class UsefulTestCase extends TestCase {
 
   @NotNull
   protected CodeStyleSettings getCurrentCodeStyleSettings() {
-    if (CodeStyleSchemes.getInstance().getCurrentScheme() == null) return new CodeStyleSettings();
     return CodeStyleSettingsManager.getInstance().getCurrentSettings();
   }
 
@@ -807,8 +808,8 @@ public abstract class UsefulTestCase extends TestCase {
     Element newS = new Element("temp");
     settings.writeExternal(newS);
 
-    String newString = JDOMUtil.writeElement(newS, "\n");
-    String oldString = JDOMUtil.writeElement(oldS, "\n");
+    String newString = JDOMUtil.writeElement(newS);
+    String oldString = JDOMUtil.writeElement(oldS);
     Assert.assertEquals("Code style settings damaged", oldString, newString);
   }
 
@@ -867,7 +868,44 @@ public abstract class UsefulTestCase extends TestCase {
    * @param expectedErrorMsg expected error message
    */
   protected void assertException(AbstractExceptionCase exceptionCase, @Nullable String expectedErrorMsg) throws Throwable {
+    //noinspection unchecked
     assertExceptionOccurred(true, exceptionCase, expectedErrorMsg);
+  }
+
+  /**
+   * Checks that the code block throws an exception of the specified class.
+   *
+   * @param exceptionClass   Expected exception type
+   * @param runnable         Block annotated with some exception type
+   */
+  public static <T extends Throwable> void assertThrows(@NotNull Class<? extends Throwable> exceptionClass,
+                                                           @NotNull ThrowableRunnable<T> runnable) throws T {
+    assertThrows(exceptionClass, null, runnable);
+  }
+
+  /**
+   * Checks that the code block throws an exception of the specified class with expected error msg.
+   * If expected error message is null it will not be checked.
+   *
+   * @param exceptionClass   Expected exception type
+   * @param expectedErrorMsg expected error message, of any
+   * @param runnable         Block annotated with some exception type
+   */
+  @SuppressWarnings({"unchecked", "SameParameterValue"})
+  public static <T extends Throwable> void assertThrows(@NotNull Class<? extends Throwable> exceptionClass,
+                                                        @Nullable String expectedErrorMsg,
+                                                        @NotNull ThrowableRunnable<T> runnable) throws T {
+    assertExceptionOccurred(true, new AbstractExceptionCase() {
+      @Override
+      public Class<Throwable> getExpectedExceptionClass() {
+        return (Class<Throwable>)exceptionClass;
+      }
+
+      @Override
+      public void tryClosure() throws Throwable {
+        runnable.run();
+      }
+    }, expectedErrorMsg);
   }
 
   /**
@@ -875,7 +913,7 @@ public abstract class UsefulTestCase extends TestCase {
    *
    * @param exceptionCase Block annotated with some exception type
    */
-  protected void assertNoException(final AbstractExceptionCase exceptionCase) throws Throwable {
+  protected <T extends Throwable> void assertNoException(final AbstractExceptionCase<T> exceptionCase) throws T {
     assertExceptionOccurred(false, exceptionCase, null);
   }
 
@@ -890,9 +928,9 @@ public abstract class UsefulTestCase extends TestCase {
     assertNull(throwableName);
   }
 
-  private static void assertExceptionOccurred(boolean shouldOccur,
-                                              AbstractExceptionCase exceptionCase,
-                                              String expectedErrorMsg) throws Throwable {
+  private static <T extends Throwable> void assertExceptionOccurred(boolean shouldOccur,
+                                                                    AbstractExceptionCase<T> exceptionCase,
+                                                                    String expectedErrorMsg) throws T {
     boolean wasThrown = false;
     try {
       exceptionCase.tryClosure();
@@ -992,8 +1030,11 @@ public abstract class UsefulTestCase extends TestCase {
   public static final String IDEA_MARKER_CLASS = "com.intellij.openapi.roots.IdeaModifiableModelsProvider";
   //</editor-fold>
 
-  public class TestDisposable implements Disposable {
+  protected class TestDisposable implements Disposable {
     private volatile boolean myDisposed;
+
+    public TestDisposable() {
+    }
 
     @Override
     public void dispose() {

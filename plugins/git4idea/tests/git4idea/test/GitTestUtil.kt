@@ -17,10 +17,7 @@
 
 package git4idea.test
 
-import com.intellij.notification.Notification
-import com.intellij.notification.NotificationType
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.components.service
+import com.intellij.dvcs.push.PushSpec
 import com.intellij.openapi.extensions.Extensions
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.Executor.*
@@ -28,17 +25,19 @@ import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vcs.impl.ProjectLevelVcsManagerImpl
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.testFramework.PlatformTestCase
 import com.intellij.vcs.log.VcsLogObjectsFactory
 import com.intellij.vcs.log.VcsLogProvider
 import com.intellij.vcs.log.VcsRef
+import git4idea.GitRemoteBranch
+import git4idea.GitStandardRemoteBranch
 import git4idea.GitUtil
 import git4idea.GitVcs
 import git4idea.log.GitLogProvider
+import git4idea.push.GitPushSource
+import git4idea.push.GitPushTarget
 import git4idea.repo.GitRepository
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
-import org.picocontainer.MutablePicoContainer
 import java.io.File
 
 const val USER_NAME = "John Doe"
@@ -136,22 +135,6 @@ fun assumeSupportedGitVersion(vcs: GitVcs) {
   assumeTrue("Unsupported Git version: " + version, version.isSupported)
 }
 
-inline fun <reified Int : Any, reified Impl : Int> overrideService(project: Project): Impl {
-  val key = Int::class.java.name
-  val picoContainer = project.picoContainer as MutablePicoContainer
-  picoContainer.unregisterComponent(key)
-  picoContainer.registerComponentImplementation(key, Impl::class.java)
-  return project.service<Int>() as Impl
-}
-
-inline fun <reified Int : Any, reified Impl : Int> overrideService(): Impl {
-  val key = Int::class.java.name
-  val picoContainer = ApplicationManager.getApplication().picoContainer as MutablePicoContainer
-  picoContainer.unregisterComponent(key)
-  picoContainer.registerComponentImplementation(key, Impl::class.java)
-  return service<Int>() as Impl
-}
-
 fun readAllRefs(root: VirtualFile, objectsFactory: VcsLogObjectsFactory): Set<VcsRef> {
   val refs = git("log --branches --tags --no-walk --format=%H%d --decorate=full").lines()
   val result = mutableSetOf<VcsRef>()
@@ -167,28 +150,31 @@ fun makeCommit(file: String): String {
   return last()
 }
 
-fun assertNotification(type: NotificationType, title: String, content: String, actual: Notification): Notification {
-  assertEquals("Incorrect notification type: " + tos(actual), type, actual.type)
-  assertEquals("Incorrect notification title: " + tos(actual), title, actual.title)
-  assertEquals("Incorrect notification content: " + tos(actual), cleanupForAssertion(content), cleanupForAssertion(actual.content))
-  return actual
-}
-
-fun cleanupForAssertion(content: String): String {
-  val nobr = content.replace("<br/>", "\n").replace("<br>", "\n").replace("<hr/>", "\n")
-  return nobr.lines()
-    .map { line -> line.replace(" href='[^']*'".toRegex(), "").trim({ it <= ' ' }) }
-    .filter { line -> !line.isEmpty() }
-    .joinToString(" ")
-}
-
-private fun tos(notification: Notification): String {
-  return "${notification.title}|${notification.content}"
-}
-
 fun findGitLogProvider(project: Project): GitLogProvider {
   val providers = Extensions.getExtensions(VcsLogProvider.LOG_PROVIDER_EP, project)
     .filter { provider -> provider.supportedVcs == GitVcs.getKey() }
   assertEquals("Incorrect number of GitLogProviders", 1, providers.size)
   return providers[0] as GitLogProvider
 }
+
+fun makePushSpec(repository: GitRepository, from: String, to: String): PushSpec<GitPushSource, GitPushTarget> {
+  val source = repository.branches.findLocalBranch(from)!!
+  var target: GitRemoteBranch? = repository.branches.findBranchByName(to) as GitRemoteBranch?
+  val newBranch: Boolean
+  if (target == null) {
+    val firstSlash = to.indexOf('/')
+    val remote = GitUtil.findRemoteByName(repository, to.substring(0, firstSlash))!!
+    target = GitStandardRemoteBranch(remote, to.substring(firstSlash + 1))
+    newBranch = true
+  }
+  else {
+    newBranch = false
+  }
+  return PushSpec(GitPushSource.create(source), GitPushTarget(target, newBranch))
+}
+
+fun GitRepository.resolveConflicts() {
+  cd(this)
+  git("add -u .")
+}
+

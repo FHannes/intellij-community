@@ -101,7 +101,7 @@ public class SubstitutorComputer {
     else if (parent instanceof GrAssignmentExpression && myPlaceToInferContext.equals(((GrAssignmentExpression)parent).getRValue())) {
       PsiElement lValue = PsiUtil.skipParentheses(((GrAssignmentExpression)parent).getLValue(), false);
       if ((lValue instanceof GrExpression) && !(lValue instanceof GrIndexProperty)) {
-        return ((GrExpression)lValue).getType();
+        return ((GrExpression)lValue).getNominalType();
       }
       else {
         return null;
@@ -225,9 +225,11 @@ public class SubstitutorComputer {
       return argType;
     }
 
-    if (!TypesUtil.isAssignable(TypeConversionUtil.erasure(paramType), argType, myPlace) &&
-        TypesUtil.isAssignableByMethodCallConversion(paramType, argType, myPlace)) {
-      return paramType;
+    if (!TypesUtil.isAssignable( TypeConversionUtil.erasure(paramType), argType, myPlace)) {
+      if (TypesUtil.isAssignableByMethodCallConversion(paramType, argType, myPlace)) {
+        return paramType;
+      }
+      return null;
     }
     return argType;
   }

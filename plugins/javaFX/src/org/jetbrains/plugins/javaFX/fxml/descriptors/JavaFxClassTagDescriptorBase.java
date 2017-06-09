@@ -26,10 +26,6 @@ import org.jetbrains.plugins.javaFX.fxml.JavaFxPsiUtil;
 
 import java.util.*;
 
-/**
- * User: anna
- * Date: 1/9/13
- */
 public abstract class JavaFxClassTagDescriptorBase implements XmlElementDescriptor, Validator<XmlTag> {
   private final String myName;
 
@@ -303,6 +299,7 @@ public abstract class JavaFxClassTagDescriptorBase implements XmlElementDescript
   public void init(PsiElement element) {
   }
 
+  @NotNull
   @Override
   public Object[] getDependences() {
     return ArrayUtil.EMPTY_OBJECT_ARRAY;

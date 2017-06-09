@@ -621,7 +621,7 @@ interface TxANotAnno {}
   }
 
   void testLiveTemplateOrdering() {
-    LiveTemplateCompletionContributor.setShowTemplatesInTests(true, getTestRootDisposable())
+    LiveTemplateCompletionContributor.setShowTemplatesInTests(true, myFixture.getTestRootDisposable())
     checkPreferredItems(0, 'return')
     assert lookup.items.find { it.lookupString == 'ritar'} != null
   }
@@ -774,6 +774,20 @@ class ContainerUtil extends ContainerUtilRt {
     checkPreferredItems 0, 'add', 'add', 'addAll', 'addAll'
     assert LookupElementPresentation.renderElement(myFixture.lookupElements[1]).tailText.contains('int index')
     assert LookupElementPresentation.renderElement(myFixture.lookupElements[3]).tailText.contains('int index')
+  }
+
+  void testPreferExpectedTypeConstantOverSameNamedClass() {
+    myFixture.addClass("package another; public class JSON {}")
+    checkPreferredItems 0, 'Point.JSON', 'JSON'
+  }
+
+  void testPreferExpectedEnumConstantInAnnotationAttribute() {
+    checkPreferredItems 0, 'MyEnum.bar', 'MyEnum', 'MyEnum.foo'
+    def unrelatedItem = myFixture.lookupElementStrings.findIndexOf { it.contains('Throwable') }
+    incUseCount(lookup, unrelatedItem)
+    //nothing should change
+    assertPreferredItems 0, 'MyEnum.bar', 'MyEnum', 'MyEnum.foo'
+    
   }
 
 }

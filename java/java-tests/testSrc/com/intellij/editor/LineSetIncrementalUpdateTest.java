@@ -14,12 +14,6 @@
  * limitations under the License.
  */
 
-/*
- * Created by IntelliJ IDEA.
- * User: Maxim.Mossienko
- * Date: Nov 22, 2006
- * Time: 5:58:57 PM
- */
 package com.intellij.editor;
 
 import com.intellij.openapi.command.WriteCommandAction;
@@ -139,6 +133,6 @@ public class LineSetIncrementalUpdateTest extends LightCodeInsightTestCase {
           document.insertString(offset, "b");
         }
       });
-    }).cpuBound().assertTiming();
+    }).assertTiming();
   }
 }

@@ -195,7 +195,11 @@ public class TemplateSettings implements PersistentStateComponent<TemplateSettin
       @Nullable
       @Override
       public TemplateGroup readScheme(@NotNull Element element, boolean duringLoad) {
-        return readTemplateFile(element, element.getAttributeValue("group"), false, false, getClass().getClassLoader());
+        TemplateGroup group = readTemplateFile(element, element.getAttributeValue("group"), false, false, getClass().getClassLoader());
+        if (group != null) {
+          group.setModified(false);
+        }
+        return group;
       }
 
       @NotNull
@@ -430,7 +434,7 @@ public class TemplateSettings implements PersistentStateComponent<TemplateSettin
 
   @NotNull
   private static TemplateImpl createTemplate(@NotNull String key, String string, @NotNull String group, String description, @Nullable String shortcut, String id) {
-    TemplateImpl template = new TemplateImpl(key, string, group);
+    TemplateImpl template = new TemplateImpl(key, string, group, false);
     template.setId(id);
     template.setDescription(description);
     if (TAB.equals(shortcut)) {

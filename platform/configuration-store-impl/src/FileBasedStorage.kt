@@ -19,7 +19,7 @@ import com.intellij.notification.Notification
 import com.intellij.notification.NotificationType
 import com.intellij.notification.Notifications
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.runWriteAction
+import com.intellij.openapi.application.runUndoTransparentWriteAction
 import com.intellij.openapi.components.RoamingType
 import com.intellij.openapi.components.StateStorage
 import com.intellij.openapi.components.StoragePathMacros
@@ -28,6 +28,7 @@ import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil
 import com.intellij.openapi.util.JDOMUtil
 import com.intellij.openapi.util.io.BufferExposingByteArrayOutputStream
+import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.ArrayUtil
@@ -37,9 +38,9 @@ import com.intellij.util.io.exists
 import com.intellij.util.io.readChars
 import com.intellij.util.io.systemIndependentPath
 import com.intellij.util.loadElement
+import com.intellij.util.toBufferExposingByteArray
 import org.jdom.Element
 import org.jdom.JDOMException
-import org.jdom.Parent
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
@@ -196,10 +197,10 @@ fun writeFile(file: Path?, requestor: Any, virtualFile: VirtualFile?, element: E
     virtualFile!!
   }
 
-  if (LOG.isDebugEnabled || ApplicationManager.getApplication().isUnitTestMode) {
+  if ((LOG.isDebugEnabled || ApplicationManager.getApplication().isUnitTestMode) && !FileUtilRt.isTooLarge(result.length)) {
     val content = element.toBufferExposingByteArray(lineSeparator.separatorString)
     if (isEqualContent(result, lineSeparator, content, prependXmlProlog)) {
-      throw IllegalStateException("Content equals, but it must be handled not on this level: ${result.name}")
+      throw IllegalStateException("Content equals, but it must be handled not on this level: file ${result.name}, content\n${content.toByteArray().toString(StandardCharsets.UTF_8)}")
     }
     else if (DEBUG_LOG != null && ApplicationManager.getApplication().isUnitTestMode) {
       DEBUG_LOG = "${result.path}:\n$content\nOld Content:\n${LoadTextUtil.loadText(result)}"
@@ -236,7 +237,7 @@ private fun doWrite(requestor: Any, file: VirtualFile, content: Any, lineSeparat
     throw ReadOnlyModificationException(file, StateStorage.SaveSession { doWrite(requestor, file, byteArray, lineSeparator, prependXmlProlog) })
   }
 
-  runWriteAction {
+  runUndoTransparentWriteAction {
     file.getOutputStream(requestor).use { out ->
       if (prependXmlProlog) {
         out.write(XML_PROLOG)
@@ -250,12 +251,6 @@ private fun doWrite(requestor: Any, file: VirtualFile, content: Any, lineSeparat
       }
     }
   }
-}
-
-internal fun Parent.toBufferExposingByteArray(lineSeparator: String = "\n"): BufferExposingByteArrayOutputStream {
-  val out = BufferExposingByteArrayOutputStream(512)
-  JDOMUtil.write(this, out, lineSeparator)
-  return out
 }
 
 internal fun detectLineSeparators(chars: CharSequence, defaultSeparator: LineSeparator?): LineSeparator {
@@ -292,7 +287,7 @@ private fun deleteFile(file: Path, requestor: Any, virtualFile: VirtualFile?) {
 }
 
 internal fun deleteFile(requestor: Any, virtualFile: VirtualFile) {
-  runWriteAction { virtualFile.delete(requestor) }
+  runUndoTransparentWriteAction { virtualFile.delete(requestor) }
 }
 
 internal class ReadOnlyModificationException(val file: VirtualFile, val session: StateStorage.SaveSession?) : RuntimeException("File is read-only: "+file)

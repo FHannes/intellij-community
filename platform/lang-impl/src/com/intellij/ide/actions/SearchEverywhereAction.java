@@ -69,7 +69,6 @@ import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.fileEditor.impl.EditorHistoryManager;
-import com.intellij.openapi.keymap.KeymapManager;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.keymap.MacKeymapUtil;
 import com.intellij.openapi.keymap.impl.ModifierKeyDoubleClickHandler;
@@ -116,6 +115,7 @@ import com.intellij.util.ui.EmptyIcon;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.StatusText;
 import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.components.BorderLayoutPanel;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -132,6 +132,7 @@ import java.util.List;
 import java.util.Vector;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static com.intellij.openapi.keymap.KeymapUtil.getActiveKeymapShortcuts;
 import static com.intellij.openapi.wm.IdeFocusManager.getGlobalInstance;
 
 /**
@@ -153,8 +154,9 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
   private static final int DEFAULT_MORE_STEP_COUNT = 15;
   public static final int MAX_SEARCH_EVERYWHERE_HISTORY = 50;
   public static final int MAX_TOP_HIT = 15;
-  private static final Logger LOG = Logger.getInstance("#" + SearchEverywhereAction.class.getName());
-  private static final Border RENDERER_BORDER = JBUI.Borders.empty(0, 0, 2, 0);
+  private static final Logger LOG = Logger.getInstance(SearchEverywhereAction.class);
+  private static final Border RENDERER_BORDER = JBUI.Borders.empty(1, 0);
+  private static final Border RENDERER_TITLE_BORDER = JBUI.Borders.emptyTop(3);
 
   private SearchEverywhereAction.MyListRenderer myRenderer;
   MySearchTextField myPopupField;
@@ -211,7 +213,12 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
 
   @Override
   public JComponent createCustomComponent(Presentation presentation) {
-    JPanel panel = JBUI.Panels.simplePanel();
+    JPanel panel = new BorderLayoutPanel() {
+      @Override
+      public Dimension getPreferredSize() {
+        return JBUI.size(25);
+      }
+    };
     panel.setOpaque(false);
 
     final JLabel label = new JBLabel(AllIcons.Actions.FindPlain) {
@@ -348,7 +355,7 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
 
   private static String getShortcut() {
     String shortcutText;
-    final Shortcut[] shortcuts = KeymapManager.getInstance().getActiveKeymap().getShortcuts(IdeActions.ACTION_SEARCH_EVERYWHERE);
+    final Shortcut[] shortcuts = getActiveKeymapShortcuts(IdeActions.ACTION_SEARCH_EVERYWHERE).getShortcuts();
     if (shortcuts.length == 0) {
       shortcutText = "Double " + (SystemInfo.isMac ? MacKeymapUtil.SHIFT : "Shift");
     } else {
@@ -1037,6 +1044,7 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
       private Accessible myAccessible;
       public MyAccessibleComponent(LayoutManager layout) {
         super(layout);
+        setOpaque(false);
       }
       void setAccessible(Accessible comp) {
         myAccessible = comp;
@@ -1078,6 +1086,7 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
       if (cmp == null) {
         if (value instanceof GotoActionModel.ActionWrapper) {
           cmp = myActionsRenderer.getListCellRendererComponent(list, new GotoActionModel.MatchedValue(((GotoActionModel.ActionWrapper)value), pattern), index, isSelected, isSelected);
+          if (cmp instanceof JComponent) ((JComponent)cmp).setBorder(null);
         } else {
           cmp = super.getListCellRendererComponent(list, value, index, isSelected, isSelected);
           final JPanel p = new JPanel(new BorderLayout());
@@ -1132,8 +1141,12 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
 
     @Nullable
     private Component tryFileRenderer(Matcher matcher, JList list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-      if (value instanceof VirtualFile && myProject != null) {
-        value = ((VirtualFile)value).isDirectory() ? PsiManager.getInstance(myProject).findDirectory((VirtualFile)value) : PsiManager.getInstance(myProject).findFile((VirtualFile)value);
+      if (myProject != null && value instanceof VirtualFile) {
+        PsiManager psiManager = PsiManager.getInstance(myProject);
+        VirtualFile virtualFile = (VirtualFile)value;
+        value = !virtualFile.isValid() ? virtualFile :
+                virtualFile.isDirectory() ? psiManager.findDirectory(virtualFile) :
+                psiManager.findFile(virtualFile);
       }
 
       if (value instanceof PsiElement) {
@@ -1225,9 +1238,10 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
           }
           append(text, attrs);
           final String id = ((OptionDescription)value).getConfigurableId();
-          final String name1 = myConfigurables.get(id);
-          if (name1 != null) {
-            setLocationString(name1);
+          String location = myConfigurables.get(id);
+          if (location == null) location = ((OptionDescription)value).getValue();
+          if (location != null) {
+            setLocationString(location);
           }
         }
         else if (value instanceof OptionsTopHitProvider) {
@@ -2510,6 +2524,7 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
     return JBUI.Panels.simplePanel(5, 10)
       .addToCenter(separatorComponent)
       .addToLeft(titleLabel)
+      .withBorder(RENDERER_TITLE_BORDER)
       .withBackground(UIUtil.getListBackground());
   }
 

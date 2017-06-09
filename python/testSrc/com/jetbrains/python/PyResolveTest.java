@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -465,7 +465,7 @@ public class PyResolveTest extends PyResolveTestCase {
   }
 
   public void testSuperclassResolveScope() {  // PY-3554
-    assertResolvesTo(PyClass.class, "date", "datetime.py");
+    assertResolvesTo(PyClass.class, "date", "datetime.pyi");
   }
 
   public void testDontResolveTargetToBuiltins() {  // PY-4256
@@ -618,48 +618,48 @@ public class PyResolveTest extends PyResolveTestCase {
   //PY-2748
   public void testFormatStringKWArgs() {
     PsiElement target = resolve();
-    assertTrue(target instanceof  PyKeywordArgument);
-    assertEquals("fst", ((PyKeywordArgument)target).getKeyword());
+    assertTrue(target instanceof  PyNumericLiteralExpression);
+    assertTrue(12 == ((PyNumericLiteralExpression)target).getLongValue());
   }
 
   //PY-2748
   public void testFormatPositionalArgs() {
     PsiElement target = resolve();
-    assertTrue(target instanceof  PyReferenceExpression);
+    assertInstanceOf(target,  PyReferenceExpression.class);
     assertEquals("string", target.getText());
   }
 
   //PY-2748
   public void testFormatArgsAndKWargs() {
     PsiElement target = resolve();
-    assertTrue(target instanceof  PyStringLiteralExpression);
+    assertInstanceOf(target, PyStringLiteralExpression.class);
   }
 
   //PY-2748
   public void testFormatArgsAndKWargs1() {
     PsiElement target = resolve();
-    assertTrue(target instanceof  PyKeywordArgument);
-    assertEquals("kwd", ((PyKeywordArgument)target).getKeyword());
+    assertTrue(target instanceof  PyStringLiteralExpression);
+    assertEquals("keyword", ((PyStringLiteralExpression)target).getStringValue());
   }
 
   //PY-2748
   public void testFormatStringWithPackedDictAsArgument() {
     PsiElement target = resolve();
     assertTrue(target instanceof  PyStringLiteralExpression);
-    assertEquals("\"fst\"", target.getText());    
+    assertEquals("\"f\"", target.getText());    
   }
 
   //PY-2748
   public void testFormatStringWithPackedListAsArgument() {
     PsiElement target = resolve();
-    assertTrue(target instanceof  PyNumericLiteralExpression);
+    assertInstanceOf(target, PyNumericLiteralExpression.class);
     assertEquals("1", target.getText());
   }
 
   //PY-2748
   public void testFormatStringWithPackedTupleAsArgument() {
     PsiElement target = resolve();
-    assertTrue(target instanceof  PyStringLiteralExpression);
+    assertInstanceOf(target, PyStringLiteralExpression.class);
     assertEquals("\"snd\"", target.getText());
   }
 
@@ -679,14 +679,15 @@ public class PyResolveTest extends PyResolveTestCase {
   //PY-2748
   public void testPercentKeyWordArgs() {
     PsiElement target = resolve();
-    assertTrue(target instanceof PyStringLiteralExpression);
-    assertEquals("kwg", ((PyStringLiteralExpression)target).getStringValue());
+    assertTrue(target instanceof PyNumericLiteralExpression);
+    assertNotNull(((PyNumericLiteralExpression)target).getLongValue());
+    assertEquals(Long.valueOf(4181), ((PyNumericLiteralExpression)target).getLongValue());
   }
 
   public void testPercentStringKeyWordArgWithParentheses() {
     PsiElement target = resolve();
     assertTrue(target instanceof PyStringLiteralExpression);
-    assertEquals("snd", ((PyStringLiteralExpression)target).getStringValue());    
+    assertEquals("s", ((PyStringLiteralExpression)target).getStringValue());    
   }
 
   //PY-2748
@@ -718,7 +719,7 @@ public class PyResolveTest extends PyResolveTestCase {
   //PY-2748
   public void testFormatStringPackedDictCall() {
     PsiElement target = resolve();
-    assertInstanceOf(target, PyStarArgument.class);
+    assertInstanceOf(target, PyKeywordArgument.class);
   }
 
   //PY-2748
@@ -1228,5 +1229,13 @@ public class PyResolveTest extends PyResolveTestCase {
   // PY-13734
   public void testDunderClassInDeclarationInsideFunction() {
     assertUnresolved();
+  }
+
+  // PY-22763
+  public void testComparisonOperatorReceiver() {
+    final PsiElement element = doResolve();
+    final PyFunction dunderLt = assertInstanceOf(element, PyFunction.class);
+    assertEquals("__lt__", dunderLt.getName());
+    assertEquals("str", dunderLt.getContainingClass().getName());
   }
 }

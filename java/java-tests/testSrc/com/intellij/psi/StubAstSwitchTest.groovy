@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.vfs.VfsUtil
+import com.intellij.psi.impl.java.stubs.JavaStubElementTypes
+import com.intellij.psi.impl.source.DummyHolder
 import com.intellij.psi.impl.source.PsiClassImpl
 import com.intellij.psi.impl.source.PsiFileImpl
 import com.intellij.psi.impl.source.PsiJavaFileImpl
@@ -31,15 +33,18 @@ import com.intellij.psi.stubs.StubTree
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.reference.SoftReference
 import com.intellij.testFramework.LeakHunter
+import com.intellij.testFramework.SkipSlowTestLocally
 import com.intellij.testFramework.fixtures.LightCodeInsightFixtureTestCase
 import com.intellij.util.ref.GCUtil
 
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Future
+
 /**
  * @author peter
  */
+@SkipSlowTestLocally
 class StubAstSwitchTest extends LightCodeInsightFixtureTestCase {
 
   void "test modifying file with stubs via VFS"() {
@@ -106,7 +111,7 @@ class StubAstSwitchTest extends LightCodeInsightFixtureTestCase {
     PsiFile file = myFixture.addFileToProject("A.java", "class A {}")
     def oldClass = JavaPsiFacade.getInstance(project).findClass("A", GlobalSearchScope.allScope(project))
     def pointer = SmartPointerManager.getInstance(project).createSmartPsiElementPointer(oldClass)
-    
+
     def document = FileDocumentManager.instance.getDocument(file.virtualFile)
     assert document
     assert file == PsiDocumentManager.getInstance(project).getCachedPsiFile(document)
@@ -316,5 +321,15 @@ class B {
         }
       }
     }
+  }
+
+  void "test DummyHolder calcStubTree does not fail"() {
+    def text = "{ new Runnable() { public void run() {} }; }"
+    def file = JavaPsiFacade.getElementFactory(project).createCodeBlockFromText(text, null).containingFile
+
+    // main thing is it doesn't fail; DummyHolder.calcStubTree can be changed to null in future if we decide we don't need it
+    def stubTree = assertInstanceOf(file, DummyHolder).calcStubTree()
+
+    assert stubTree.plainList.find { it.stubType == JavaStubElementTypes.ANONYMOUS_CLASS }
   }
 }

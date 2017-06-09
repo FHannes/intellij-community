@@ -18,6 +18,7 @@ package org.jetbrains.plugins.groovy.lang.parser;
 
 import com.intellij.lang.ASTNode;
 import com.intellij.psi.stubs.*;
+import com.intellij.psi.tree.IStubFileElementType;
 import com.intellij.util.io.StringRef;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.groovy.GroovyLanguage;
@@ -206,6 +207,7 @@ public interface GroovyElementTypes {
   GroovyElementType CONDITIONAL_EXPRESSION = new GroovyElementType("Conditional expression");
   GroovyElementType ELVIS_EXPRESSION = new GroovyElementType("Elvis expression");
   GroovyElementType ASSIGNMENT_EXPRESSION = new GroovyElementType("Assignment expression");
+  GroovyElementType TUPLE_ASSIGNMENT_EXPRESSION = new GroovyElementType("Tuple assignment expression");
   GroovyElementType LOGICAL_OR_EXPRESSION = new GroovyElementType("Logical OR expression");
   GroovyElementType LOGICAL_AND_EXPRESSION = new GroovyElementType("Logical AND expression");
   GroovyElementType INCLUSIVE_OR_EXPRESSION = new GroovyElementType("Inclusive OR expression");
@@ -415,7 +417,7 @@ public interface GroovyElementTypes {
   };
   GrVariableDeclarationElementType VARIABLE_DEFINITION = new GrVariableDeclarationElementType();
   GroovyElementType TUPLE_DECLARATION = new GroovyElementType("tuple declaration");
-  GroovyElementType TUPLE_EXPRESSION = new GroovyElementType("tuple expression");
+  GroovyElementType TUPLE = new GroovyElementType("tuple");
 
   GrVariableElementType VARIABLE = new GrVariableElementType();
 
@@ -424,4 +426,6 @@ public interface GroovyElementTypes {
 
   //types
   GroovyElementType CLASS_TYPE_ELEMENT = new GroovyElementType("class type element"); //node
+
+  IStubFileElementType GROOVY_FILE = new GrStubFileElementType(GroovyLanguage.INSTANCE);
 }

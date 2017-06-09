@@ -21,6 +21,8 @@ import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.io.FileUtilRt;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.EditorNotificationPanel;
 import com.intellij.ui.EditorNotifications;
@@ -40,11 +42,13 @@ public class LargeFileNotificationProvider extends EditorNotifications.Provider 
 
   @Nullable
   @Override
-  public EditorNotificationPanel createNotificationPanel(@NotNull final VirtualFile file, @NotNull final FileEditor fileEditor) {
+  public EditorNotificationPanel createNotificationPanel(@NotNull VirtualFile file, @NotNull FileEditor fileEditor) {
     if (!(fileEditor instanceof LargeFileEditorProvider.LargeTextFileEditor)) return null;
-    final Editor editor = ((TextEditor)fileEditor).getEditor();
-    final Project project = editor.getProject();
-    if (project == null || editor.getUserData(HIDDEN_KEY) != null || PropertiesComponent.getInstance().isTrueValue(DISABLE_KEY)) return null;
+    Editor editor = ((TextEditor)fileEditor).getEditor();
+    Project project = editor.getProject();
+    if (project == null || editor.getUserData(HIDDEN_KEY) != null || PropertiesComponent.getInstance().isTrueValue(DISABLE_KEY)) {
+      return null;
+    }
 
     EditorNotificationPanel panel = new EditorNotificationPanel();
     panel.createActionLabel("Hide notification", () -> {
@@ -54,8 +58,12 @@ public class LargeFileNotificationProvider extends EditorNotifications.Provider 
     panel.createActionLabel("Don't show again", () -> {
       PropertiesComponent.getInstance().setValue(DISABLE_KEY, "true");
       update(file, project);
-    } );
-    return panel.text("File is too large. This preview is read only.");
+    });
+    return panel.text(String.format(
+      "The file is too large: %s. Showing a read-only preview of the first %s.",
+      StringUtil.formatFileSize(file.getLength()),
+      StringUtil.formatFileSize(FileUtilRt.LARGE_FILE_PREVIEW_SIZE)
+    ));
   }
 
   private static void update(@NotNull VirtualFile file, @NotNull Project project) {

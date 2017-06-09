@@ -49,6 +49,8 @@ public class CompressedAppendableFile {
   private long [] myChunkOffsetTable; // one long offset per FACTOR compressed chunks
   private static final boolean doDebug = SystemProperties.getBooleanProperty("idea.compressed.file.self.check", false);
   private final TLongArrayList myCompressedChunksFileOffsets = doDebug ? new TLongArrayList() : null;
+
+  public static final int PAGE_LENGTH = SystemProperties.getIntProperty("idea.compressed.file.page.length", 32768);
   private static final int MAX_PAGE_LENGTH = 0xFFFF;
 
   private long myFileLength;
@@ -179,6 +181,7 @@ public class CompressedAppendableFile {
 
   private static final FileChunkReadCache ourDecompressedCache = new FileChunkReadCache();
 
+  @NotNull
   private synchronized byte[] loadChunk(int chunkNumber) throws IOException {
     try {
       if (myChunkLengthTable == null) initChunkLengthTable();
@@ -251,7 +254,7 @@ public class CompressedAppendableFile {
       public int available() {
         return remainingLimit();
       }
-    }, 32768);
+    }, pageSize);
   }
 
   public synchronized <Data> void append(Data value, KeyDescriptor<Data> descriptor) throws IOException {
@@ -356,6 +359,7 @@ public class CompressedAppendableFile {
     }
   }
 
+  @NotNull
   private static short[] reallocShortTable(short[] table) {
     short[] newTable = new short[Math.max(table.length * 8 / 5, table.length + 1)];
     System.arraycopy(table, 0, newTable, 0, table.length);
@@ -366,6 +370,7 @@ public class CompressedAppendableFile {
     return CompressionUtil.writeCompressedWithoutOriginalBufferLength(compressedDataOut, buffer, myAppendBufferLength);
   }
 
+  @NotNull
   protected byte[] decompress(DataInputStream keysStream) throws IOException {
     return CompressionUtil.readCompressedWithoutOriginalBufferLength(keysStream);
   }
@@ -398,8 +403,7 @@ public class CompressedAppendableFile {
   }
 
   private void saveIncompleteChunk() {
-    if (myNextChunkBuffer != null && myBufferPosition != 0 && myDirty) {
-
+    if (myNextChunkBuffer != null && myDirty) {
       File incompleteChunkFile = getIncompleteChunkFile();
 
       try {
@@ -417,6 +421,8 @@ public class CompressedAppendableFile {
             catch (IOException ignore) {
             }
           }
+        } else {
+          incompleteChunkFile.delete();
         }
       } catch (FileNotFoundException ex) {
         File parentFile = incompleteChunkFile.getParentFile();

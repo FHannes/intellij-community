@@ -17,7 +17,6 @@ package com.intellij.execution.dashboard.actions;
 
 import com.intellij.execution.ExecutionBundle;
 import com.intellij.execution.RunManager;
-import com.intellij.execution.RunManagerEx;
 import com.intellij.execution.RunnerAndConfigurationSettings;
 import com.intellij.execution.configuration.ConfigurationFactoryEx;
 import com.intellij.execution.configurations.ConfigurationFactory;
@@ -49,14 +48,13 @@ public class CopyConfigurationAction extends RunConfigurationTreeAction {
 
   @Override
   protected boolean isEnabled4(DashboardRunConfigurationNode node) {
-    return RunManager.getInstance(node.getProject()).getAllConfigurationsList().contains(
-      node.getConfigurationSettings().getConfiguration());
+    return RunManager.getInstance(node.getProject()).hasSettings(node.getConfigurationSettings());
   }
 
   @Override
   @SuppressWarnings("unchecked")
   protected void doActionPerformed(DashboardRunConfigurationNode node) {
-    RunManagerEx runManager = RunManagerEx.getInstanceEx(node.getProject());
+    RunManager runManager = RunManager.getInstance(node.getProject());
     RunnerAndConfigurationSettings settings = node.getConfigurationSettings();
 
     RunnerAndConfigurationSettings copiedSettings = ((RunnerAndConfigurationSettingsImpl)settings).clone();
@@ -70,8 +68,7 @@ public class CopyConfigurationAction extends RunConfigurationTreeAction {
 
     if (RunDialog.editConfiguration(node.getProject(), copiedSettings,
                                     ExecutionBundle.message("run.dashboard.edit.configuration.dialog.title"))) {
-      runManager.addConfiguration(copiedSettings, runManager.isConfigurationShared(settings),
-                                  runManager.getBeforeRunTasks(settings.getConfiguration()), false);
+      runManager.addConfiguration(copiedSettings, settings.isShared());
     }
   }
 }

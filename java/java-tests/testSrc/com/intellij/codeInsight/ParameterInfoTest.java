@@ -76,6 +76,42 @@ public class ParameterInfoTest extends LightCodeInsightFixtureTestCase {
   }
 
   public void testSelectionWithGenerics() {
+    doTest2CandidatesWithPreselection();
+  }
+
+  public void testOverloadWithVarargs() {
+    doTest2CandidatesWithPreselection();
+  }
+
+  public void testOverloadWithVarargsMultipleArgs() {
+    doTest2CandidatesWithPreselection();
+  }
+
+  public void testOverloadWithVarargsSingleArg() {
+    doTest2CandidatesWithPreselection();
+  }
+
+  public void testOverloadWithVarargsArray() {
+    doTest2CandidatesWithPreselection();
+  }
+
+  public void testSuperConstructorCalls() throws Exception {
+    myFixture.configureByText("x.java",
+                              "class A {\n" +
+                              "       public A(String s, int... p) {}\n" +
+                              "   }\n" +
+                              "   class B extends A {\n" +
+                              "       public B() {\n" +
+                              "           super(<caret>\"a\", 1);\n" +
+                              "       }\n" +
+                              "   }");
+    PsiMethodCallExpression callExpression = PsiTreeUtil.getParentOfType(getFile().findElementAt(getEditor().getCaretModel().getOffset()), PsiMethodCallExpression.class);
+    assertNotNull(callExpression);
+    assertNotNull(new MethodParameterInfoHandler().findElementForUpdatingParameterInfo(
+      new MockUpdateParameterInfoContext(getEditor(), getFile(), new Object[] {callExpression.resolveMethodGenerics()})));
+  }
+
+  private void doTest2CandidatesWithPreselection() {
     myFixture.configureByFile(getTestName(false) + ".java");
 
     MethodParameterInfoHandler handler = new MethodParameterInfoHandler();
@@ -239,7 +275,7 @@ public class ParameterInfoTest extends LightCodeInsightFixtureTestCase {
 
   public void testHighlightConstructorJustChosenInCompletion() {
     Registry.get("java.completion.show.constructors").setValue(true);
-    Disposer.register(getTestRootDisposable(), () -> Registry.get("java.completion.show.constructors").setValue(false));
+    Disposer.register(myFixture.getTestRootDisposable(), () -> Registry.get("java.completion.show.constructors").setValue(false));
 
     myFixture.addClass("class Bar {" +
                        "Bar(boolean a);" +

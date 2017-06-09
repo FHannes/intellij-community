@@ -30,8 +30,10 @@ import org.jetbrains.plugins.groovy.lang.lexer.GroovyTokenTypes;
 import org.jetbrains.plugins.groovy.lang.lexer.TokenSets;
 import org.jetbrains.plugins.groovy.lang.psi.GroovyElementVisitor;
 import org.jetbrains.plugins.groovy.lang.psi.api.GroovyResolveResult;
-import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.*;
-import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.path.GrIndexProperty;
+import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrAssignmentExpression;
+import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrExpression;
+import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrParenthesizedExpression;
+import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrReferenceExpression;
 import org.jetbrains.plugins.groovy.lang.psi.dataFlow.types.TypeInferenceHelper;
 import org.jetbrains.plugins.groovy.lang.psi.impl.GroovyFileImpl;
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.GrOperatorExpressionImpl;
@@ -102,33 +104,36 @@ public class GrAssignmentExpressionImpl extends GrOperatorExpressionImpl impleme
   @Override
   public boolean processDeclarations(@NotNull PsiScopeProcessor processor,
                                      @NotNull ResolveState state,
-                                     PsiElement lastParent,
+                                     @Nullable PsiElement lastParent,
                                      @NotNull PsiElement place) {
+    if (!shouldProcessBindings(this, processor, lastParent, place)) return true;
+    return processLValue(processor, state, place, (GroovyFileImpl)getParent(), getLValue());
+  }
+
+  static boolean shouldProcessBindings(@NotNull PsiElement owner,
+                                       @NotNull PsiScopeProcessor processor,
+                                       @Nullable PsiElement lastParent,
+                                       @NotNull PsiElement place) {
     final ElementClassHint classHint = processor.getHint(ElementClassHint.KEY);
-    if (!ResolveUtil.shouldProcessProperties(classHint)) return true;
+    if (!ResolveUtil.shouldProcessProperties(classHint)) return false;
     final DynamicMembersHint dynamicMembersHint = processor.getHint(DynamicMembersHint.KEY);
-    if (dynamicMembersHint != null && !dynamicMembersHint.shouldProcessProperties()) return true;
+    if (dynamicMembersHint != null && !dynamicMembersHint.shouldProcessProperties()) return false;
 
-    if (!(getParent() instanceof GroovyFileImpl)) return true;
-    final GroovyFileImpl file = (GroovyFileImpl)getParent();
-    if (!file.isInScriptBody(lastParent, place)) return true;
+    PsiElement parent = owner.getParent();
+    if (!(parent instanceof GroovyFileImpl)) return false;
 
-    final GrExpression lValue = getLValue();
-    if (!processLValue(processor, state, place, file, lValue)) return false;
-    if (lValue instanceof GrTupleExpression) {
-      for (GrExpression expression : ((GrTupleExpression)lValue).getExpressions()) {
-        if (!processLValue(processor, state, place, file, expression)) return false;
-      }
-    }
+    final GroovyFileImpl file = (GroovyFileImpl)parent;
+    if (!file.isInScriptBody(lastParent, place)) return false;
 
     return true;
   }
 
-  private static boolean processLValue(@NotNull PsiScopeProcessor processor,
-                                       @NotNull ResolveState state,
-                                       @NotNull PsiElement place,
-                                       @NotNull GroovyFileImpl file,
-                                       @NotNull GrExpression lValue) {
+
+  static boolean processLValue(@NotNull PsiScopeProcessor processor,
+                               @NotNull ResolveState state,
+                               @NotNull PsiElement place,
+                               @NotNull GroovyFileImpl file,
+                               @NotNull GrExpression lValue) {
     if (!(lValue instanceof GrReferenceExpression)) return true;
 
     final GrReferenceExpression lReference = (GrReferenceExpression)lValue;
@@ -154,18 +159,7 @@ public class GrAssignmentExpressionImpl extends GrOperatorExpressionImpl impleme
   @Nullable
   @Override
   public PsiType getLeftType() {
-    final GrExpression lValue = getLValue();
-    if (lValue instanceof GrIndexProperty) {
-      // now we have something like map[i] += 2. It equals to map.putAt(i, map.getAt(i).plus(2))
-      // by default map[i] resolves to putAt, but we need getAt(). so this hack is for it =)
-      return ((GrIndexProperty)lValue).getGetterType();
-    }
-    else if (lValue instanceof GrReferenceExpression) {
-      return ((GrReferenceExpression)lValue).getRValueType();
-    }
-    else {
-      return lValue.getType();
-    }
+    return getLValue().getType();
   }
 
   @Nullable
@@ -198,7 +192,8 @@ public class GrAssignmentExpressionImpl extends GrOperatorExpressionImpl impleme
             super.visitElement(element);
           }
           else if (element instanceof GrParenthesizedExpression) {
-            super.visitElement(((GrParenthesizedExpression)element).getOperand());
+            GrExpression operand = ((GrParenthesizedExpression)element).getOperand();
+            if (operand != null) super.visitElement(operand);
           }
         }
 

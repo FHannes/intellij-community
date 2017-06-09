@@ -153,7 +153,7 @@ public class ResolveScopeManagerImpl extends ResolveScopeManager {
   @Override
   public GlobalSearchScope getDefaultResolveScope(final VirtualFile vFile) {
     final PsiFile psiFile = myManager.findFile(vFile);
-    assert psiFile != null;
+    assert psiFile != null : "directory=" + vFile.isDirectory() + "; " + myProject;
     return getResolveScopeFromProviders(vFile);
   }
 
@@ -209,7 +209,7 @@ public class ResolveScopeManagerImpl extends ResolveScopeManager {
   private boolean isFromAdditionalLibraries(@NotNull final VirtualFile file) {
     for (final AdditionalLibraryRootsProvider provider : Extensions.getExtensions(AdditionalLibraryRootsProvider.EP_NAME)) {
       for (final SyntheticLibrary library : provider.getAdditionalProjectLibraries(myProject)) {
-        if (VfsUtilCore.isUnder(file, asSet(library.getSourceRoots()))) {
+        if (VfsUtilCore.isUnder(file, asSet(library.getSourceRoots())) && !VfsUtilCore.isUnder(file, library.getExcludedRoots())) {
           return true;
         }
       }

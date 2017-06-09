@@ -20,6 +20,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.externalSystem.model.DataNode;
 import com.intellij.openapi.externalSystem.model.Key;
 import com.intellij.openapi.externalSystem.model.ProjectKeys;
+import com.intellij.openapi.externalSystem.model.project.ModuleData;
 import com.intellij.openapi.externalSystem.model.project.ModuleDependencyData;
 import com.intellij.openapi.externalSystem.model.project.OrderAware;
 import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProvider;
@@ -47,7 +48,7 @@ import java.util.Set;
 @Order(ExternalSystemConstants.BUILTIN_SERVICE_ORDER)
 public class ModuleDependencyDataService extends AbstractDependencyDataService<ModuleDependencyData, ModuleOrderEntry> {
 
-  private static final Logger LOG = Logger.getInstance("#" + ModuleDependencyDataService.class.getName());
+  private static final Logger LOG = Logger.getInstance(ModuleDependencyDataService.class);
 
   @NotNull
   @Override
@@ -97,8 +98,8 @@ public class ModuleDependencyDataService extends AbstractDependencyDataService<M
       processed.add(dependencyData);
 
       toRemove.remove(Pair.create(dependencyData.getInternalName(), dependencyData.getScope()));
-      final String moduleName = dependencyData.getInternalName();
-      Module ideDependencyModule = modelsProvider.findIdeModule(moduleName);
+      final ModuleData moduleData = dependencyData.getTarget();
+      Module ideDependencyModule = modelsProvider.findIdeModule(moduleData);
 
       ModuleOrderEntry orderEntry;
       if (module.equals(ideDependencyModule)) {
@@ -116,7 +117,7 @@ public class ModuleDependencyDataService extends AbstractDependencyDataService<M
         if (orderEntry == null) {
           orderEntry = ReadAction.compute(() ->
             ideDependencyModule == null
-            ? modifiableRootModel.addInvalidModuleEntry(moduleName)
+            ? modifiableRootModel.addInvalidModuleEntry(moduleData.getInternalName())
             : modifiableRootModel.addModuleOrderEntry(ideDependencyModule));
         }
       }

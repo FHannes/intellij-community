@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ import com.intellij.psi.PsiParameter;
 import com.intellij.psi.PsiPrimitiveType;
 import com.intellij.psi.impl.search.JavaNullMethodArgumentUtil;
 import com.intellij.util.SmartList;
-import com.intellij.util.ThreeState;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 
@@ -52,8 +51,8 @@ class NullParameterConstraintChecker extends DataFlowRunner {
   private final Set<PsiParameter> myPossiblyViolatedParameters;
   private final Set<PsiParameter> myUsedParameters;
 
-  private NullParameterConstraintChecker(Collection<PsiParameter> parameters, boolean isOnTheFly) {
-    super(false, true, isOnTheFly);
+  private NullParameterConstraintChecker(Collection<PsiParameter> parameters) {
+    super(false, true);
     myPossiblyViolatedParameters = new THashSet<>(parameters);
     myUsedParameters = new THashSet<>();
   }
@@ -75,7 +74,7 @@ class NullParameterConstraintChecker extends DataFlowRunner {
     }
     if (nullableParameters.isEmpty()) return PsiParameter.EMPTY_ARRAY;
 
-    final NullParameterConstraintChecker checker = new NullParameterConstraintChecker(nullableParameters, true);
+    final NullParameterConstraintChecker checker = new NullParameterConstraintChecker(nullableParameters);
     checker.analyzeMethod(method.getBody(), new StandardInstructionVisitor());
 
     return checker.myPossiblyViolatedParameters.stream().filter(checker.myUsedParameters::contains).toArray(PsiParameter[]::new);
@@ -130,7 +129,8 @@ class NullParameterConstraintChecker extends DataFlowRunner {
       super(factory);
       for (PsiParameter parameter : myPossiblyViolatedParameters) {
         setVariableState(getFactory().getVarFactory().createVariableValue(parameter, false),
-                         new DfaVariableState(Collections.emptySet(), Collections.emptySet(), Nullness.NULLABLE, ThreeState.UNSURE));
+                         new DfaVariableState(Collections.emptySet(), Collections.emptySet(),
+                                              DfaFactMap.EMPTY.with(DfaFactType.CAN_BE_NULL, true)));
       }
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2015 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,6 +60,8 @@ import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.Set;
+
+import static com.intellij.openapi.keymap.KeymapUtil.getActiveKeymapShortcuts;
 
 public class GotoActionAction extends GotoActionBase implements DumbAware {
 
@@ -128,7 +130,7 @@ public class GotoActionAction extends GotoActionBase implements DumbAware {
                 if (mv.value instanceof GotoActionModel.ActionWrapper) {
                   AnAction action = ((GotoActionModel.ActionWrapper)mv.value).getAction();
                   String actionId = ActionManager.getInstance().getId(action);
-                  return StringUtil.notNullize(actionId, "class: " + actionId.getClass().getName());
+                  return StringUtil.notNullize(actionId, "class: " + action.getClass().getName());
                 }
               }
 
@@ -206,19 +208,14 @@ public class GotoActionAction extends GotoActionBase implements DumbAware {
       }
     };
 
-    ApplicationManager.getApplication().getMessageBus().connect(disposable).subscribe(ProgressWindow.TOPIC, new ProgressWindow.Listener() {
+    ApplicationManager.getApplication().getMessageBus().connect(disposable).subscribe(ProgressWindow.TOPIC, pw -> Disposer.register(pw, new Disposable() {
       @Override
-      public void progressWindowCreated(ProgressWindow pw) {
-        Disposer.register(pw, new Disposable() {
-          @Override
-          public void dispose() {
-            if (!popup.checkDisposed()) {
-              popup.repaintList();
-            }
-          }
-        });
+      public void dispose() {
+        if (!popup.checkDisposed()) {
+          popup.repaintList();
+        }
       }
-    });
+    }));
 
     if (project != null) {
       project.putUserData(ChooseByNamePopup.CHOOSE_BY_NAME_POPUP_IN_PROJECT_KEY, popup);
@@ -235,7 +232,7 @@ public class GotoActionAction extends GotoActionBase implements DumbAware {
       }
     });
 
-    CustomShortcutSet shortcutSet = new CustomShortcutSet(KeymapManager.getInstance().getActiveKeymap().getShortcuts(IdeActions.ACTION_SHOW_INTENTION_ACTIONS));
+    ShortcutSet shortcutSet = getActiveKeymapShortcuts(IdeActions.ACTION_SHOW_INTENTION_ACTIONS);
 
     new DumbAwareAction() {
       @Override
@@ -291,9 +288,15 @@ public class GotoActionAction extends GotoActionBase implements DumbAware {
                                                Component component,
                                                @Nullable AnActionEvent e) {
     if (element instanceof OptionDescription) {
-      final String configurableId = ((OptionDescription)element).getConfigurableId();
-      TransactionGuard.getInstance().submitTransactionLater(project != null ? project : ApplicationManager.getApplication(), () ->
-        ShowSettingsUtilImpl.showSettingsDialog(project, configurableId, enteredText));
+      OptionDescription optionDescription = (OptionDescription)element;
+      final String configurableId = optionDescription.getConfigurableId();
+      Disposable disposable = project != null ? project : ApplicationManager.getApplication();
+      TransactionGuard guard = TransactionGuard.getInstance();
+      if (optionDescription.hasExternalEditor()) {
+        guard.submitTransactionLater(disposable, () -> optionDescription.invokeInternalEditor());
+      } else {
+        guard.submitTransactionLater(disposable, () -> ShowSettingsUtilImpl.showSettingsDialog(project, configurableId, enteredText));
+      }
     }
     else {
       ApplicationManager.getApplication().invokeLater(() -> IdeFocusManager.getInstance(project).doWhenFocusSettlesDown(

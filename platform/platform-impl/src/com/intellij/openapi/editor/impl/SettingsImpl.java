@@ -14,14 +14,6 @@
  * limitations under the License.
  */
 
-/*
- * Created by IntelliJ IDEA.
- * User: max
- * Date: Jun 19, 2002
- * Time: 3:19:05 PM
- * To change template for new class use 
- * Code Style | Class Templates options (Tools | IDE Options).
- */
 package com.intellij.openapi.editor.impl;
 
 import com.intellij.codeStyle.CodeStyleFacade;
@@ -53,7 +45,7 @@ public class SettingsImpl implements EditorSettings {
 
   // This group of settings does not have UI
   private SoftWrapAppliancePlaces mySoftWrapAppliancePlace        = SoftWrapAppliancePlaces.MAIN_EDITOR;
-  private int                     myAdditionalLinesCount          = 5;
+  private int                     myAdditionalLinesCount          = Registry.intValue("editor.virtual.lines", 5);
   private int                     myAdditionalColumnsCount        = 3;
   private int                     myLineCursorWidth               = Registry.intValue("editor.caret.width", 2);
   private boolean                 myLineMarkerAreaShown           = true;
@@ -329,6 +321,10 @@ public class SettingsImpl implements EditorSettings {
     fireEditorRefresh();
   }
 
+  /**
+   * @deprecated use {@link com.intellij.openapi.editor.EditorKind}
+   */
+  @Deprecated
   public void setSoftWrapAppliancePlace(SoftWrapAppliancePlaces softWrapAppliancePlace) {
     if (softWrapAppliancePlace != mySoftWrapAppliancePlace) {
       mySoftWrapAppliancePlace = softWrapAppliancePlace;
@@ -336,6 +332,10 @@ public class SettingsImpl implements EditorSettings {
     }
   }
 
+  /**
+   * @deprecated use {@link com.intellij.openapi.editor.EditorKind}
+   */
+  @Deprecated
   public SoftWrapAppliancePlaces getSoftWrapAppliancePlace() {
     return mySoftWrapAppliancePlace;
   }

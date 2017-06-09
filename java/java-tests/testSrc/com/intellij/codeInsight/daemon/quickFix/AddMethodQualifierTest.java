@@ -18,13 +18,16 @@ package com.intellij.codeInsight.daemon.quickFix;
 import com.intellij.JavaTestUtil;
 import com.intellij.codeInsight.daemon.impl.quickfix.AddMethodQualifierFix;
 import com.intellij.codeInsight.intention.IntentionAction;
+import com.intellij.codeInsight.intention.IntentionActionDelegate;
 import com.intellij.psi.PsiNamedElement;
 import com.intellij.testFramework.fixtures.JavaCodeInsightFixtureTestCase;
 import com.intellij.util.Function;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * @author Dmitry Batkovich
@@ -77,13 +80,10 @@ public class AddMethodQualifierTest extends JavaCodeInsightFixtureTestCase {
     }
     assertNotNull(addMethodQualifierFix);
     final Set<String> actualCandidatesNames =
-      new TreeSet<>(ContainerUtil.map(addMethodQualifierFix.getCandidates(), new Function<PsiNamedElement, String>() {
-        @Override
-        public String fun(final PsiNamedElement psiNamedElement) {
-          final String name = psiNamedElement.getName();
-          assertNotNull(name);
-          return name;
-        }
+      new TreeSet<>(ContainerUtil.map(addMethodQualifierFix.getCandidates(), (Function<PsiNamedElement, String>)psiNamedElement -> {
+        final String name = psiNamedElement.getName();
+        assertNotNull(name);
+        return name;
       }));
     final Set<String> expectedCandidatesNames = new TreeSet<>(ContainerUtil.list(candidatesNames));
     assertEquals(expectedCandidatesNames, actualCandidatesNames);
@@ -93,9 +93,10 @@ public class AddMethodQualifierTest extends JavaCodeInsightFixtureTestCase {
   private AddMethodQualifierFix getQuickFix() {
     final List<IntentionAction> availableIntentions = myFixture.getAvailableIntentions();
     AddMethodQualifierFix addMethodQualifierFix = null;
-    for (final IntentionAction availableIntention : availableIntentions) {
-      if (availableIntention instanceof AddMethodQualifierFix) {
-        addMethodQualifierFix = (AddMethodQualifierFix)availableIntention;
+    for (IntentionAction action : availableIntentions) {
+      if (action instanceof IntentionActionDelegate) action = ((IntentionActionDelegate)action).getDelegate();
+      if (action instanceof AddMethodQualifierFix) {
+        addMethodQualifierFix = (AddMethodQualifierFix)action;
         break;
       }
     }

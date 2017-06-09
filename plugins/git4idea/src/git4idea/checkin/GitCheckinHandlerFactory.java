@@ -23,7 +23,6 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Couple;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
@@ -134,13 +133,10 @@ public class GitCheckinHandlerFactory extends VcsCheckinHandlerFactory {
       }
 
       if (crlfHelper.get().shouldWarn()) {
-        Pair<Integer, Boolean> codeAndDontWarn = UIUtil.invokeAndWaitIfNeeded(new Computable<Pair<Integer, Boolean>>() {
-          @Override
-          public Pair<Integer, Boolean> compute() {
-            final GitCrlfDialog dialog = new GitCrlfDialog(myProject);
-            dialog.show();
-            return Pair.create(dialog.getExitCode(), dialog.dontWarnAgain());
-          }
+        Pair<Integer, Boolean> codeAndDontWarn = UIUtil.invokeAndWaitIfNeeded(() -> {
+          final GitCrlfDialog dialog = new GitCrlfDialog(myProject);
+          dialog.show();
+          return Pair.create(dialog.getExitCode(), dialog.dontWarnAgain());
         });
         int decision = codeAndDontWarn.first;
         boolean dontWarnAgain = codeAndDontWarn.second;
@@ -209,6 +205,7 @@ public class GitCheckinHandlerFactory extends VcsCheckinHandlerFactory {
 
       final GitUserNameNotDefinedDialog dialog = new GitUserNameNotDefinedDialog(project, notDefined, affectedRoots, defined);
       if (dialog.showAndGet()) {
+        GitVcsSettings.getInstance(project).setUserNameGlobally(dialog.isGlobal());
         return setUserNameUnderProgress(project, notDefined, dialog) ? ReturnResult.COMMIT : ReturnResult.CANCEL;
       }
       return ReturnResult.CLOSE_WINDOW;

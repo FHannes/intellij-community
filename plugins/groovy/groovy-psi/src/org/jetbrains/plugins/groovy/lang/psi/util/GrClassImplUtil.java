@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2016 JetBrains s.r.o.
+ * Copyright 2000-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -179,6 +179,7 @@ public class GrClassImplUtil {
   }
 
 
+  @NotNull
   public static PsiClass[] getInterfaces(GrTypeDefinition grType) {
     final PsiClassType[] implementsListTypes = grType.getImplementsListTypes();
     List<PsiClass> result = new ArrayList<>(implementsListTypes.length);
@@ -557,7 +558,11 @@ public class GrClassImplUtil {
   }
 
   public static PsiField[] getAllFields(GrTypeDefinition grType) {
-    Map<String, CandidateInfo> fieldsMap = CollectClassMembersUtil.getAllFields(grType);
+    return getAllFields(grType, true);
+  }
+
+  public static PsiField[] getAllFields(GrTypeDefinition grType, boolean includeSynthetic) {
+    Map<String, CandidateInfo> fieldsMap = CollectClassMembersUtil.getAllFields(grType, includeSynthetic);
     return ContainerUtil.map2Array(fieldsMap.values(), PsiField.class, entry -> (PsiField)entry.getElement());
   }
 

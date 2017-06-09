@@ -28,7 +28,6 @@ import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.keymap.KeymapManager;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.SearchableConfigurable;
@@ -63,6 +62,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.intellij.openapi.keymap.KeymapUtil.getActiveKeymapShortcuts;
 import static com.intellij.ui.SimpleTextAttributes.STYLE_PLAIN;
 import static com.intellij.ui.SimpleTextAttributes.STYLE_SEARCH_MATCH;
 
@@ -90,13 +90,18 @@ public class GotoActionModel implements ChooseByNameModel, Comparator<Object>, D
     return map;
   });
 
-  private final ModalityState myModality = ModalityState.defaultModalityState();
+  private final ModalityState myModality;
 
   public GotoActionModel(@Nullable Project project, Component component, @Nullable Editor editor, @Nullable PsiFile file) {
+    this(project, component, editor, file, ModalityState.defaultModalityState());
+  }
+
+  public GotoActionModel(@Nullable Project project, Component component, @Nullable Editor editor, @Nullable PsiFile file, @Nullable ModalityState modalityState) {
     myProject = project;
     myContextComponent = component;
     myEditor = editor;
     myFile = file;
+    myModality = modalityState;
     ActionGroup mainMenu = (ActionGroup)myActionManager.getActionOrStub(IdeActions.GROUP_MAIN_MENU);
     collectActions(myActionGroups, mainMenu, mainMenu.getTemplatePresentation().getText());
   }
@@ -287,16 +292,16 @@ public class GotoActionModel implements ChooseByNameModel, Comparator<Object>, D
   }
 
   @NotNull
-  String getGroupName(@NotNull OptionDescription description) {
-    String id = description.getConfigurableId();
-    String name = myConfigurablesNames.getValue().get(id);
+  public String getGroupName(@NotNull OptionDescription description) {
+    String name = description.getGroupName();
+    if (name == null) name = myConfigurablesNames.getValue().get(description.getConfigurableId());
     String settings = SystemInfo.isMac ? "Preferences" : "Settings";
-    if (name == null) return settings;
+    if (name == null || name.equals(description.getHit())) return settings;
     return settings + " > " + name;
   }
 
-  void initConfigurables() {
-    myConfigurablesNames.getValue();
+  Map<String, String> getConfigurablesNames() {
+    return myConfigurablesNames.getValue();
   }
 
   private void collectActions(@NotNull Map<AnAction, String> result, @NotNull ActionGroup group, @Nullable String containingGroupName) {
@@ -591,7 +596,7 @@ public class GotoActionModel implements ChooseByNameModel, Comparator<Object>, D
         appendWithColoredMatches(nameComponent, getName(presentation.getText(), groupName, toggle), pattern, fg, isSelected);
         panel.setToolTipText(presentation.getDescription());
 
-        Shortcut[] shortcuts = KeymapManager.getInstance().getActiveKeymap().getShortcuts(ActionManager.getInstance().getId(anAction));
+        Shortcut[] shortcuts = getActiveKeymapShortcuts(ActionManager.getInstance().getId(anAction)).getShortcuts();
         String shortcutText = KeymapUtil.getPreferredShortcutText(
           shortcuts);
         if (StringUtil.isNotEmpty(shortcutText)) {

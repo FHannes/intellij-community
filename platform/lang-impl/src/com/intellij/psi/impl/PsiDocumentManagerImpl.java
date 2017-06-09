@@ -22,6 +22,7 @@ import com.intellij.injected.editor.DocumentWindowImpl;
 import com.intellij.injected.editor.EditorWindowImpl;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.TransactionGuard;
 import com.intellij.openapi.components.SettingsSavingComponent;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.EditorFactory;
@@ -78,7 +79,7 @@ public class PsiDocumentManagerImpl extends PsiDocumentManagerBase implements Se
     connection.subscribe(DocumentBulkUpdateListener.TOPIC, new DocumentBulkUpdateListener.Adapter() {
       @Override
       public void updateFinished(@NotNull Document doc) {
-        documentCommitThread.commitAsynchronously(project, doc, "Bulk update finished", ApplicationManager.getApplication().getDefaultModalityState());
+        documentCommitThread.commitAsynchronously(project, doc, "Bulk update finished", TransactionGuard.getInstance().getContextTransaction());
       }
     });
     Disposer.register(project, () -> ((DocumentCommitThread)myDocumentCommitThread).cancelTasksOnProjectDispose(project));
@@ -106,7 +107,7 @@ public class PsiDocumentManagerImpl extends PsiDocumentManagerBase implements Se
   public void documentChanged(DocumentEvent event) {
     super.documentChanged(event);
     // optimisation: avoid documents piling up during batch processing
-    if (FileDocumentManagerImpl.areTooManyDocumentsInTheQueue(myUncommittedDocuments)) {
+    if (isUncommited(event.getDocument()) && FileDocumentManagerImpl.areTooManyDocumentsInTheQueue(myUncommittedDocuments)) {
       if (myUnitTestMode) {
         myStopTrackingDocuments = true;
         try {
@@ -120,7 +121,9 @@ public class PsiDocumentManagerImpl extends PsiDocumentManagerBase implements Se
         }
       }
       // must not commit during document save
-      if (PomModelImpl.isAllowPsiModification()) {
+      if (PomModelImpl.isAllowPsiModification()
+          // it can happen that document(forUseInNonAWTThread=true) outside write action caused this
+          && ApplicationManager.getApplication().isWriteAccessAllowed()) {
         commitAllDocuments();
       }
     }

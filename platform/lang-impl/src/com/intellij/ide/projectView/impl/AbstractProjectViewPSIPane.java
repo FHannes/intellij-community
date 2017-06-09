@@ -91,26 +91,7 @@ public abstract class AbstractProjectViewPSIPane extends AbstractProjectViewPane
             DefaultMutableTreeNode node = (DefaultMutableTreeNode)object;
             object = node.getUserObject();
           }
-          if (object instanceof PsiDirectoryNode && !myTree.isCollapsed(index)) {
-            object = null;
-          }
-          super.update(painter, index, object);
-        }
-
-        @Override
-        protected ErrorStripe getErrorStripe(Object object) {
-          if (object instanceof PresentableNodeDescriptor) {
-            PresentableNodeDescriptor node = (PresentableNodeDescriptor)object;
-            PresentationData presentation = node.getPresentation();
-            TextAttributesKey key = presentation.getTextAttributesKey();
-            if (key != null) {
-              TextAttributes attributes = EditorColorsManager.getInstance().getGlobalScheme().getAttributes(key);
-              if (attributes != null && EffectType.WAVE_UNDERSCORE == attributes.getEffectType()) {
-                return ErrorStripe.create(attributes.getEffectColor(), 1);
-              }
-            }
-          }
-          return null;
+          super.update(painter, index, getStripe(object, myTree.isExpanded(index)));
         }
       });
     }
@@ -197,9 +178,8 @@ public abstract class AbstractProjectViewPSIPane extends AbstractProjectViewPane
       @Override
       public void keyPressed(KeyEvent e) {
         if (KeyEvent.VK_ENTER == e.getKeyCode()) {
-
-          final DefaultMutableTreeNode selectedNode = ((ProjectViewTree)myTree).getSelectedNode();
-          if (selectedNode != null && !selectedNode.isLeaf()) {
+          TreePath path = getSelectedPath();
+          if (path != null && !myTree.getModel().isLeaf(path.getLastPathComponent())) {
             return;
           }
 
@@ -283,6 +263,27 @@ public abstract class AbstractProjectViewPSIPane extends AbstractProjectViewPane
 
   protected abstract AbstractTreeUpdater createTreeUpdater(AbstractTreeBuilder treeBuilder);
 
+  /**
+   * @param object   an object that represents a node in the project tree
+   * @param expanded {@code true} if the corresponding node is expanded,
+   *                 {@code false} if it is collapsed
+   * @return a non-null value if the corresponding node should be , or {@code null}
+   */
+  protected ErrorStripe getStripe(Object object, boolean expanded) {
+    if (expanded && object instanceof PsiDirectoryNode) return null;
+    if (object instanceof PresentableNodeDescriptor) {
+      PresentableNodeDescriptor node = (PresentableNodeDescriptor)object;
+      PresentationData presentation = node.getPresentation();
+      TextAttributesKey key = presentation.getTextAttributesKey();
+      if (key != null) {
+        TextAttributes attributes = EditorColorsManager.getInstance().getGlobalScheme().getAttributes(key);
+        if (attributes != null && EffectType.WAVE_UNDERSCORE == attributes.getEffectType()) {
+          return ErrorStripe.create(attributes.getEffectColor(), 1);
+        }
+      }
+    }
+    return null;
+  }
 
   protected static final class MySpeedSearch extends TreeSpeedSearch {
     MySpeedSearch(JTree tree) {

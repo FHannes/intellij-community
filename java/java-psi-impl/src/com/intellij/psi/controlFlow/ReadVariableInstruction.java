@@ -18,7 +18,7 @@ package com.intellij.psi.controlFlow;
 import com.intellij.psi.PsiVariable;
 import org.jetbrains.annotations.NotNull;
 
-class ReadVariableInstruction extends SimpleInstruction {
+public class ReadVariableInstruction extends SimpleInstruction {
   public final PsiVariable variable;
 
   ReadVariableInstruction(@NotNull PsiVariable variable) {

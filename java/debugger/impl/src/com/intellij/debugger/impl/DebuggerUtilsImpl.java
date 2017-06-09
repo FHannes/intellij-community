@@ -36,7 +36,7 @@ import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
-import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.util.ProgressIndicatorUtils;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.text.StringUtil;
@@ -226,20 +226,16 @@ public class DebuggerUtilsImpl extends DebuggerUtilsEx{
     return Boolean.TRUE.equals(debugProcess.getUserData(BatchEvaluator.REMOTE_SESSION_KEY));
   }
 
-  public interface SupplierThrowing<T, E extends Throwable> {
-    T get() throws E;
-  }
-
-  public static <T, E extends Exception> T suppressExceptions(SupplierThrowing<T, E> supplier, T defaultValue) throws E {
+  public static <T, E extends Exception> T suppressExceptions(ThrowableComputable<T, E> supplier, T defaultValue) throws E {
     return suppressExceptions(supplier, defaultValue, true, null);
   }
 
-  public static <T, E extends Exception> T suppressExceptions(SupplierThrowing<T, E> supplier,
+  public static <T, E extends Exception> T suppressExceptions(ThrowableComputable<T, E> supplier,
                                                               T defaultValue,
                                                               boolean ignorePCE,
                                                               Class<E> rethrow) throws E {
     try {
-      return supplier.get();
+      return supplier.compute();
     }
     catch (ProcessCanceledException e) {
       if (!ignorePCE) {
@@ -265,9 +261,10 @@ public class DebuggerUtilsImpl extends DebuggerUtilsEx{
     }
     Ref<T> res = Ref.create();
     while (true) {
-      if (ProgressManager.getInstance().runInReadActionWithWriteActionPriority(() -> res.set(action.compute()))) {
+      if (ProgressIndicatorUtils.runInReadActionWithWriteActionPriority(() -> res.set(action.compute()))) {
         return res.get();
       }
+      ProgressIndicatorUtils.yieldToPendingWriteActions();
     }
   }
 }

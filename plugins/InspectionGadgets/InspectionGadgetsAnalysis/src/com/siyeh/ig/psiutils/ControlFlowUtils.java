@@ -39,7 +39,12 @@ public class ControlFlowUtils {
   private ControlFlowUtils() {}
 
   public static boolean isElseIf(PsiIfStatement ifStatement) {
-    final PsiElement parent = ifStatement.getParent();
+    PsiElement parent = ifStatement.getParent();
+    if (parent instanceof PsiCodeBlock &&
+        ((PsiCodeBlock)parent).getStatements().length == 1 &&
+        parent.getParent() instanceof PsiBlockStatement) {
+      parent = parent.getParent().getParent();
+    }
     if (!(parent instanceof PsiIfStatement)) {
       return false;
     }
@@ -605,7 +610,10 @@ public class ControlFlowUtils {
         return EquivalenceChecker.getCanonicalPsiEquivalence()
           .expressionsAreEquivalent(returnValue, ((PsiReturnStatement)nextElement).getReturnValue());
       }
-      if(nextElement == null && returnValue == null && cur.getParent() instanceof PsiMethod) {
+      if(returnValue == null &&
+         cur.getParent() instanceof PsiCodeBlock &&
+         cur.getParent().getParent() instanceof PsiMethod &&
+         nextElement instanceof PsiJavaToken && ((PsiJavaToken)nextElement).getTokenType().equals(JavaTokenType.RBRACE)) {
         return true;
       }
     }
@@ -832,6 +840,34 @@ public class ControlFlowUtils {
     return false;
   }
 
+  /**
+   * Returns true if statement essentially contains no executable code
+   *
+   * @param statement statement to test
+   * @return true if statement essentially contains no executable code
+   */
+  @Contract("null -> false")
+  public static boolean statementIsEmpty(PsiStatement statement) {
+    if (statement == null) {
+      return false;
+    }
+    if (statement instanceof PsiEmptyStatement) {
+      return true;
+    }
+    if (statement instanceof PsiBlockStatement) {
+      final PsiBlockStatement blockStatement = (PsiBlockStatement)statement;
+      final PsiCodeBlock codeBlock = blockStatement.getCodeBlock();
+      final PsiStatement[] codeBlockStatements = codeBlock.getStatements();
+      for (PsiStatement codeBlockStatement : codeBlockStatements) {
+        if (!statementIsEmpty(codeBlockStatement)) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
   public enum InitializerUsageStatus {
     // Variable is declared just before the wanted place
     DECLARED_JUST_BEFORE,
@@ -938,11 +974,10 @@ public class ControlFlowUtils {
   }
 
   private static class ReturnFinder extends JavaRecursiveElementWalkingVisitor {
-
-    private boolean m_found;
+    private boolean myFound;
 
     private boolean returnFound() {
-      return m_found;
+      return myFound;
     }
 
     @Override
@@ -956,11 +991,8 @@ public class ControlFlowUtils {
 
     @Override
     public void visitReturnStatement(@NotNull PsiReturnStatement returnStatement) {
-      if (m_found) {
-        return;
-      }
-      super.visitReturnStatement(returnStatement);
-      m_found = true;
+      myFound = true;
+      stopWalking();
     }
   }
 
